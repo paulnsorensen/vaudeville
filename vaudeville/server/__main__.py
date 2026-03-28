@@ -37,8 +37,6 @@ def main() -> None:
         "CLAUDE_PLUGIN_ROOT",
         str(Path(__file__).parent.parent.parent),
     )
-    rules_dir = os.path.join(plugin_root, "rules")
-
     logging.info("Loading backend: %s model=%s", args.backend, args.model)
     if args.backend == "mlx":
         from .mlx_backend import MLXBackend
@@ -53,7 +51,7 @@ def main() -> None:
     daemon = VaudevilleDaemon(
         socket_path=args.socket,
         pid_file=args.pid_file,
-        rules_dir=rules_dir,
+        plugin_root=plugin_root,
         backend=backend,
     )
     daemon.serve()

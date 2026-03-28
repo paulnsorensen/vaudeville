@@ -6,7 +6,7 @@ import tempfile
 
 from vaudeville.core.client import VaudevilleClient
 from vaudeville.core.protocol import ClassifyRequest, parse_verdict
-from vaudeville.core.rules import Rule, load_rules
+from vaudeville.core.rules import Rule, load_rules, load_rules_layered, rules_search_path
 
 
 # --- parse_verdict ---
@@ -213,3 +213,53 @@ class TestRuleContext:
         )
         ctx = rule.resolve_context({"tool_input": {"body": "value"}})
         assert ctx == ""
+
+
+# --- Layered rule resolution ---
+
+class TestRulesSearchPath:
+    def test_bundled_rules_always_in_path(self) -> None:
+        import os
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = rules_search_path(plugin_root)
+        assert len(path) >= 1
+        assert path[0].endswith("/rules")
+
+    def test_nonexistent_plugin_root_returns_empty(self) -> None:
+        path = rules_search_path("/nonexistent/plugin/root")
+        # Only global/project dirs that happen to exist would appear
+        for d in path:
+            assert "/nonexistent/" not in d
+
+
+class TestLoadRulesLayered:
+    def test_loads_bundled_rules(self) -> None:
+        import os
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        rules = load_rules_layered(plugin_root)
+        assert "violation-detector" in rules
+
+    def test_project_override_wins(self) -> None:
+        """A project .vaudeville/rules/ file overrides the bundled rule."""
+        import os
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        with tempfile.TemporaryDirectory() as project_dir:
+            rules_dir = os.path.join(project_dir, ".vaudeville", "rules")
+            os.makedirs(rules_dir)
+            # Write a rule that overrides violation-detector with action=warn
+            with open(os.path.join(rules_dir, "violation-detector.yaml"), "w") as f:
+                f.write(
+                    "name: violation-detector\n"
+                    "event: Stop\n"
+                    "prompt: 'override {text}'\n"
+                    "labels: [violation, clean]\n"
+                    "action: warn\n"
+                    "message: '{reason}'\n"
+                )
+
+            from unittest.mock import patch
+            with patch("vaudeville.core.rules._find_project_root", return_value=project_dir):
+                rules = load_rules_layered(plugin_root)
+                assert rules["violation-detector"].action == "warn"
+                assert "override" in rules["violation-detector"].prompt

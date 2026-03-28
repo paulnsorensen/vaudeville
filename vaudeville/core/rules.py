@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import os
-import subprocess
 from dataclasses import dataclass
 from typing import Any
 
@@ -32,13 +31,30 @@ def _resolve_field(data: dict[str, object], path: str) -> object:
     return current
 
 
+def _read_context_entry(
+    entry: dict[str, str], input_data: dict[str, object], plugin_root: str,
+) -> str:
+    """Resolve a single context entry from field: (JSON path) or file: (disk path)."""
+    if "field" in entry:
+        return str(_resolve_field(input_data, entry["field"]))
+    if "file" in entry:
+        file_path = entry["file"]
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(plugin_root, file_path)
+        try:
+            with open(file_path) as f:
+                return f.read()
+        except OSError:
+            logging.warning("[vaudeville] Cannot read context file: %s", file_path)
+    return ""
+
+
 @dataclass
 class Rule:
     name: str
     event: str
     prompt: str
     context: list[dict[str, str]]
-    labels: list[str]
     action: str
     message: str
 
@@ -51,23 +67,18 @@ class Rule:
         plugin_root: str = "",
     ) -> str:
         """Resolve context entries from field: (JSON path) or file: (disk path)."""
-        parts: list[str] = []
-        for entry in self.context:
-            if "field" in entry:
-                val = _resolve_field(input_data, entry["field"])
-                parts.append(str(val))
-            elif "file" in entry:
-                file_path = entry["file"]
-                if not os.path.isabs(file_path):
-                    file_path = os.path.join(plugin_root, file_path)
-                try:
-                    with open(file_path) as f:
-                        parts.append(f.read())
-                except OSError:
-                    logging.warning(
-                        "[vaudeville] Cannot read context file: %s", file_path
-                    )
-        return "\n".join(parts)
+        parts = [
+            _read_context_entry(entry, input_data, plugin_root)
+            for entry in self.context
+        ]
+        return "\n".join(p for p in parts if p)
+
+
+def _load_rule_file(path: str) -> Rule:
+    """Load and parse a single YAML rule file."""
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    return _parse_rule(data)
 
 
 def load_rules(rules_dir: str) -> dict[str, Rule]:
@@ -82,9 +93,7 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
             continue
         path = os.path.join(rules_dir, filename)
         try:
-            with open(path) as f:
-                data = yaml.safe_load(f)
-            rule = _parse_rule(data)
+            rule = _load_rule_file(path)
             rules[rule.name] = rule
         except Exception as exc:
             logging.warning("[vaudeville] Failed to load rule %s: %s", filename, exc)
@@ -92,41 +101,23 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
     return rules
 
 
-def _find_project_root() -> str | None:
-    """Find the git working tree root, or None if not in a repo."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return None
-
-
-def rules_search_path(plugin_root: str) -> list[str]:
+def rules_search_path(
+    plugin_root: str, project_root: str | None = None,
+) -> list[str]:
     """Build the rules directory search path (lowest → highest priority).
 
     Returns directories that exist. Order: bundled → global → project.
     """
     dirs: list[str] = []
 
-    # Lowest priority: bundled defaults
     bundled = os.path.join(plugin_root, "rules")
     if os.path.isdir(bundled):
         dirs.append(bundled)
 
-    # Mid priority: user-global
     global_dir = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
     if os.path.isdir(global_dir):
         dirs.append(global_dir)
 
-    # Highest priority: project-local
-    project_root = _find_project_root()
     if project_root:
         project_dir = os.path.join(project_root, ".vaudeville", "rules")
         if os.path.isdir(project_dir):
@@ -135,10 +126,12 @@ def rules_search_path(plugin_root: str) -> list[str]:
     return dirs
 
 
-def load_rules_layered(plugin_root: str) -> dict[str, Rule]:
+def load_rules_layered(
+    plugin_root: str, project_root: str | None = None,
+) -> dict[str, Rule]:
     """Load rules from all search path directories, higher priority wins."""
     merged: dict[str, Rule] = {}
-    for rules_dir in rules_search_path(plugin_root):
+    for rules_dir in rules_search_path(plugin_root, project_root):
         merged.update(load_rules(rules_dir))
     return merged
 
@@ -149,7 +142,6 @@ def _parse_rule(data: dict[str, Any]) -> Rule:
         event=str(data.get("event", "")),
         prompt=str(data["prompt"]),
         context=[c for c in data.get("context", []) if isinstance(c, dict)],
-        labels=[str(lb) for lb in data.get("labels", ["violation", "clean"])],
         action=str(data.get("action", "block")),
         message=str(data.get("message", "{reason}")),
     )

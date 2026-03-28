@@ -90,18 +90,25 @@ def _response(verdict: str, reason: str, action: str = "block") -> bytes:
 
 
 def _read_message(conn: socket.socket) -> bytes:
-    """Read a newline-terminated message from a socket connection."""
-    data = b""
+    """Read a newline-terminated message from a socket connection.
+
+    Returns bytes up to and including the first newline.
+    Returns empty bytes if the connection closes or the payload exceeds MAX_REQUEST_SIZE.
+    """
+    buf = bytearray()
     while True:
         chunk = conn.recv(RECV_CHUNK)
         if not chunk:
             break
-        data += chunk
-        if b"\n" in data:
-            break
-        if len(data) > MAX_REQUEST_SIZE:
-            break
-    return data
+        buf.extend(chunk)
+        if b"\n" in buf:
+            return bytes(buf.split(b"\n", 1)[0])
+        if len(buf) > MAX_REQUEST_SIZE:
+            logger.warning(
+                "[vaudeville] Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE
+            )
+            return b""
+    return bytes(buf)
 
 
 def _scan_dir_mtime(rules_dir: str) -> float:

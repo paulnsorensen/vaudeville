@@ -1,9 +1,13 @@
 {
   "name": "vaudeville",
-  "description": "SLM-powered semantic hook enforcement for Claude Code — replaces Naive Bayes classifier with Phi-3-mini intent understanding",
+  "description": "SLM-powered semantic hook enforcement for Claude Code — classifies assistant output against YAML rules using local Phi-3-mini inference",
   "version": "0.1.0",
   "author": {
-    "name": "paul"
+    "name": "Paul Sorensen",
+    "url": "https://github.com/paulnsorensen"
   },
-  "keywords": ["hooks", "enforcement", "slm", "quality", "semantic"]
+  "homepage": "https://github.com/paulnsorensen/vaudeville",
+  "repository": "https://github.com/paulnsorensen/vaudeville",
+  "license": "MIT",
+  "keywords": ["hooks", "enforcement", "slm", "quality-gates", "semantic", "claude-code"]
 }

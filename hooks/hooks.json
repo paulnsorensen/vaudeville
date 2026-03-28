@@ -26,11 +26,13 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "add_reply_to_pull_request_comment|pull_request_review_write|add_comment_to_pending_review|add_issue_comment",
         "hooks": [
           {
             "type": "command",
             "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/pr_reply_guard.py",
-            "timeout": 10
+            "timeout": 10,
+            "statusMessage": "Checking PR reply for deferral..."
           }
         ]
       }

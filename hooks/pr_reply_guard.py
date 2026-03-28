@@ -19,6 +19,7 @@ PR_REPLY_TOOLS = {
     "add_reply_to_pull_request_comment",
     "pull_request_review_write",
     "add_comment_to_pending_review",
+    "add_issue_comment",
 }
 
 

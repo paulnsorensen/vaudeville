@@ -78,7 +78,9 @@ def load_test_cases(tests_dir: str) -> dict[str, list[EvalCase]]:
             existing = suites.get(rule_name, [])
             suites[rule_name] = existing + cases
         except Exception as exc:
-            logging.warning("[vaudeville] Failed to load test file %s: %s", filename, exc)
+            logging.warning(
+                "[vaudeville] Failed to load test file %s: %s", filename, exc
+            )
 
     return suites
 
@@ -146,7 +148,7 @@ def evaluate_rule(
 
     results = EvalResults(rule=rule_name, misclassified=[])
     for case in cases:
-         _classify_case(case, rule, backend, results)
+        _classify_case(case, rule, backend, results)
     return results
 
 
@@ -212,6 +214,7 @@ def print_results(results: EvalResults) -> bool:
 def _build_backend(args: argparse.Namespace) -> InferenceBackend:
     """Initialize the inference backend from CLI args."""
     from .server import MLXBackend
+
     print(f"Loading model: {args.model}")
     return MLXBackend(args.model)
 

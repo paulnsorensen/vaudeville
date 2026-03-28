@@ -32,7 +32,9 @@ def _resolve_field(data: dict[str, object], path: str) -> object:
 
 
 def _read_context_entry(
-    entry: dict[str, str], input_data: dict[str, object], plugin_root: str,
+    entry: dict[str, str],
+    input_data: dict[str, object],
+    plugin_root: str,
 ) -> str:
     """Resolve a single context entry from field: (JSON path) or file: (disk path)."""
     if "field" in entry:
@@ -102,7 +104,8 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
 
 
 def rules_search_path(
-    plugin_root: str, project_root: str | None = None,
+    plugin_root: str,
+    project_root: str | None = None,
 ) -> list[str]:
     """Build the rules directory search path (lowest → highest priority).
 
@@ -127,7 +130,8 @@ def rules_search_path(
 
 
 def load_rules_layered(
-    plugin_root: str, project_root: str | None = None,
+    plugin_root: str,
+    project_root: str | None = None,
 ) -> dict[str, Rule]:
     """Load rules from all search path directories, higher priority wins."""
     merged: dict[str, Rule] = {}

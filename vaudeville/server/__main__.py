@@ -20,9 +20,11 @@ def _init_backend(args: argparse.Namespace) -> InferenceBackend:
     """Create the inference backend from CLI args."""
     if args.backend == "mlx":
         from .mlx_backend import MLXBackend
+
         return MLXBackend(args.model)
     elif args.backend == "gguf":
         from .gguf_backend import GGUFBackend
+
         return GGUFBackend()
     logging.error("Unknown backend: %s", args.backend)
     sys.exit(1)

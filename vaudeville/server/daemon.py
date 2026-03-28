@@ -32,7 +32,9 @@ def _find_project_root() -> str | None:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0:
             return result.stdout.strip()
@@ -192,7 +194,8 @@ class VaudevilleDaemon:
             current = self._rules_mtime()
             if current != last_mtime:
                 new_rules = load_rules_layered(
-                    self._plugin_root, self._project_root,
+                    self._plugin_root,
+                    self._project_root,
                 )
                 with self._rules_lock:
                     self._rules = new_rules
@@ -201,9 +204,13 @@ class VaudevilleDaemon:
 
     def _rules_mtime(self) -> float:
         return max(
-            (_scan_dir_mtime(d) for d in rules_search_path(
-                self._plugin_root, self._project_root,
-            )),
+            (
+                _scan_dir_mtime(d)
+                for d in rules_search_path(
+                    self._plugin_root,
+                    self._project_root,
+                )
+            ),
             default=0.0,
         )
 

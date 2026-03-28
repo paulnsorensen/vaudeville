@@ -1,4 +1,11 @@
-"""YAML rule loader.
+"""YAML rule loader with layered config resolution.
+
+Rules are resolved from multiple directories in priority order:
+  1. project/.vaudeville/rules/   (highest — project overrides)
+  2. ~/.vaudeville/rules/          (user-global rules)
+  3. <plugin_root>/rules/          (bundled defaults, lowest)
+
+Higher-priority rules override lower-priority ones by name.
 
 Uses PyYAML — only imported by daemon and eval, NOT by hook entry points.
 """
@@ -6,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 from dataclasses import dataclass
 from typing import Any
 
@@ -77,6 +85,55 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
             logging.warning("[vaudeville] Failed to load rule %s: %s", filename, exc)
 
     return rules
+
+
+def _find_project_root() -> str | None:
+    """Find the git working tree root, or None if not in a repo."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def rules_search_path(plugin_root: str) -> list[str]:
+    """Build the rules directory search path (lowest → highest priority).
+
+    Returns directories that exist. Order: bundled → global → project.
+    """
+    dirs: list[str] = []
+
+    # Lowest priority: bundled defaults
+    bundled = os.path.join(plugin_root, "rules")
+    if os.path.isdir(bundled):
+        dirs.append(bundled)
+
+    # Mid priority: user-global
+    global_dir = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
+    if os.path.isdir(global_dir):
+        dirs.append(global_dir)
+
+    # Highest priority: project-local
+    project_root = _find_project_root()
+    if project_root:
+        project_dir = os.path.join(project_root, ".vaudeville", "rules")
+        if os.path.isdir(project_dir):
+            dirs.append(project_dir)
+
+    return dirs
+
+
+def load_rules_layered(plugin_root: str) -> dict[str, Rule]:
+    """Load rules from all search path directories, higher priority wins."""
+    merged: dict[str, Rule] = {}
+    for rules_dir in rules_search_path(plugin_root):
+        merged.update(load_rules(rules_dir))
+    return merged
 
 
 def _parse_rule(data: dict[str, Any]) -> Rule:

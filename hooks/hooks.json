@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh",
             "timeout": 60
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/stop_guard.py",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/runner.py violation-detector dismissal-detector",
             "timeout": 30,
             "statusMessage": "Evaluating response quality..."
           }
@@ -26,11 +26,13 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "add_reply_to_pull_request_comment|pull_request_review_write|add_comment_to_pending_review|add_issue_comment",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/pr_reply_guard.py",
-            "timeout": 10
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/runner.py deferral-detector",
+            "timeout": 10,
+            "statusMessage": "Checking PR reply for deferral..."
           }
         ]
       }

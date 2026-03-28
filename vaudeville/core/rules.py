@@ -9,6 +9,7 @@ Higher-priority rules override lower-priority ones by name.
 
 Uses PyYAML — only imported by daemon and eval, NOT by hook entry points.
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,7 +46,9 @@ class Rule:
         return self.prompt.replace("{text}", text).replace("{context}", context)
 
     def resolve_context(
-        self, input_data: dict[str, object], plugin_root: str = "",
+        self,
+        input_data: dict[str, object],
+        plugin_root: str = "",
     ) -> str:
         """Resolve context entries from field: (JSON path) or file: (disk path)."""
         parts: list[str] = []
@@ -61,7 +64,9 @@ class Rule:
                     with open(file_path) as f:
                         parts.append(f.read())
                 except OSError:
-                    logging.warning("[vaudeville] Cannot read context file: %s", file_path)
+                    logging.warning(
+                        "[vaudeville] Cannot read context file: %s", file_path
+                    )
         return "\n".join(parts)
 
 
@@ -92,7 +97,9 @@ def _find_project_root() -> str | None:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0:
             return result.stdout.strip()

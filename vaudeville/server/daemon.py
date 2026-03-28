@@ -3,6 +3,7 @@
 Loads model once, serves classify requests over Unix socket.
 Hot-reloads rules on file change. Self-terminates after idle timeout.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,7 +18,7 @@ from ..core.protocol import parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
 from .inference import InferenceBackend
 
-IDLE_TIMEOUT = 30 * 60   # 30 minutes
+IDLE_TIMEOUT = 30 * 60  # 30 minutes
 RULE_POLL_INTERVAL = 30  # seconds
 RECV_CHUNK = 4096
 
@@ -42,7 +43,9 @@ def handle_request(
         text = str(input_data.get("text", ""))
         plugin_root = os.environ.get(
             "CLAUDE_PLUGIN_ROOT",
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
         )
         context = rule.resolve_context(input_data, plugin_root)
         prompt = rule.format_prompt(text, context)
@@ -56,9 +59,16 @@ def handle_request(
 
 
 def _response(verdict: str, reason: str, action: str = "block") -> bytes:
-    return json.dumps({
-        "verdict": verdict, "reason": reason, "action": action,
-    }).encode() + b"\n"
+    return (
+        json.dumps(
+            {
+                "verdict": verdict,
+                "reason": reason,
+                "action": action,
+            }
+        ).encode()
+        + b"\n"
+    )
 
 
 class VaudevilleDaemon:

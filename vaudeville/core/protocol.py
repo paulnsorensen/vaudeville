@@ -2,6 +2,7 @@
 
 Stdlib-only — safe to import in hook scripts.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ class ClassifyRequest:
 
 @dataclass
 class ClassifyResponse:
-    verdict: str   # "violation" | "clean"
+    verdict: str  # "violation" | "clean"
     reason: str
     action: str = "block"  # "block" | "warn" | "log"
 

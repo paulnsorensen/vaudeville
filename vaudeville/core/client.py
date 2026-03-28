@@ -2,6 +2,7 @@
 
 Stdlib-only — safe to import in hook scripts.
 """
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,7 @@ import socket
 from .protocol import ClassifyRequest, ClassifyResponse
 
 SOCKET_TEMPLATE = "/tmp/vaudeville-{session_id}.sock"
-CONNECT_TIMEOUT = 4.0   # Stay under PreToolUse 5s limit
+CONNECT_TIMEOUT = 4.0  # Stay under PreToolUse 5s limit
 READ_TIMEOUT = 4.0
 RECV_CHUNK = 4096
 
@@ -22,7 +23,9 @@ class VaudevilleClient:
     def __init__(self, session_id: str) -> None:
         self._socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
 
-    def classify(self, rule: str, input_data: dict[str, object]) -> ClassifyResponse | None:
+    def classify(
+        self, rule: str, input_data: dict[str, object]
+    ) -> ClassifyResponse | None:
         """Send a classify request and return the verdict.
 
         Returns None if the daemon is unavailable (fail-open semantics).

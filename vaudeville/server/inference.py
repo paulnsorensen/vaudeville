@@ -3,6 +3,7 @@
 Adding a new backend: create one file implementing InferenceBackend,
 no changes to rules or hooks required.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable

@@ -48,7 +48,9 @@ def _rules_search_path() -> list[str]:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0:
             project_dir = os.path.join(result.stdout.strip(), ".vaudeville", "rules")

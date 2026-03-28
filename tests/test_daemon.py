@@ -113,6 +113,7 @@ class TestDaemonSocketProtocol:
         backend = MockBackend(verdict="clean", reason="socket test")
 
         import os
+
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(socket_path, pid_file, plugin_root, backend)
 

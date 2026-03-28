@@ -8,7 +8,12 @@ import tempfile
 
 from vaudeville.core.client import VaudevilleClient
 from vaudeville.core.protocol import ClassifyRequest, parse_verdict
-from vaudeville.core.rules import Rule, load_rules, load_rules_layered, rules_search_path
+from vaudeville.core.rules import (
+    Rule,
+    load_rules,
+    load_rules_layered,
+    rules_search_path,
+)
 
 
 # --- parse_verdict ---
@@ -241,9 +246,11 @@ class TestRuleContext:
 
 # --- Layered rule resolution ---
 
+
 class TestRulesSearchPath:
     def test_bundled_rules_always_in_path(self) -> None:
         import os
+
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         path = rules_search_path(plugin_root)
         assert len(path) >= 1
@@ -259,6 +266,7 @@ class TestRulesSearchPath:
 class TestLoadRulesLayered:
     def test_loads_bundled_rules(self) -> None:
         import os
+
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         rules = load_rules_layered(plugin_root)
         assert "violation-detector" in rules
@@ -266,6 +274,7 @@ class TestLoadRulesLayered:
     def test_project_override_wins(self) -> None:
         """A project .vaudeville/rules/ file overrides the bundled rule."""
         import os
+
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         with tempfile.TemporaryDirectory() as project_dir:
@@ -283,7 +292,10 @@ class TestLoadRulesLayered:
                 )
 
             from unittest.mock import patch
-            with patch("vaudeville.core.rules._find_project_root", return_value=project_dir):
+
+            with patch(
+                "vaudeville.core.rules._find_project_root", return_value=project_dir
+            ):
                 rules = load_rules_layered(plugin_root)
                 assert rules["violation-detector"].action == "warn"
                 assert "override" in rules["violation-detector"].prompt

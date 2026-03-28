@@ -35,10 +35,3 @@ gguf = [
     "llama-cpp-python>=0.3.4",
     "huggingface-hub>=0.24.0",
 ]
-
-[tool.uv.sources]
-llama-cpp-python = { index = "llama-cpu" }
-
-[[tool.uv.index]]
-name = "llama-cpu"
-url = "https://abetlen.github.io/llama-cpp-python/whl/cpu"

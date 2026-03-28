@@ -226,16 +226,15 @@ def main() -> None:
         "CLAUDE_PLUGIN_ROOT",
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
-    rules_dir = os.path.join(plugin_root, "rules")
     tests_dir = os.path.join(plugin_root, "tests")
 
-    from .core.rules import load_rules
+    from .core.rules import load_rules_layered
     from .server.mlx_backend import MLXBackend
 
     print(f"Loading model: {args.model}")
     backend = MLXBackend(args.model)
 
-    rules = load_rules(rules_dir)
+    rules = load_rules_layered(plugin_root)
     test_suites = load_test_cases(tests_dir)
 
     if args.test_file and args.rule:

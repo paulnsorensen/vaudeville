@@ -21,7 +21,6 @@ PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 )
-RULES_DIR = os.path.join(PLUGIN_ROOT, "rules")
 
 if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
@@ -31,14 +30,47 @@ from vaudeville.core.client import VaudevilleClient  # noqa: E402
 MIN_TEXT_LENGTH = 100
 
 
+def _rules_search_path() -> list[str]:
+    """Build search path: bundled → global → project (highest priority last)."""
+    import subprocess
+
+    dirs: list[str] = []
+
+    bundled = os.path.join(PLUGIN_ROOT, "rules")
+    if os.path.isdir(bundled):
+        dirs.append(bundled)
+
+    global_dir = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
+    if os.path.isdir(global_dir):
+        dirs.append(global_dir)
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            project_dir = os.path.join(result.stdout.strip(), ".vaudeville", "rules")
+            if os.path.isdir(project_dir):
+                dirs.append(project_dir)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+    return dirs
+
+
 def load_rule(name: str) -> dict | None:
-    """Load a rule YAML file by name."""
-    path = os.path.join(RULES_DIR, f"{name}.yaml")
-    if not os.path.isfile(path):
-        print(f"[vaudeville] rule not found: {path}", file=sys.stderr)
-        return None
-    with open(path) as f:
-        return yaml.safe_load(f)
+    """Load a rule YAML file by name, searching layered paths (project wins)."""
+    filename = f"{name}.yaml"
+    # Walk search path in reverse so highest priority wins
+    for rules_dir in reversed(_rules_search_path()):
+        path = os.path.join(rules_dir, filename)
+        if os.path.isfile(path):
+            with open(path) as f:
+                return yaml.safe_load(f)
+
+    print(f"[vaudeville] rule not found: {name}", file=sys.stderr)
+    return None
 
 
 def extract_field(data: dict, dotted_path: str) -> str:

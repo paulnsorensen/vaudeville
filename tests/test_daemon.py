@@ -73,7 +73,7 @@ class TestHandleRequest:
 
 
 class TestDaemonSocketProtocol:
-    def test_daemon_serves_request_via_socket(self, rules_dir: str) -> None:
+    def test_daemon_serves_request_via_socket(self) -> None:
         import tempfile
         # Unix sockets have a 104-char path limit on macOS — use /tmp directly
         with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
@@ -83,7 +83,9 @@ class TestDaemonSocketProtocol:
         import os; os.unlink(socket_path)  # daemon will re-create it
         backend = MockBackend(verdict="clean", reason="socket test")
 
-        daemon = VaudevilleDaemon(socket_path, pid_file, rules_dir, backend)
+        import os
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        daemon = VaudevilleDaemon(socket_path, pid_file, plugin_root, backend)
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()

@@ -11,8 +11,6 @@ DEFAULT_MODEL = "mlx-community/Phi-3-mini-4k-instruct-4bit"
 
 
 class MLXBackend:
-    """InferenceBackend implementation using MLX-LM."""
-
     def __init__(self, model_path: str = DEFAULT_MODEL) -> None:
         from mlx_lm import load, generate
 

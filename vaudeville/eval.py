@@ -9,12 +9,16 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any
 
 import yaml
+
+from .core.protocol import parse_verdict
+from .core.rules import Rule, load_rules_layered
+from .server import InferenceBackend
 
 
 @dataclass
@@ -60,31 +64,44 @@ class EvalResults:
 
 def load_test_cases(tests_dir: str) -> dict[str, list[EvalCase]]:
     suites: dict[str, list[EvalCase]] = {}
-    for filename in os.listdir(tests_dir):
+    try:
+        filenames = os.listdir(tests_dir)
+    except OSError:
+        return suites
+
+    for filename in filenames:
         if not (filename.endswith(".yaml") or filename.endswith(".yml")):
             continue
         path = os.path.join(tests_dir, filename)
-        with open(path) as f:
-            data = yaml.safe_load(f)
-        rule_name = str(data["rule"])
-        cases = [
-            EvalCase(text=str(c["text"]), label=str(c["label"]))
-            for c in data.get("cases", [])
-        ]
-        existing = suites.get(rule_name, [])
-        suites[rule_name] = existing + cases
+        try:
+            cases, rule_name = _load_test_file(path)
+            existing = suites.get(rule_name, [])
+            suites[rule_name] = existing + cases
+        except Exception as exc:
+            logging.warning("[vaudeville] Failed to load test file %s: %s", filename, exc)
+
     return suites
+
+
+def _load_test_file(path: str) -> tuple[list[EvalCase], str]:
+    """Load test cases from a single YAML file. Returns (cases, rule_name)."""
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    rule_name = str(data["rule"])
+    cases = [
+        EvalCase(text=str(c["text"]), label=str(c["label"]))
+        for c in data.get("cases", [])
+    ]
+    return cases, rule_name
 
 
 def _classify_case(
     case: EvalCase,
-    rule: Any,
-    backend: Any,
+    rule: Rule,
+    backend: InferenceBackend,
     results: EvalResults,
 ) -> str:
     """Classify a single case and update results. Returns predicted label."""
-    from .core.protocol import parse_verdict
-
     prompt = rule.format_prompt(case.text)
     raw = backend.classify(prompt, max_tokens=50)
     response = parse_verdict(raw)
@@ -120,38 +137,26 @@ def _classify_case(
 def evaluate_rule(
     rule_name: str,
     cases: list[EvalCase],
-    rules: dict[str, Any],
-    backend: Any,
-    verbose: bool = False,
+    rules: dict[str, Rule],
+    backend: InferenceBackend,
 ) -> EvalResults:
-    from .core.rules import Rule
-
     rule = rules.get(rule_name)
     if not isinstance(rule, Rule):
         raise ValueError(f"Rule not found: {rule_name}")
 
     results = EvalResults(rule=rule_name, misclassified=[])
-
     for case in cases:
-        predicted = _classify_case(case, rule, backend, results)
-        if verbose:
-            status = "OK" if predicted == case.label else "FAIL"
-            print(
-                f"  [{status}] expected={case.label} got={predicted}: {case.text[:60]}"
-            )
-
+         _classify_case(case, rule, backend, results)
     return results
 
 
 def cross_validate_rule(
     rule_name: str,
     cases: list[EvalCase],
-    rules: dict[str, Any],
-    backend: Any,
+    rules: dict[str, Rule],
+    backend: InferenceBackend,
 ) -> EvalResults:
     """Leave-one-out cross-validation: evaluate each case as its own fold."""
-    from .core.rules import Rule
-
     rule = rules.get(rule_name)
     if not isinstance(rule, Rule):
         raise ValueError(f"Rule not found: {rule_name}")
@@ -163,7 +168,6 @@ def cross_validate_rule(
         fold = EvalResults(rule=rule_name, misclassified=[])
         predicted = _classify_case(case, rule, backend, fold)
 
-        # Merge fold into aggregate
         aggregate.tp += fold.tp
         aggregate.fp += fold.fp
         aggregate.tn += fold.tn
@@ -172,11 +176,10 @@ def cross_validate_rule(
         assert fold.misclassified is not None
         aggregate.misclassified.extend(fold.misclassified)
 
-        correct = predicted == case.label
-        fold_acc = 1.0 if correct else 0.0
-        status = "OK" if correct else "FAIL"
+        status = "OK" if predicted == case.label else "FAIL"
+        acc = "100%" if predicted == case.label else "0%"
         print(
-            f"  Fold {i + 1}/{n} [{status}] acc={fold_acc:.0%}"
+            f"  Fold {i + 1}/{n} [{status}] acc={acc}"
             f" expected={case.label} got={predicted}: {case.text[:50]}"
         )
 
@@ -206,13 +209,34 @@ def print_results(results: EvalResults) -> bool:
     return passed
 
 
-def _load_test_file(path: str) -> list[EvalCase]:
-    """Load test cases from a single YAML file."""
-    import yaml
+def _build_backend(args: argparse.Namespace) -> InferenceBackend:
+    """Initialize the inference backend from CLI args."""
+    from .server import MLXBackend
+    print(f"Loading model: {args.model}")
+    return MLXBackend(args.model)
 
-    with open(path) as f:
-        data = yaml.safe_load(f)
-    return [EvalCase(text=c["text"], label=c["label"]) for c in data.get("cases", [])]
+
+def _run_evaluations(
+    args: argparse.Namespace,
+    rules: dict[str, Rule],
+    test_suites: dict[str, list[EvalCase]],
+    backend: InferenceBackend,
+) -> bool:
+    """Run eval or cross-validation for each rule. Returns True if all pass."""
+    overall_pass = True
+    for rule_name, cases in sorted(test_suites.items()):
+        if rule_name not in rules:
+            print(f"\nWARNING: No rule definition found for {rule_name}")
+            continue
+        print(f"\nEvaluating {rule_name} ({len(cases)} cases)...")
+        if args.cross_validate:
+            print(f"  Leave-one-out cross-validation ({len(cases)} folds):")
+            results = cross_validate_rule(rule_name, cases, rules, backend)
+        else:
+            results = evaluate_rule(rule_name, cases, rules, backend)
+        if not print_results(results):
+            overall_pass = False
+    return overall_pass
 
 
 def main() -> None:
@@ -243,17 +267,12 @@ def main() -> None:
     )
     tests_dir = os.path.join(plugin_root, "tests")
 
-    from .core.rules import load_rules_layered
-    from .server.mlx_backend import MLXBackend
-
-    print(f"Loading model: {args.model}")
-    backend = MLXBackend(args.model)
-
+    backend = _build_backend(args)
     rules = load_rules_layered(plugin_root)
     test_suites = load_test_cases(tests_dir)
 
     if args.test_file and args.rule:
-        extra_cases = _load_test_file(args.test_file)
+        extra_cases, _ = _load_test_file(args.test_file)
         existing = test_suites.get(args.rule, [])
         test_suites[args.rule] = existing + extra_cases
 
@@ -263,23 +282,9 @@ def main() -> None:
             print(f"No test suite found for rule: {args.rule}")
             sys.exit(1)
 
-    overall_pass = True
-    for rule_name, cases in sorted(test_suites.items()):
-        if rule_name not in rules:
-            print(f"\nWARNING: No rule definition found for {rule_name}")
-            continue
-        print(f"\nEvaluating {rule_name} ({len(cases)} cases)...")
-        if args.cross_validate:
-            print(f"  Leave-one-out cross-validation ({len(cases)} folds):")
-            results = cross_validate_rule(rule_name, cases, rules, backend)
-        else:
-            results = evaluate_rule(rule_name, cases, rules, backend)
-        passed = print_results(results)
-        if not passed:
-            overall_pass = False
-
-    print("\n" + ("ALL RULES PASS" if overall_pass else "SOME RULES FAILED"))
-    sys.exit(0 if overall_pass else 1)
+    passed = _run_evaluations(args, rules, test_suites, backend)
+    print("\n" + ("ALL RULES PASS" if passed else "SOME RULES FAILED"))
+    sys.exit(0 if passed else 1)
 
 
 if __name__ == "__main__":

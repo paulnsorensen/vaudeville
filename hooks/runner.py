@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 
 import yaml
@@ -26,25 +27,13 @@ PLUGIN_ROOT = os.environ.get(
 if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
-from vaudeville.core.client import VaudevilleClient  # noqa: E402
+from vaudeville.core import VaudevilleClient, rules_search_path  # noqa: E402
 
 MIN_TEXT_LENGTH = 100
 
 
-def _rules_search_path() -> list[str]:
-    """Build search path: bundled → global → project (highest priority last)."""
-    import subprocess
-
-    dirs: list[str] = []
-
-    bundled = os.path.join(PLUGIN_ROOT, "rules")
-    if os.path.isdir(bundled):
-        dirs.append(bundled)
-
-    global_dir = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
-    if os.path.isdir(global_dir):
-        dirs.append(global_dir)
-
+def _find_project_root() -> str | None:
+    """Find the git working tree root, or None if not in a repo."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -53,20 +42,17 @@ def _rules_search_path() -> list[str]:
             timeout=5,
         )
         if result.returncode == 0:
-            project_dir = os.path.join(result.stdout.strip(), ".vaudeville", "rules")
-            if os.path.isdir(project_dir):
-                dirs.append(project_dir)
+            return result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         pass
-
-    return dirs
+    return None
 
 
 def load_rule(name: str) -> dict | None:
     """Load a rule YAML file by name, searching layered paths (project wins)."""
     filename = f"{name}.yaml"
-    # Walk search path in reverse so highest priority wins
-    for rules_dir in reversed(_rules_search_path()):
+    project_root = _find_project_root()
+    for rules_dir in reversed(rules_search_path(PLUGIN_ROOT, project_root)):
         path = os.path.join(rules_dir, filename)
         if os.path.isfile(path):
             with open(path) as f:
@@ -94,7 +80,6 @@ def extract_text(hook_input: dict, rule: dict) -> str:
     if not context:
         return ""
 
-    # Try each context field in order, return first non-empty
     for entry in context:
         if isinstance(entry, dict) and "field" in entry:
             text = extract_field(hook_input, entry["field"])

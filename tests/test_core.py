@@ -88,7 +88,6 @@ class TestLoadRules:
         assert rule.name == "violation-detector"
         assert rule.event == "Stop"
         assert "{text}" in rule.prompt
-        assert "violation" in rule.labels
         assert rule.action == "block"
 
     def test_format_prompt_interpolates_text(self, rules_dir: str) -> None:
@@ -165,7 +164,6 @@ class TestRuleContext:
             event="Stop",
             prompt="Text: {text}\nContext: {context}",
             context=[],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -179,7 +177,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "last_assistant_message"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -192,7 +189,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "content.txt"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -210,7 +206,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "nonexistent.txt"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -223,7 +218,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.body"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -236,7 +230,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.nonexistent"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -291,11 +284,6 @@ class TestLoadRulesLayered:
                     "message: '{reason}'\n"
                 )
 
-            from unittest.mock import patch
-
-            with patch(
-                "vaudeville.core.rules._find_project_root", return_value=project_dir
-            ):
-                rules = load_rules_layered(plugin_root)
-                assert rules["violation-detector"].action == "warn"
-                assert "override" in rules["violation-detector"].prompt
+            rules = load_rules_layered(plugin_root, project_root=project_dir)
+            assert rules["violation-detector"].action == "warn"
+            assert "override" in rules["violation-detector"].prompt

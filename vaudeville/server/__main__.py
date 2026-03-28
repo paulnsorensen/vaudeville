@@ -16,6 +16,18 @@ from pathlib import Path
 from .inference import InferenceBackend
 
 
+def _init_backend(args: argparse.Namespace) -> InferenceBackend:
+    """Create the inference backend from CLI args."""
+    if args.backend == "mlx":
+        from .mlx_backend import MLXBackend
+        return MLXBackend(args.model)
+    elif args.backend == "gguf":
+        from .gguf_backend import GGUFBackend
+        return GGUFBackend()
+    logging.error("Unknown backend: %s", args.backend)
+    sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Vaudeville inference daemon")
     parser.add_argument("--socket", required=True, help="Unix socket path")
@@ -41,19 +53,7 @@ def main() -> None:
         str(Path(__file__).parent.parent.parent),
     )
     logging.info("Loading backend: %s model=%s", args.backend, args.model)
-    backend: InferenceBackend
-    if args.backend == "mlx":
-        from .mlx_backend import MLXBackend
-
-        backend = MLXBackend(args.model)
-    elif args.backend == "gguf":
-        from .gguf_backend import GGUFBackend
-
-        backend = GGUFBackend()
-    else:
-        logging.error("Unknown backend: %s", args.backend)
-        sys.exit(1)
-
+    backend = _init_backend(args)
     logging.info("Backend ready")
 
     from .daemon import VaudevilleDaemon

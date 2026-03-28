@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import socket
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -21,8 +22,23 @@ from .inference import InferenceBackend
 IDLE_TIMEOUT = 30 * 60  # 30 minutes
 RULE_POLL_INTERVAL = 30  # seconds
 RECV_CHUNK = 4096
+MAX_REQUEST_SIZE = 1024 * 1024  # 1 MB
 
 logger = logging.getLogger(__name__)
+
+
+def _find_project_root() -> str | None:
+    """Find the git working tree root, or None if not in a repo."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def handle_request(
@@ -71,6 +87,34 @@ def _response(verdict: str, reason: str, action: str = "block") -> bytes:
     )
 
 
+def _read_message(conn: socket.socket) -> bytes:
+    """Read a newline-terminated message from a socket connection."""
+    data = b""
+    while True:
+        chunk = conn.recv(RECV_CHUNK)
+        if not chunk:
+            break
+        data += chunk
+        if b"\n" in data:
+            break
+        if len(data) > MAX_REQUEST_SIZE:
+            break
+    return data
+
+
+def _scan_dir_mtime(rules_dir: str) -> float:
+    """Return the max mtime of YAML files in a single rules directory."""
+    max_mtime = 0.0
+    try:
+        for f in os.listdir(rules_dir):
+            if f.endswith(".yaml") or f.endswith(".yml"):
+                mtime = os.path.getmtime(os.path.join(rules_dir, f))
+                max_mtime = max(max_mtime, mtime)
+    except OSError:
+        pass
+    return max_mtime
+
+
 class VaudevilleDaemon:
     def __init__(
         self,
@@ -83,6 +127,7 @@ class VaudevilleDaemon:
         self._pid_file = pid_file
         self._plugin_root = plugin_root
         self._backend = backend
+        self._project_root = _find_project_root()
         self._rules: dict[str, Rule] = {}
         self._rules_lock = threading.Lock()
         self._last_request = time.monotonic()
@@ -91,7 +136,7 @@ class VaudevilleDaemon:
     def serve(self) -> None:
         """Load rules, write PID, bind socket, serve until idle timeout."""
         with self._rules_lock:
-            self._rules = load_rules_layered(self._plugin_root)
+            self._rules = load_rules_layered(self._plugin_root, self._project_root)
         logger.info("[vaudeville] Loaded %d rules", len(self._rules))
 
         Path(self._pid_file).write_text(str(os.getpid()))
@@ -128,15 +173,7 @@ class VaudevilleDaemon:
 
     def _handle_client(self, conn: socket.socket) -> None:
         try:
-            data = b""
-            while True:
-                chunk = conn.recv(RECV_CHUNK)
-                if not chunk:
-                    break
-                data += chunk
-                if b"\n" in data:
-                    break
-
+            data = _read_message(conn)
             with self._rules_lock:
                 current_rules = dict(self._rules)
 
@@ -154,23 +191,21 @@ class VaudevilleDaemon:
             time.sleep(RULE_POLL_INTERVAL)
             current = self._rules_mtime()
             if current != last_mtime:
-                new_rules = load_rules_layered(self._plugin_root)
+                new_rules = load_rules_layered(
+                    self._plugin_root, self._project_root,
+                )
                 with self._rules_lock:
                     self._rules = new_rules
                 last_mtime = current
                 logger.info("[vaudeville] Rules reloaded (%d rules)", len(new_rules))
 
     def _rules_mtime(self) -> float:
-        max_mtime = 0.0
-        for rules_dir in rules_search_path(self._plugin_root):
-            try:
-                for f in os.listdir(rules_dir):
-                    if f.endswith(".yaml") or f.endswith(".yml"):
-                        mtime = os.path.getmtime(os.path.join(rules_dir, f))
-                        max_mtime = max(max_mtime, mtime)
-            except OSError:
-                continue
-        return max_mtime
+        return max(
+            (_scan_dir_mtime(d) for d in rules_search_path(
+                self._plugin_root, self._project_root,
+            )),
+            default=0.0,
+        )
 
     def _cleanup(self) -> None:
         for path in (self._socket_path, self._pid_file):

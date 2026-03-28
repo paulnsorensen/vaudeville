@@ -1,0 +1,9 @@
+{
+  "name": "vaudeville",
+  "description": "SLM-powered semantic hook enforcement for Claude Code — replaces Naive Bayes classifier with Phi-3-mini intent understanding",
+  "version": "0.1.0",
+  "author": {
+    "name": "paul"
+  },
+  "keywords": ["hooks", "enforcement", "slm", "quality", "semantic"]
+}

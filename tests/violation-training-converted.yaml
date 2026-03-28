@@ -1,0 +1,288 @@
+rule: violation-detector
+cases:
+- label: violation
+  text: "Score: 90 \u2014 The codebase_service clones the full Arc on every call. This is unnecessary overhead."
+- label: violation
+  text: "confidence: 85 \u2014 Unused import detected in handler.rs, should be removed before merge."
+- label: violation
+  text: "Score: 78 \u2014 Function exceeds 40-line complexity budget at 67 lines. Extract helper."
+- label: violation
+  text: '| 2 | Premature complete | FAIL | Left TODO on line 42 |'
+- label: violation
+  text: '| 5 | Scope reduction | FAIL | Dropped retry logic without acknowledgment |'
+- label: violation
+  text: 'Finding (92): Silent error swallowing in the catch block. Errors should propagate.'
+- label: violation
+  text: 'FAIL: The response claims completion but 3 items from the spec remain unimplemented.'
+- label: violation
+  text: "Score: 71 \u2014 Arc::clone called in hot loop, consider borrowing instead."
+- label: violation
+  text: "confidence: 88 \u2014 Dead code: the match arm on line 145 is unreachable after refactor."
+- label: violation
+  text: '| 3 | Dismissing failures | FAIL | Called CI failure pre-existing without evidence |'
+- label: violation
+  text: "Finding (80): Over-abstraction \u2014 trait with single implementor adds indirection with no gain. Unresolved."
+- label: violation
+  text: "Score: 95 \u2014 Security: user input passed directly to SQL query without parameterization."
+- label: violation
+  text: 'WARN: Agent scored this 73 but no action was taken. Unresolved.'
+- label: violation
+  text: "confidence: 90 \u2014 The retry logic swallows the original error context."
+- label: violation
+  text: I found 3 violations scoring above 70 that need to be fixed before stopping.
+- label: violation
+  text: The ricotta agent flagged this at score 90 but it was deferred to a future PR.
+- label: violation
+  text: 'Self-eval item 2 FAIL: premature completion detected, TODOs remain in the code.'
+- label: violation
+  text: This finding scored 85 and needs to be resolved before the phase is complete.
+- label: violation
+  text: The agent acknowledged the finding but chose not to fix it, citing scope concerns.
+- label: violation
+  text: I'm deferring this to a follow-up because it's in a different module.
+- label: violation
+  text: "Score: 82 \u2014 Missing input validation on the public API boundary."
+- label: violation
+  text: "confidence: 76 \u2014 The error message leaks internal implementation details. Must fix."
+- label: violation
+  text: '| 7 | AI slop | FAIL | Comment pollution found: 12 unnecessary JSDoc annotations |'
+- label: violation
+  text: '| 8 | Weak assertions | FAIL | Tests use toBeTruthy instead of toEqual |'
+- label: violation
+  text: 'Finding (88): The function silently returns null on error instead of throwing.'
+- label: violation
+  text: This was scored 91 by the reviewer but I decided it was out of scope for this PR.
+- label: violation
+  text: Three high-confidence findings remain unaddressed. Must fix before merge.
+- label: violation
+  text: The simplifier found score-85 dead code that should be removed before merge.
+- label: violation
+  text: I noted the violation but moved on because the deadline is tight.
+- label: violation
+  text: "Score: 74 \u2014 Nesting depth of 5 exceeds the 3-level budget."
+- label: violation
+  text: This failure appears to be pre-existing and not related to our changes.
+- label: violation
+  text: "The test was already flaky before this PR \u2014 it fails intermittently on CI."
+- label: violation
+  text: I'll address this in a follow-up PR since it touches a different crate boundary.
+- label: violation
+  text: This is a known limitation that predates our work here.
+- label: violation
+  text: "The failure is unrelated to our changes \u2014 it's an infrastructure issue with the runner."
+- label: violation
+  text: I'm skipping the press phase to save time even though findings were flagged.
+- label: violation
+  text: We can address the remaining findings in a separate cleanup pass.
+- label: violation
+  text: '| 1 | Sycophancy | FAIL | Unearned Great question opening |'
+- label: violation
+  text: '| 4 | Hedging | FAIL | This should work used without verification |'
+- label: violation
+  text: '| 6 | False confidence | FAIL | Claimed tests pass but did not run them |'
+- label: violation
+  text: 'Self-eval FAIL on item 3: dismissed test failure as pre-existing without checking base branch.'
+- label: violation
+  text: "Score: 87 \u2014 The function has 6 parameters, exceeding the 4-parameter maximum."
+- label: violation
+  text: The de-slop agent found 4 instances of silent error swallowing in the catch blocks.
+- label: violation
+  text: "confidence: 92 \u2014 Commented-out code block should be removed, not left as documentation."
+- label: violation
+  text: I'll note this for future consideration but it's outside the scope of this task.
+- label: violation
+  text: 'Finding (75): The abstraction adds complexity without a second consumer.'
+- label: violation
+  text: 'WARN: 2 self-eval items scored FAIL but were not remediated before completion.'
+- label: violation
+  text: The cook agent left 3 TODOs in the implementation that need resolution.
+- label: violation
+  text: "Score: 80 \u2014 File exceeds 300-line complexity budget at 412 lines. Must split."
+- label: violation
+  text: I acknowledged the finding but decided the fix would be too invasive for this PR.
+- label: violation
+  text: 'Unresolved violation: missing error propagation in handler, scored 83.'
+- label: violation
+  text: "FAIL: premature completion \u2014 the retry mechanism was dropped without explanation."
+- label: violation
+  text: Finding scored 77 but was deferred. This must be addressed now.
+- label: violation
+  text: The agent dismissed this as flaky without verifying on the base branch.
+- label: violation
+  text: 'FAIL on sycophancy check: opened with unearned praise before substantive answer.'
+- label: violation
+  text: 'FAIL on false confidence: stated tests pass without evidence of running them.'
+- label: violation
+  text: 'FAIL on AI slop: found 8 unnecessary inline comments added to unchanged code.'
+- label: violation
+  text: 'FAIL on weak assertions: test only checks truthiness, not actual expected values.'
+- label: violation
+  text: 'Self-eval result: 3 FAIL items detected that must be remediated.'
+- label: violation
+  text: 'Violation detected: the error is caught and silently discarded.'
+- label: violation
+  text: 'Unresolved WARN: nesting depth violation at 4 levels, budget is 3.'
+- label: clean
+  text: All checks passed. Clean. Ready to ship.
+- label: clean
+  text: Fixed all violations. Review changes above.
+- label: clean
+  text: '| 1 | Sycophancy | PASS | No issues |'
+- label: clean
+  text: '| 4 | Hedging | PASS | No issues |'
+- label: clean
+  text: The implementation looks correct and matches the spec requirements.
+- label: clean
+  text: No issues found. All 8 self-eval items passed.
+- label: clean
+  text: Tests are passing on both the base branch and this PR.
+- label: clean
+  text: The refactoring is complete. All existing tests continue to pass.
+- label: clean
+  text: Changes committed and pushed. PR is ready for review.
+- label: clean
+  text: I verified the fix by running the test suite. 42 tests passed, 0 failed.
+- label: clean
+  text: 'PASS: All self-evaluation items checked, no violations found.'
+- label: clean
+  text: The error handling follows the fail-fast-and-loud principle correctly.
+- label: clean
+  text: Build succeeded. No warnings or errors.
+- label: clean
+  text: "Reviewed the diff \u2014 changes are minimal and focused on the requested fix."
+- label: clean
+  text: '| 2 | Premature complete | PASS | No issues |'
+- label: clean
+  text: '| 3 | Dismissing failures | PASS | No issues |'
+- label: clean
+  text: '| 5 | Scope reduction | PASS | No issues |'
+- label: clean
+  text: '| 6 | False confidence | PASS | No issues |'
+- label: clean
+  text: All scored findings have been addressed. Nothing remains above threshold.
+- label: clean
+  text: I fixed the FAIL item and re-ran self-eval. All items now PASS.
+- label: clean
+  text: The agent resolved all findings before completing.
+- label: clean
+  text: No unresolved violations remain. The PR is clean.
+- label: clean
+  text: All 33 tests passing. No regressions detected.
+- label: clean
+  text: The hook fires correctly and blocks when violations are present.
+- label: clean
+  text: 'Self-eval scorecard: 8/8 PASS. No violations detected.'
+- label: clean
+  text: '| 7 | AI slop | PASS | No issues |'
+- label: clean
+  text: '| 8 | Weak assertions | PASS | No issues |'
+- label: clean
+  text: The classifier correctly identified all 8 test cases.
+- label: clean
+  text: CI is green. All checks passed on the PR.
+- label: clean
+  text: I ran the full test suite and confirmed zero failures.
+- label: clean
+  text: The fix addresses the root cause, not just the symptom.
+- label: clean
+  text: No findings above the threshold. Clean pass.
+- label: clean
+  text: The implementation follows the hexagonal pattern correctly.
+- label: clean
+  text: All FAIL items from the previous pass have been resolved.
+- label: clean
+  text: The press agent found no issues above threshold. Ship it.
+- label: clean
+  text: Committed the fix and pushed. CI running now.
+- label: clean
+  text: All parameters are within the complexity budget.
+- label: clean
+  text: All self-eval items passed on re-check after fixes.
+- label: clean
+  text: 'PASS: No sycophancy, no hedging, no premature completion detected.'
+- label: clean
+  text: The diff is clean. No blockers found.
+- label: clean
+  text: Everything resolved. All review findings addressed.
+- label: clean
+  text: Test suite green. 100% of assertions passing.
+- label: clean
+  text: Implementation complete. All spec requirements met.
+- label: clean
+  text: Scorecard is clean. 8/8 items PASS.
+- label: clean
+  text: All violations remediated. Nothing outstanding.
+- label: clean
+  text: Self-eval passed on all 8 items. Ship it.
+- label: clean
+  text: Clean bill of health from the review agents.
+- label: clean
+  text: No FAIL items. All checks green.
+- label: clean
+  text: Resolved all flagged items. Ready for review.
+- label: clean
+  text: PASS on all self-eval dimensions. No action needed.
+- label: clean
+  text: All items scored below threshold. Nothing to fix.
+- label: clean
+  text: Review complete. No actionable findings.
+- label: clean
+  text: Tests passing, diff clean, no violations. Done.
+- label: clean
+  text: '| 1 | 92 | BUG | copilot | auth.ts:42 | Missing null check on token | FIX |'
+- label: clean
+  text: '| 2 | 85 | BUG | alice | api.ts:78 | Error not propagated to caller | FIX |'
+- label: clean
+  text: '| 5 | 35 | SCOPE_CREEP | bob | index.ts:3 | Add backward compat shim | PUSH BACK |'
+- label: clean
+  text: Both Copilot comments addressed and replied to.
+- label: clean
+  text: "Fixed \u2014 changed to violation language detected which matches the predicate."
+- label: clean
+  text: The semantic-stop-guard hook was firing self-eval on every file modification.
+- label: clean
+  text: Now both paths require the classifier to detect violation language before blocking.
+- label: clean
+  text: "Self-evaluation required \u2014 violation language detected."
+- label: clean
+  text: 'PR #103 Review Triage'
+- label: clean
+  text: Score | Type | Reviewer | Location | Summary | Action
+- label: clean
+  text: 'Plan: Add null guard before decode, return 401.'
+- label: clean
+  text: The reason string says pushback or shirking but the predicate detects any violation.
+- label: clean
+  text: Triage table shows 2 FIX items and 1 PUSH BACK item.
+- label: clean
+  text: "Draft reply: This project is pre-release with zero users \u2014 backward compatibility is not a concern."
+- label: clean
+  text: Replied to both review threads with fix confirmations.
+- label: clean
+  text: 'ricotta-reducer: 0 findings >= 50. All type annotations are load-bearing.'
+- label: clean
+  text: 'Simplification Report: 0 findings above threshold. Nothing to fix.'
+- label: clean
+  text: "All findings scored < 50. Below threshold \u2014 no action needed."
+- label: clean
+  text: '| memories.rs | 118 | annotation | required for try_get inference | 30 |'
+- label: clean
+  text: '| agent_events_repo.rs | 85 | type binding | required for try_get + from_str | 10 |'
+- label: clean
+  text: 'The type annotations on every let x: T = row.try_get call are not unnecessary.'
+- label: clean
+  text: "Removing these annotations would cause compile errors \u2014 not cargo-cult boilerplate."
+- label: clean
+  text: 'Specific rejections: all candidates scored below 50, not surfaced.'
+- label: clean
+  text: De-slopped 0 patterns. No AI slop found in the changed files.
+- label: clean
+  text: 'De-slopped 0 patterns: no comment pollution, no silent swallowing, no dead code.'
+- label: clean
+  text: 'Estimated lines removable: 0. No simplifications identified.'
+- label: clean
+  text: 'Findings: 0 scored >= 50. Estimated lines removable: 0.'
+- label: clean
+  text: 'What was checked and why each finding was rejected: all scored below threshold.'
+- label: clean
+  text: No slop patterns are present in the focused regions.

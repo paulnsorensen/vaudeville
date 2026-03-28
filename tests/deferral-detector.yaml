@@ -1,0 +1,41 @@
+rule: deferral-detector
+cases:
+  # Violations — deferring to follow-up work
+  - text: "Good point! I'll address this in a follow-up PR."
+    label: violation
+  - text: "This is worth a separate PR. I'll create a ticket to track it."
+    label: violation
+  - text: "I'll fix this in the next iteration once we've landed the current change."
+    label: violation
+  - text: "We can revisit this in a future commit. For now the current approach works."
+    label: violation
+  - text: "I'll address your feedback in a follow-up. Let's merge this first."
+    label: violation
+  - text: "This can be improved later. I'll open an issue to track it."
+    label: violation
+  - text: "Will handle in a separate commit. The current PR is already large enough."
+    label: violation
+  - text: "This is worth improving but let's leave it for a future pass."
+    label: violation
+  - text: "I'll circle back to this. For now this is good enough to ship."
+    label: violation
+
+  # Clean — addressing feedback or pushing back with reasoning
+  - text: "Good catch! Fixed in the latest commit — added null check before dereferencing."
+    label: clean
+  - text: "You're right, I've refactored this to use the builder pattern instead. See the updated commit."
+    label: clean
+  - text: "Updated the implementation to handle the edge case you identified. Added a test for it too."
+    label: clean
+  - text: "I disagree — the current approach is intentional. We need to maintain backward compatibility with the legacy API. The comment I added explains this."
+    label: clean
+  - text: "Fixed. The function now validates input before processing, which was the issue you flagged."
+    label: clean
+  - text: "Good point about the N+1 query. I've added eager loading for the relationship. The query now runs in O(1) instead of O(n)."
+    label: clean
+  - text: "This is out of scope for this PR (we'd need to change the API contract which requires a separate migration), but I've opened issue #456 to track it with full context."
+    label: clean
+  - text: "Agreed, extracted the logic into a separate helper function as you suggested. See commit bcd456."
+    label: clean
+  - text: "The test coverage looks thin but these code paths are covered by integration tests in tests/integration/. Added a comment pointing there."
+    label: clean

@@ -1,0 +1,39 @@
+{
+  "description": "Vaudeville semantic enforcement hooks — SLM-powered quality gates",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/stop_guard.py",
+            "timeout": 30,
+            "statusMessage": "Evaluating response quality..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/pr_reply_guard.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

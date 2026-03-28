@@ -1,0 +1,39 @@
+rule: dismissal-detector
+cases:
+  # Violations — dismissals without evidence
+  - text: "The test failure appears to be pre-existing and unrelated to our changes."
+    label: violation
+  - text: "This CI failure is a known flaky test that fails intermittently. Not related to this PR."
+    label: violation
+  - text: "The failing tests are infrastructure issues, not caused by our code changes."
+    label: violation
+  - text: "These failures were there before my changes. This is a pre-existing issue."
+    label: violation
+  - text: "The broken tests are unrelated to the feature I implemented. They were already failing."
+    label: violation
+  - text: "This is a runner issue, not a code issue. The tests pass locally."
+    label: violation
+  - text: "The test failures are intermittent and not related to our changes. We can ignore them."
+    label: violation
+  - text: "These appear to be pre-existing failures on the main branch. Our changes didn't introduce them."
+    label: violation
+
+  # Clean — dismissals with specific evidence
+  - text: "The test_redis_connection failure is pre-existing: I ran the same test suite on main at commit abc1234 and got the same failure (see CI run #4521)."
+    label: clean
+  - text: "test_flaky_network has been failing on CI since issue #891 was filed two weeks ago. It's tracked and unrelated to this change — I verified on the base branch with run ID 45821."
+    label: clean
+  - text: "I checked the base branch (main at HEAD): the test_auth_timeout failure is present there too. This is definitely pre-existing. Run output: FAILED tests/test_auth.py::test_auth_timeout - TimeoutError."
+    label: clean
+  - text: "All tests pass. No failures to report."
+    label: clean
+  - text: "The tests pass. I fixed the bug by adding null checking before the dereference."
+    label: clean
+  - text: "Ran the test suite — 94 passed, 2 skipped, 0 failed. The implementation is complete."
+    label: clean
+  - text: "The implementation compiles and all unit tests pass. Ready for review."
+    label: clean
+  - text: "Fixed the edge case. Tests pass. The regression test I added exercises the specific failure mode."
+    label: clean
+  - text: "I investigated the CI failure: it's test_db_migration which requires a live Postgres instance. The test is skipped in the CI environment (SKIP_INTEGRATION=1). Not related to our changes."
+    label: clean

@@ -5,6 +5,7 @@ Usage:
     uv run python -m vaudeville.eval --cross-validate
     uv run python -m vaudeville.eval --rule violation-detector
 """
+
 from __future__ import annotations
 
 import argparse
@@ -96,14 +97,22 @@ def _classify_case(
         results.tn += 1
     elif case.label == "clean" and predicted == "violation":
         results.fp += 1
-        results.misclassified.append({
-            "text": case.text, "actual": "clean", "predicted": "violation",
-        })
+        results.misclassified.append(
+            {
+                "text": case.text,
+                "actual": "clean",
+                "predicted": "violation",
+            }
+        )
     else:
         results.fn += 1
-        results.misclassified.append({
-            "text": case.text, "actual": "violation", "predicted": "clean",
-        })
+        results.misclassified.append(
+            {
+                "text": case.text,
+                "actual": "violation",
+                "predicted": "clean",
+            }
+        )
 
     return predicted
 
@@ -127,7 +136,9 @@ def evaluate_rule(
         predicted = _classify_case(case, rule, backend, results)
         if verbose:
             status = "OK" if predicted == case.label else "FAIL"
-            print(f"  [{status}] expected={case.label} got={predicted}: {case.text[:60]}")
+            print(
+                f"  [{status}] expected={case.label} got={predicted}: {case.text[:60]}"
+            )
 
     return results
 
@@ -188,7 +199,9 @@ def print_results(results: EvalResults) -> bool:
     if results.misclassified:
         print("\nMisclassifications:")
         for m in results.misclassified:
-            print(f"  actual={m['actual']} predicted={m['predicted']}: {m['text'][:80]}")
+            print(
+                f"  actual={m['actual']} predicted={m['predicted']}: {m['text'][:80]}"
+            )
 
     return passed
 
@@ -206,11 +219,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Vaudeville rule eval harness")
     parser.add_argument("--rule", help="Evaluate only this rule")
     parser.add_argument(
-        "--cross-validate", action="store_true",
+        "--cross-validate",
+        action="store_true",
         help="Leave-one-out cross-validation with per-fold output",
     )
     parser.add_argument(
-        "--test-file", help="Extra test file to include (YAML format)",
+        "--test-file",
+        help="Extra test file to include (YAML format)",
     )
     parser.add_argument(
         "--backend", default="mlx", choices=["mlx"], help="Inference backend"

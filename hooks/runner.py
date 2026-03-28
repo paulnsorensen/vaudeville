@@ -9,6 +9,7 @@ the first blocking verdict (or passes if all clean).
 
 Fails open: if daemon is unavailable or input is missing, allows the hook.
 """
+
 from __future__ import annotations
 
 import json

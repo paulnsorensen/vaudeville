@@ -2,6 +2,7 @@
 
 Usage: uv run python -m vaudeville.setup
 """
+
 from __future__ import annotations
 
 import os
@@ -22,16 +23,17 @@ def main() -> None:
         print("ERROR: mlx-lm not installed. Run: uv sync", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Fetching model from Hugging Face hub...")
+    print("Fetching model from Hugging Face hub...")
     model_obj, tokenizer = load(model)  # type: ignore[misc]
-    print(f"Model loaded successfully.")
+    print("Model loaded successfully.")
 
     # Verify inference with a short prompt
     from mlx_lm import generate
+
     test_prompt = "VERDICT: clean\nREASON: test"
     _ = generate(model_obj, tokenizer, prompt=test_prompt, max_tokens=5, verbose=False)
     print("Inference verified.")
-    print(f"\nSetup complete. Vaudeville is ready.")
+    print("\nSetup complete. Vaudeville is ready.")
 
 
 if __name__ == "__main__":

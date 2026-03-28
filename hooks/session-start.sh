@@ -33,6 +33,10 @@ SESSION_ID=$(echo "$INPUT" | python3 -c \
   2>/dev/null || echo "unknown")
 # Sanitize — session_id comes from stdin JSON, strip path-traversal chars
 SESSION_ID=$(echo "$SESSION_ID" | tr -cd 'a-zA-Z0-9_-')
+# Guard against empty string after sanitization (would cause path collisions)
+if [ -z "${SESSION_ID}" ]; then
+  SESSION_ID="unknown"
+fi
 
 # uv is required for dependency management
 if ! command -v uv &>/dev/null; then

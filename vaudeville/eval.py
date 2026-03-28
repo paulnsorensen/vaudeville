@@ -21,6 +21,24 @@ from .core.rules import Rule, load_rules_layered
 from .server import InferenceBackend
 
 
+def _find_project_root() -> str | None:
+    """Find the git working tree root, or None if not in a repo."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
 @dataclass
 class EvalCase:
     text: str
@@ -271,11 +289,16 @@ def main() -> None:
     tests_dir = os.path.join(plugin_root, "tests")
 
     backend = _build_backend(args)
-    rules = load_rules_layered(plugin_root)
+    rules = load_rules_layered(plugin_root, project_root=_find_project_root())
     test_suites = load_test_cases(tests_dir)
 
     if args.test_file and args.rule:
-        extra_cases, _ = _load_test_file(args.test_file)
+        extra_cases, rule_name = _load_test_file(args.test_file)
+        if rule_name != args.rule:
+            print(
+                f"Error: --test-file specifies rule '{rule_name}' but --rule is '{args.rule}'"
+            )
+            sys.exit(1)
         existing = test_suites.get(args.rule, [])
         test_suites[args.rule] = existing + extra_cases
 

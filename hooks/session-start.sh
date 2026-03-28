@@ -27,6 +27,13 @@ fi
 # Always read stdin (Claude Code sends JSON; not reading causes SIGPIPE)
 INPUT=$(cat)
 
+# Read session_id from stdin JSON
+SESSION_ID=$(echo "$INPUT" | python3 -c \
+  "import sys,json; print(json.load(sys.stdin).get('session_id','unknown'))" \
+  2>/dev/null || echo "unknown")
+# Sanitize — session_id comes from stdin JSON, strip path-traversal chars
+SESSION_ID=$(echo "$SESSION_ID" | tr -cd 'a-zA-Z0-9_-')
+
 # uv is required for dependency management
 if ! command -v uv &>/dev/null; then
   echo "[vaudeville] uv not found. Run /vaudeville:setup to install prerequisites." >&2

@@ -16,8 +16,6 @@ import json
 import os
 import sys
 
-import yaml
-
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -64,6 +62,8 @@ def _rules_search_path() -> list[str]:
 
 def load_rule(name: str) -> dict | None:
     """Load a rule YAML file by name, searching layered paths (project wins)."""
+    import yaml
+
     filename = f"{name}.yaml"
     # Walk search path in reverse so highest priority wins
     for rules_dir in reversed(_rules_search_path()):

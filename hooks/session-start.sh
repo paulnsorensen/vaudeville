@@ -84,7 +84,7 @@ if [ -f "${PID_FILE}" ]; then
     echo "[vaudeville] Version mismatch — restarting daemon (PID ${PID})" >&2
     kill "${PID}" 2>/dev/null || true
     # Wait up to 2s for socket to disappear (20 x 0.1s)
-    for i in $(seq 1 20); do
+    for _ in $(seq 1 20); do
       [ ! -S "${SOCKET_PATH}" ] && break
       sleep 0.1
     done

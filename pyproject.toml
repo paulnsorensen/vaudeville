@@ -3,7 +3,6 @@ name = "vaudeville"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "mlx-lm>=0.21.0",
     "pyyaml>=6.0.1",
 ]
 
@@ -17,6 +16,7 @@ packages = ["vaudeville"]
 [tool.mypy]
 strict = true
 ignore_missing_imports = true
+warn_unused_ignores = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -26,5 +26,13 @@ python_files = ["test_*.py"]
 dev = [
     "mypy>=1.19.1",
     "pytest>=9.0.2",
+    "ruff>=0.11.0",
     "types-pyyaml>=6.0.12.20250915",
+]
+mlx = [
+    "mlx-lm>=0.21.0",
+]
+gguf = [
+    "llama-cpp-python>=0.3.4",
+    "huggingface-hub>=0.24.0",
 ]

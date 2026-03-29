@@ -1,10 +1,17 @@
 """Tests for rule loading and eval harness mechanics."""
+
 from __future__ import annotations
 
 import pytest
 
 from vaudeville.core.rules import load_rules
-from vaudeville.eval import load_test_cases, EvalCase, EvalResults, evaluate_rule, print_results
+from vaudeville.eval import (
+    load_test_cases,
+    EvalCase,
+    EvalResults,
+    evaluate_rule,
+    print_results,
+)
 from conftest import MockBackend
 
 

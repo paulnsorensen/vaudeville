@@ -4,6 +4,7 @@ Usage: uv run python -m vaudeville.server \\
     --socket /tmp/vaudeville-{session_id}.sock \\
     --pid-file /tmp/vaudeville-{session_id}.pid
 """
+
 from __future__ import annotations
 
 import argparse
@@ -12,13 +13,29 @@ import os
 import sys
 from pathlib import Path
 
+from .inference import InferenceBackend
+
+
+def _init_backend(args: argparse.Namespace) -> InferenceBackend:
+    """Create the inference backend from CLI args."""
+    if args.backend == "mlx":
+        from .mlx_backend import MLXBackend
+
+        return MLXBackend(args.model)
+    elif args.backend == "gguf":
+        from .gguf_backend import GGUFBackend
+
+        return GGUFBackend()
+    logging.error("Unknown backend: %s", args.backend)
+    sys.exit(1)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Vaudeville inference daemon")
     parser.add_argument("--socket", required=True, help="Unix socket path")
     parser.add_argument("--pid-file", required=True, help="PID file path")
     parser.add_argument(
-        "--backend", default="mlx", choices=["mlx"], help="Inference backend"
+        "--backend", default="mlx", choices=["mlx", "gguf"], help="Inference backend"
     )
     parser.add_argument(
         "--model",
@@ -38,16 +55,11 @@ def main() -> None:
         str(Path(__file__).parent.parent.parent),
     )
     logging.info("Loading backend: %s model=%s", args.backend, args.model)
-    if args.backend == "mlx":
-        from .mlx_backend import MLXBackend
-        backend = MLXBackend(args.model)
-    else:
-        logging.error("Unknown backend: %s", args.backend)
-        sys.exit(1)
-
+    backend = _init_backend(args)
     logging.info("Backend ready")
 
     from .daemon import VaudevilleDaemon
+
     daemon = VaudevilleDaemon(
         socket_path=args.socket,
         pid_file=args.pid_file,

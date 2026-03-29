@@ -1,15 +1,23 @@
 """Tests for vaudeville.core — protocol, client, rules."""
+
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 
 from vaudeville.core.client import VaudevilleClient
 from vaudeville.core.protocol import ClassifyRequest, parse_verdict
-from vaudeville.core.rules import Rule, load_rules, load_rules_layered, rules_search_path
+from vaudeville.core.rules import (
+    Rule,
+    load_rules,
+    load_rules_layered,
+    rules_search_path,
+)
 
 
 # --- parse_verdict ---
+
 
 class TestParseVerdict:
     def test_clean_verdict(self) -> None:
@@ -18,7 +26,9 @@ class TestParseVerdict:
         assert result.reason == "no issues found"
 
     def test_violation_verdict(self) -> None:
-        result = parse_verdict("VERDICT: violation\nREASON: premature completion detected")
+        result = parse_verdict(
+            "VERDICT: violation\nREASON: premature completion detected"
+        )
         assert result.verdict == "violation"
         assert result.reason == "premature completion detected"
 
@@ -49,6 +59,7 @@ class TestParseVerdict:
 
 # --- ClassifyRequest ---
 
+
 class TestClassifyRequest:
     def test_to_json_dict(self) -> None:
         req = ClassifyRequest(rule="test-rule", input={"text": "hello"})
@@ -63,6 +74,7 @@ class TestClassifyRequest:
 
 # --- load_rules ---
 
+
 class TestLoadRules:
     def test_loads_all_rules(self, rules_dir: str) -> None:
         rules = load_rules(rules_dir)
@@ -76,7 +88,6 @@ class TestLoadRules:
         assert rule.name == "violation-detector"
         assert rule.event == "Stop"
         assert "{text}" in rule.prompt
-        assert "violation" in rule.labels
         assert rule.action == "block"
 
     def test_format_prompt_interpolates_text(self, rules_dir: str) -> None:
@@ -96,39 +107,55 @@ class TestLoadRules:
 
 # --- Fail-open path ---
 
+
 class TestFailOpen:
     def test_client_returns_none_for_missing_socket(self) -> None:
         client = VaudevilleClient("nonexistent-session-id-xyz")
         result = client.classify("violation-detector", {"text": "test"})
         assert result is None
 
-    def test_stop_guard_allows_when_daemon_unavailable(self) -> None:
-        """stop_guard.main() exits 0 when client returns None for all rules."""
+    def test_runner_allows_when_daemon_unavailable(self) -> None:
+        """runner.main() exits 0 when client returns None for all rules."""
+        import importlib
         import io
         import sys
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
-        hook_input = json.dumps({
-            "session_id": "nonexistent-session-xyz",
-            "last_assistant_message": "A" * 200,
-        })
+        hook_input = json.dumps(
+            {
+                "session_id": "nonexistent-session-xyz",
+                "last_assistant_message": "A" * 200,
+            }
+        )
 
         mock_client = MagicMock()
         mock_client.classify.return_value = None
 
+        hooks_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks"
+        )
+
         with (
             patch("sys.stdin", io.StringIO(hook_input)),
             patch("sys.stdout", io.StringIO()),
+            patch("sys.argv", ["runner.py", "violation-detector"]),
             patch("vaudeville.core.client.VaudevilleClient", return_value=mock_client),
         ):
-            from hooks import stop_guard
+            if hooks_dir not in sys.path:
+                sys.path.insert(0, hooks_dir)
             try:
-                stop_guard.main()
+                runner = importlib.import_module("runner")
+                importlib.reload(runner)
+                runner.main()
             except SystemExit as e:
                 assert e.code == 0
+            finally:
+                if hooks_dir in sys.path:
+                    sys.path.remove(hooks_dir)
 
 
 # --- Rule context resolution ---
+
 
 class TestRuleContext:
     def test_format_prompt_with_context(self) -> None:
@@ -137,7 +164,6 @@ class TestRuleContext:
             event="Stop",
             prompt="Text: {text}\nContext: {context}",
             context=[],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -151,7 +177,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "last_assistant_message"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -164,12 +189,12 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "content.txt"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
         with tempfile.TemporaryDirectory() as d:
             import os
+
             with open(os.path.join(d, "content.txt"), "w") as f:
                 f.write("file content here")
             ctx = rule.resolve_context({}, plugin_root=d)
@@ -181,7 +206,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "nonexistent.txt"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -194,7 +218,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.body"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -207,7 +230,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.nonexistent"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -217,9 +239,11 @@ class TestRuleContext:
 
 # --- Layered rule resolution ---
 
+
 class TestRulesSearchPath:
     def test_bundled_rules_always_in_path(self) -> None:
         import os
+
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         path = rules_search_path(plugin_root)
         assert len(path) >= 1
@@ -235,6 +259,7 @@ class TestRulesSearchPath:
 class TestLoadRulesLayered:
     def test_loads_bundled_rules(self) -> None:
         import os
+
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         rules = load_rules_layered(plugin_root)
         assert "violation-detector" in rules
@@ -242,6 +267,7 @@ class TestLoadRulesLayered:
     def test_project_override_wins(self) -> None:
         """A project .vaudeville/rules/ file overrides the bundled rule."""
         import os
+
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         with tempfile.TemporaryDirectory() as project_dir:
@@ -258,8 +284,6 @@ class TestLoadRulesLayered:
                     "message: '{reason}'\n"
                 )
 
-            from unittest.mock import patch
-            with patch("vaudeville.core.rules._find_project_root", return_value=project_dir):
-                rules = load_rules_layered(plugin_root)
-                assert rules["violation-detector"].action == "warn"
-                assert "override" in rules["violation-detector"].prompt
+            rules = load_rules_layered(plugin_root, project_root=project_dir)
+            assert rules["violation-detector"].action == "warn"
+            assert "override" in rules["violation-detector"].prompt

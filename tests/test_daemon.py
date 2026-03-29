@@ -6,8 +6,10 @@ import json
 import socket
 import threading
 import time
+from unittest.mock import patch
 
 from vaudeville.server.daemon import handle_request, VaudevilleDaemon
+from vaudeville.server.__main__ import detect_backend
 from vaudeville.core.rules import load_rules
 from conftest import MockBackend
 
@@ -184,3 +186,46 @@ class TestDaemonSocketProtocol:
         assert response["verdict"] == "clean"
         assert backend.calls == []  # backend should never be called
         daemon._stop_event.set()
+
+
+class TestDetectBackend:
+    def test_returns_mlx_on_apple_silicon(self) -> None:
+        with (
+            patch("vaudeville.server.__main__.platform") as mock_platform,
+            patch.dict("sys.modules", {"mlx_lm": __import__("os")}),
+        ):
+            mock_platform.system.return_value = "Darwin"
+            mock_platform.machine.return_value = "arm64"
+            assert detect_backend() == "mlx"
+
+    def test_returns_gguf_on_linux(self) -> None:
+        with (
+            patch("vaudeville.server.__main__.platform") as mock_platform,
+            patch.dict("sys.modules", {"llama_cpp": __import__("os")}),
+        ):
+            mock_platform.system.return_value = "Linux"
+            mock_platform.machine.return_value = "x86_64"
+            assert detect_backend() == "gguf"
+
+    def test_returns_gguf_when_mlx_unavailable(self) -> None:
+        with (
+            patch("vaudeville.server.__main__.platform") as mock_platform,
+            patch.dict(
+                "sys.modules", {"mlx_lm": None, "llama_cpp": __import__("os")}
+            ),
+        ):
+            mock_platform.system.return_value = "Darwin"
+            mock_platform.machine.return_value = "arm64"
+            assert detect_backend() == "gguf"
+
+    def test_raises_when_no_backend_available(self) -> None:
+        with (
+            patch("vaudeville.server.__main__.platform") as mock_platform,
+            patch.dict("sys.modules", {"mlx_lm": None, "llama_cpp": None}),
+        ):
+            mock_platform.system.return_value = "Linux"
+            mock_platform.machine.return_value = "x86_64"
+            import pytest
+
+            with pytest.raises(RuntimeError, match="No inference backend"):
+                detect_backend()

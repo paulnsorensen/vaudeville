@@ -17,8 +17,6 @@ import os
 import subprocess
 import sys
 
-import yaml
-
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -28,6 +26,7 @@ if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
 from vaudeville.core import VaudevilleClient, rules_search_path  # noqa: E402
+from vaudeville.core.client import SOCKET_TEMPLATE  # noqa: E402
 
 MIN_TEXT_LENGTH = 100
 
@@ -50,6 +49,8 @@ def _find_project_root() -> str | None:
 
 def load_rule(name: str) -> dict | None:
     """Load a rule YAML file by name, searching layered paths (project wins)."""
+    import yaml
+
     filename = f"{name}.yaml"
     project_root = _find_project_root()
     for rules_dir in reversed(rules_search_path(PLUGIN_ROOT, project_root)):
@@ -117,6 +118,15 @@ def verdict_to_hook_response(rule: dict, reason: str, action: str) -> dict:
 
 
 def main() -> None:
+    try:
+        _run()
+    except Exception as exc:
+        print(f"[vaudeville] runner crashed ({exc}) — fail open", file=sys.stderr)
+        print("{}")
+        sys.exit(0)
+
+
+def _run() -> None:
     rule_names = sys.argv[1:]
     if not rule_names:
         print("[vaudeville] runner: no rules specified", file=sys.stderr)
@@ -130,6 +140,13 @@ def main() -> None:
         sys.exit(0)
 
     session_id = hook_input.get("session_id", "unknown")
+
+    # Fast path: if daemon socket doesn't exist, skip immediately (~μs vs 8s timeout)
+    socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
+    if not os.path.exists(socket_path):
+        print("{}")
+        sys.exit(0)
+
     client = VaudevilleClient(session_id)
 
     for name in rule_names:

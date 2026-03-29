@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import socket
 
 from .protocol import ClassifyRequest, ClassifyResponse
 
 SOCKET_TEMPLATE = "/tmp/vaudeville-{session_id}.sock"
-CONNECT_TIMEOUT = 4.0  # Stay under PreToolUse 5s limit
-READ_TIMEOUT = 4.0
+CONNECT_TIMEOUT = 1.0  # Localhost socket connect is sub-ms; 1s is generous
+READ_TIMEOUT = 3.0  # Inference takes ~1-2s; 3s is sufficient
 RECV_CHUNK = 4096
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,9 @@ class VaudevilleClient:
             return None
 
     def _send(self, request: ClassifyRequest) -> ClassifyResponse:
+        if not os.path.exists(self._socket_path):
+            raise FileNotFoundError(self._socket_path)
+
         payload = json.dumps(request.to_json_dict()).encode() + b"\n"
 
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:

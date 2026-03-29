@@ -1,38 +1,74 @@
 """Model download and verification for vaudeville.
 
-Usage: uv run python -m vaudeville.setup
+Usage: uv run --group mlx python -m vaudeville.setup   # Apple Silicon
+       uv run --group gguf python -m vaudeville.setup   # CPU (Linux/x86)
 """
 
 from __future__ import annotations
 
-import os
+import platform
 import sys
 
-DEFAULT_MODEL = "mlx-community/Phi-3-mini-4k-instruct-4bit"
-EXPECTED_SIZE_GB = 2.4
+
+def _detect_platform() -> str:
+    """Detect which backend this platform should use."""
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
+        return "mlx"
+    return "gguf"
+
+
+def _setup_mlx() -> None:
+    from mlx_lm import generate, load
+
+    model_id = "mlx-community/Phi-3-mini-4k-instruct-4bit"
+    print(f"Downloading {model_id} (~2.4 GB, Apple Silicon int4)...")
+    model_obj, tokenizer = load(model_id)  # type: ignore[misc]
+    print("Model loaded. Verifying inference...")
+    _ = generate(
+        model_obj, tokenizer, prompt="VERDICT: clean", max_tokens=5, verbose=False
+    )
+    print("Inference verified.")
+
+
+def _setup_gguf() -> None:
+    from huggingface_hub import hf_hub_download
+
+    repo_id = "microsoft/Phi-3-mini-4k-instruct-gguf"
+    filename = "Phi-3-mini-4k-instruct-q4.gguf"
+    print(f"Downloading {repo_id}/{filename} (~2.3 GB, CPU Q4)...")
+    model_path = hf_hub_download(repo_id=repo_id, filename=filename)
+    print(f"Model cached at {model_path}. Verifying inference...")
+
+    from llama_cpp import Llama
+
+    llm = Llama(model_path=model_path, n_ctx=512, n_gpu_layers=0, verbose=False)
+    response = llm.create_chat_completion(
+        messages=[{"role": "user", "content": "VERDICT: clean"}],
+        max_tokens=5,
+        temperature=0.0,
+    )
+    _ = response["choices"][0]["message"]["content"]
+    print("Inference verified.")
 
 
 def main() -> None:
-    model = os.environ.get("VAUDEVILLE_MODEL", DEFAULT_MODEL)
-    print(f"Downloading {model} (~{EXPECTED_SIZE_GB} GB, Apple Silicon int4)...")
-    print("This is a one-time setup step.")
+    backend = _detect_platform()
+    print(f"Detected platform: {platform.system()}/{platform.machine()} → {backend}")
+    print("This is a one-time setup step.\n")
 
     try:
-        from mlx_lm import load
-    except ImportError:
-        print("ERROR: mlx-lm not installed. Run: uv sync", file=sys.stderr)
+        if backend == "mlx":
+            _setup_mlx()
+        else:
+            _setup_gguf()
+    except ImportError as exc:
+        group = "mlx" if backend == "mlx" else "gguf"
+        print(
+            f"ERROR: Missing dependency ({exc}). Run: uv sync --group {group}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    print("Fetching model from Hugging Face hub...")
-    model_obj, tokenizer = load(model)  # type: ignore[misc]
-    print("Model loaded successfully.")
-
-    # Verify inference with a short prompt
-    from mlx_lm import generate
-
-    test_prompt = "VERDICT: clean\nREASON: test"
-    _ = generate(model_obj, tokenizer, prompt=test_prompt, max_tokens=5, verbose=False)
-    print("Inference verified.")
     print("\nSetup complete. Vaudeville is ready.")
 
 

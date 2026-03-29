@@ -114,6 +114,34 @@ class TestFailOpen:
         result = client.classify("violation-detector", {"text": "test"})
         assert result is None
 
+    def test_client_fast_path_missing_socket(self) -> None:
+        """Socket-exists guard returns None in <100ms, not the 1s connect timeout."""
+        import time
+
+        client = VaudevilleClient("nonexistent-fast-path-test")
+        start = time.monotonic()
+        result = client.classify("violation-detector", {"text": "test"})
+        elapsed = time.monotonic() - start
+        assert result is None
+        assert elapsed < 0.1, f"Expected <100ms, got {elapsed:.3f}s (socket timeout?)"
+
+    def test_client_fast_path_with_real_socket_file(self) -> None:
+        """When socket file exists but nothing listens, client gets ConnectionRefused."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
+            fake_socket = f.name
+        try:
+            from unittest.mock import patch
+
+            with patch("vaudeville.core.client.SOCKET_TEMPLATE", fake_socket):
+                client = VaudevilleClient("")
+                result = client.classify("test-rule", {"text": "test"})
+                # File exists but not a real socket — should fail with connection error
+                assert result is None
+        finally:
+            os.unlink(fake_socket)
+
     def test_runner_allows_when_daemon_unavailable(self) -> None:
         """runner.main() exits 0 when client returns None for all rules."""
         import importlib

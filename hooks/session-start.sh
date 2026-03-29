@@ -8,6 +8,23 @@ set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
+# --- Architecture detection ---
+ARCH=$(uname -m)
+OS=$(uname -s)
+
+if [[ "$OS" == "Darwin" && "$ARCH" == "arm64" ]]; then
+  BACKEND="mlx"
+  DEP_GROUP="mlx"
+  MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-3-mini-4k-instruct-4bit"
+elif [[ "$ARCH" == "x86_64" || "$ARCH" == "aarch64" ]]; then
+  BACKEND="gguf"
+  DEP_GROUP="gguf"
+  MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--microsoft--Phi-3-mini-4k-instruct-gguf"
+else
+  echo "[vaudeville] Unsupported platform: ${OS}/${ARCH} — skipping daemon" >&2
+  exit 0
+fi
+
 # Read session_id from stdin JSON
 INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | python3 -c \
@@ -25,9 +42,8 @@ PID_FILE="/tmp/vaudeville-${SESSION_ID}.pid"
 LOG_FILE="/tmp/vaudeville-${SESSION_ID}.log"
 
 # Check if model cache exists
-MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-3-mini-4k-instruct-4bit"
 if [ ! -d "${MODEL_CACHE}" ]; then
-  echo "[vaudeville] Model not downloaded. Run: cd ${PLUGIN_ROOT} && uv run python -m vaudeville.setup" >&2
+  echo "[vaudeville] Model not downloaded (${BACKEND}). Run: cd ${PLUGIN_ROOT} && uv run --group ${DEP_GROUP} python -m vaudeville.setup" >&2
   exit 0
 fi
 
@@ -42,13 +58,15 @@ if [ -f "${PID_FILE}" ]; then
   rm -f "${PID_FILE}" "${SOCKET_PATH}"
 fi
 
-# Spawn daemon as detached process (nohup + disown mirrors detached:true + unref())
-nohup uv run --project "${PLUGIN_ROOT}" python -m vaudeville.server \
+# Spawn daemon with platform-appropriate backend and deps
+nohup uv run --project "${PLUGIN_ROOT}" --group "${DEP_GROUP}" \
+  python -m vaudeville.server \
   --socket "${SOCKET_PATH}" \
   --pid-file "${PID_FILE}" \
+  --backend "${BACKEND}" \
   >> "${LOG_FILE}" 2>&1 &
 DAEMON_PID=$!
 disown "${DAEMON_PID}"
 
-echo "[vaudeville] Daemon spawned (PID ${DAEMON_PID}, socket ${SOCKET_PATH})" >&2
+echo "[vaudeville] Daemon spawned (${BACKEND}, PID ${DAEMON_PID}, socket ${SOCKET_PATH})" >&2
 exit 0

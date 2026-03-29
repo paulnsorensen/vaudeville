@@ -117,6 +117,15 @@ def verdict_to_hook_response(rule: dict, reason: str, action: str) -> dict:
 
 
 def main() -> None:
+    try:
+        _run()
+    except Exception as exc:
+        print(f"[vaudeville] runner crashed ({exc}) — fail open", file=sys.stderr)
+        print("{}")
+        sys.exit(0)
+
+
+def _run() -> None:
     rule_names = sys.argv[1:]
     if not rule_names:
         print("[vaudeville] runner: no rules specified", file=sys.stderr)

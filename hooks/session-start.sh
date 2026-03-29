@@ -7,6 +7,23 @@ set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
+# --- Architecture detection ---
+ARCH=$(uname -m)
+OS=$(uname -s)
+
+if [[ "$OS" == "Darwin" && "$ARCH" == "arm64" ]]; then
+  BACKEND="mlx"
+  DEP_GROUP="mlx"
+  MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-3-mini-4k-instruct-4bit"
+elif [[ "$ARCH" == "x86_64" || "$ARCH" == "aarch64" ]]; then
+  BACKEND="gguf"
+  DEP_GROUP="gguf"
+  MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--microsoft--Phi-3-mini-4k-instruct-gguf"
+else
+  echo "[vaudeville] Unsupported platform: ${OS}/${ARCH} — skipping daemon" >&2
+  exit 0
+fi
+
 # Always read stdin (Claude Code sends JSON; not reading causes SIGPIPE)
 INPUT=$(cat)
 
@@ -33,9 +50,8 @@ export_socket_path() {
 }
 
 # Check if model cache exists
-MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-3-mini-4k-instruct-4bit"
 if [ ! -d "${MODEL_CACHE}" ]; then
-  echo "[vaudeville] Model not downloaded. Run /vaudeville:setup to download it." >&2
+  echo "[vaudeville] Model not downloaded (${BACKEND}). Run /vaudeville:setup to download it." >&2
   exit 0
 fi
 
@@ -73,14 +89,16 @@ if [ -f "${PID_FILE}" ]; then
   fi
 fi
 
-# Spawn daemon as detached process
-nohup uv run --project "${PLUGIN_ROOT}" python -m vaudeville.server \
+# Spawn daemon with platform-appropriate backend and deps
+nohup uv run --project "${PLUGIN_ROOT}" --group "${DEP_GROUP}" \
+  python -m vaudeville.server \
   --socket "${SOCKET_PATH}" \
   --pid-file "${PID_FILE}" \
+  --backend "${BACKEND}" \
   >> "${LOG_FILE}" 2>&1 &
 DAEMON_PID=$!
 disown "${DAEMON_PID}"
 
-echo "[vaudeville] Daemon spawned (PID ${DAEMON_PID}, socket ${SOCKET_PATH})" >&2
+echo "[vaudeville] Daemon spawned (${BACKEND}, PID ${DAEMON_PID}, socket ${SOCKET_PATH})" >&2
 export_socket_path
 exit 0

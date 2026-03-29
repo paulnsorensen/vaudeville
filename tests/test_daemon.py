@@ -116,7 +116,13 @@ class TestDaemonSocketProtocol:
         os.unlink(socket_path)  # daemon will re-create it
         backend = MockBackend(verdict="clean", reason="socket test")
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        daemon = VaudevilleDaemon(socket_path, pid_file, plugin_root, backend)
+        with tempfile.NamedTemporaryFile(
+            suffix=".version", dir=tempfile.gettempdir(), delete=True
+        ) as vf:
+            version_file = vf.name
+        daemon = VaudevilleDaemon(
+            socket_path, pid_file, plugin_root, backend, version_file=version_file
+        )
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
@@ -187,7 +193,13 @@ class TestBackendLockSerialization:
         os.unlink(socket_path)
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        daemon = VaudevilleDaemon(socket_path, pid_file, plugin_root, SlowBackend())
+        with tempfile.NamedTemporaryFile(
+            suffix=".version", dir=tempfile.gettempdir(), delete=True
+        ) as vf:
+            version_file = vf.name
+        daemon = VaudevilleDaemon(
+            socket_path, pid_file, plugin_root, SlowBackend(), version_file=version_file
+        )
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
@@ -261,3 +273,94 @@ class TestSignalHandlers:
         # Send SIGTERM to ourselves
         os.kill(os.getpid(), signal.SIGTERM)
         assert daemon._stop_event.is_set()
+
+
+class TestVersionStamp:
+    def _make_daemon(
+        self,
+        socket_path: str,
+        pid_file: str,
+        version_file: str,
+    ) -> "VaudevilleDaemon":
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return VaudevilleDaemon(
+            socket_path, pid_file, plugin_root, MockBackend(), version_file=version_file
+        )
+
+    def test_version_file_written_after_serve(self) -> None:
+        """serve() writes the version file once the PID lock is acquired."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".sock", dir=tempfile.gettempdir(), delete=False
+        ) as f:
+            socket_path = f.name
+        with tempfile.NamedTemporaryFile(
+            suffix=".pid", dir=tempfile.gettempdir(), delete=False
+        ) as f:
+            pid_file = f.name
+        with tempfile.NamedTemporaryFile(
+            suffix=".version", dir=tempfile.gettempdir(), delete=False
+        ) as f:
+            version_file = f.name
+        os.unlink(socket_path)
+
+        daemon = self._make_daemon(socket_path, pid_file, version_file)
+        thread = threading.Thread(target=daemon.serve, daemon=True)
+        thread.start()
+
+        for _ in range(40):
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                    probe.settimeout(0.1)
+                    probe.connect(socket_path)
+                    break
+            except (ConnectionRefusedError, FileNotFoundError):
+                time.sleep(0.05)
+        else:
+            daemon._stop_event.set()
+            raise RuntimeError("Daemon socket never became ready")
+
+        try:
+            assert os.path.exists(version_file), "version file not written"
+            content = open(version_file).read().strip()
+            assert content != "", "version file is empty"
+        finally:
+            daemon._stop_event.set()
+            thread.join(timeout=3)
+
+    def test_version_file_cleaned_on_shutdown(self) -> None:
+        """_cleanup() removes the version file after the daemon stops."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".sock", dir=tempfile.gettempdir(), delete=False
+        ) as f:
+            socket_path = f.name
+        with tempfile.NamedTemporaryFile(
+            suffix=".pid", dir=tempfile.gettempdir(), delete=False
+        ) as f:
+            pid_file = f.name
+        with tempfile.NamedTemporaryFile(
+            suffix=".version", dir=tempfile.gettempdir(), delete=False
+        ) as f:
+            version_file = f.name
+        os.unlink(socket_path)
+
+        daemon = self._make_daemon(socket_path, pid_file, version_file)
+        thread = threading.Thread(target=daemon.serve, daemon=True)
+        thread.start()
+
+        for _ in range(40):
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                    probe.settimeout(0.1)
+                    probe.connect(socket_path)
+                    break
+            except (ConnectionRefusedError, FileNotFoundError):
+                time.sleep(0.05)
+
+        daemon._stop_event.set()
+        thread.join(timeout=5)
+
+        assert not os.path.exists(version_file), "version file not removed on cleanup"

@@ -12,6 +12,7 @@ import logging
 import os
 import signal
 import socket
+import subprocess
 import threading
 import time
 
@@ -19,9 +20,12 @@ from ..core.protocol import parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
 from .inference import InferenceBackend
 
-IDLE_TIMEOUT = 30 * 60  # 30 minutes
+IDLE_TIMEOUT = 60 * 60  # 60 minutes
+VERSION_FILE = "/tmp/vaudeville.version"
 RULE_POLL_INTERVAL = 30  # seconds
 RECV_CHUNK = 4096
+MAX_REQUEST_SIZE = 1 * 1024 * 1024  # 1 MB
+CLIENT_TIMEOUT = 10.0  # seconds
 THREAD_WARN = 20
 THREAD_KILL = 50
 
@@ -81,11 +85,13 @@ class VaudevilleDaemon:
         pid_file: str,
         plugin_root: str,
         backend: InferenceBackend,
+        version_file: str = VERSION_FILE,
     ) -> None:
         self._socket_path = socket_path
         self._pid_file = pid_file
         self._plugin_root = plugin_root
         self._backend = backend
+        self._version_file = version_file
         self._rules: dict[str, Rule] = {}
         self._rules_lock = threading.Lock()
         self._backend_lock = threading.Lock()
@@ -125,6 +131,8 @@ class VaudevilleDaemon:
         os.ftruncate(pid_fd, 0)
         os.write(pid_fd, f"{os.getpid()}\n".encode())
         self._pid_fd = pid_fd
+
+        self._write_version_stamp()
 
         server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
@@ -169,6 +177,7 @@ class VaudevilleDaemon:
 
     def _handle_client(self, conn: socket.socket) -> None:
         try:
+            conn.settimeout(CLIENT_TIMEOUT)
             t0 = time.monotonic()
             data = b""
             while True:
@@ -176,6 +185,8 @@ class VaudevilleDaemon:
                 if not chunk:
                     break
                 data += chunk
+                if len(data) > MAX_REQUEST_SIZE:
+                    break
                 if b"\n" in data:
                     break
 
@@ -232,11 +243,29 @@ class VaudevilleDaemon:
                     "[vaudeville] Thread count %d exceeds warning threshold", count
                 )
 
+    def _write_version_stamp(self) -> None:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=self._plugin_root,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            stamp = result.stdout.strip() if result.returncode == 0 else "unknown"
+        except (OSError, subprocess.TimeoutExpired):
+            stamp = "unknown"
+        try:
+            with open(self._version_file, "w") as f:
+                f.write(stamp + "\n")
+        except OSError:
+            logger.warning("[vaudeville] Could not write version stamp")
+
     def _cleanup(self) -> None:
         if self._pid_fd is not None:
             os.close(self._pid_fd)
             self._pid_fd = None
-        for path in (self._socket_path, self._pid_file):
+        for path in (self._socket_path, self._pid_file, self._version_file):
             try:
                 os.unlink(path)
             except FileNotFoundError:

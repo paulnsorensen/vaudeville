@@ -26,6 +26,7 @@ if [ ! -d "${MODEL_CACHE}" ]; then
 fi
 
 # Check if daemon already running for this session
+# Daemon uses fcntl PID lock (self-healing on crash) — this check is defense-in-depth
 if [ -f "${PID_FILE}" ]; then
   PID=$(cat "${PID_FILE}" 2>/dev/null || echo "")
   if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then

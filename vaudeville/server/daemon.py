@@ -6,13 +6,14 @@ Hot-reloads rules on file change. Self-terminates after idle timeout.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
+import signal
 import socket
 import threading
 import time
-from pathlib import Path
 
 from ..core.protocol import parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
@@ -21,6 +22,8 @@ from .inference import InferenceBackend
 IDLE_TIMEOUT = 30 * 60  # 30 minutes
 RULE_POLL_INTERVAL = 30  # seconds
 RECV_CHUNK = 4096
+THREAD_WARN = 20
+THREAD_KILL = 50
 
 logger = logging.getLogger(__name__)
 
@@ -85,25 +88,55 @@ class VaudevilleDaemon:
         self._backend = backend
         self._rules: dict[str, Rule] = {}
         self._rules_lock = threading.Lock()
+        self._backend_lock = threading.Lock()
         self._last_request = time.monotonic()
         self._stop_event = threading.Event()
+        self._reload_event = threading.Event()
+        self._pid_fd: int | None = None
+
+    def _install_signal_handlers(self) -> None:
+        signal.signal(signal.SIGTERM, self._handle_signal)
+        signal.signal(signal.SIGINT, self._handle_signal)
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+        signal.signal(signal.SIGHUP, self._handle_reload)
+
+    def _handle_signal(self, _signum: int, _frame: object) -> None:
+        self._stop_event.set()
+
+    def _handle_reload(self, _signum: int, _frame: object) -> None:
+        self._reload_event.set()
 
     def serve(self) -> None:
         """Load rules, write PID, bind socket, serve until idle timeout."""
+        if threading.current_thread() is threading.main_thread():
+            self._install_signal_handlers()
+
         with self._rules_lock:
             self._rules = load_rules_layered(self._plugin_root)
         logger.info("[vaudeville] Loaded %d rules", len(self._rules))
 
-        Path(self._pid_file).write_text(str(os.getpid()))
+        pid_fd = os.open(self._pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(pid_fd)
+            logger.info("[vaudeville] Another instance holds PID lock — exiting")
+            return
+        os.ftruncate(pid_fd, 0)
+        os.write(pid_fd, f"{os.getpid()}\n".encode())
+        self._pid_fd = pid_fd
 
         server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        if os.path.exists(self._socket_path):
+        try:
             os.unlink(self._socket_path)
+        except FileNotFoundError:
+            pass
         server_socket.bind(self._socket_path)
         server_socket.listen(16)
         server_socket.settimeout(1.0)
 
         threading.Thread(target=self._watch_rules, daemon=True).start()
+        threading.Thread(target=self._watch_threads, daemon=True).start()
         logger.info("[vaudeville] Listening on %s", self._socket_path)
 
         try:
@@ -114,6 +147,14 @@ class VaudevilleDaemon:
 
     def _accept_loop(self, server_socket: socket.socket) -> None:
         while not self._stop_event.is_set():
+            if self._reload_event.is_set():
+                self._reload_event.clear()
+                new_rules = load_rules_layered(self._plugin_root)
+                with self._rules_lock:
+                    self._rules = new_rules
+                logger.info(
+                    "[vaudeville] Rules reloaded via SIGHUP (%d rules)", len(new_rules)
+                )
             idle = time.monotonic() - self._last_request
             if idle > IDLE_TIMEOUT:
                 logger.info("[vaudeville] Idle timeout — shutting down")
@@ -128,6 +169,7 @@ class VaudevilleDaemon:
 
     def _handle_client(self, conn: socket.socket) -> None:
         try:
+            t0 = time.monotonic()
             data = b""
             while True:
                 chunk = conn.recv(RECV_CHUNK)
@@ -140,8 +182,11 @@ class VaudevilleDaemon:
             with self._rules_lock:
                 current_rules = dict(self._rules)
 
-            response = handle_request(data, current_rules, self._backend)
+            with self._backend_lock:
+                response = handle_request(data, current_rules, self._backend)
             conn.sendall(response)
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            logger.info("[vaudeville] Request handled in %.1fms", elapsed_ms)
             self._last_request = time.monotonic()
         except Exception as exc:
             logger.error("[vaudeville] Client handler error: %s", exc)
@@ -172,7 +217,25 @@ class VaudevilleDaemon:
                 continue
         return max_mtime
 
+    def _watch_threads(self) -> None:
+        while not self._stop_event.is_set():
+            time.sleep(10)
+            count = threading.active_count()
+            if count > THREAD_KILL:
+                logger.error(
+                    "[vaudeville] Thread count %d exceeds kill threshold — shutting down",
+                    count,
+                )
+                self._stop_event.set()
+            elif count > THREAD_WARN:
+                logger.warning(
+                    "[vaudeville] Thread count %d exceeds warning threshold", count
+                )
+
     def _cleanup(self) -> None:
+        if self._pid_fd is not None:
+            os.close(self._pid_fd)
+            self._pid_fd = None
         for path in (self._socket_path, self._pid_file):
             try:
                 os.unlink(path)

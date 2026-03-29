@@ -64,8 +64,7 @@ def main() -> None:
     except ImportError as exc:
         group = "mlx" if backend == "mlx" else "gguf"
         print(
-            f"ERROR: Missing dependency ({exc}). "
-            f"Run: uv sync --group {group}",
+            f"ERROR: Missing dependency ({exc}). Run: uv sync --group {group}",
             file=sys.stderr,
         )
         sys.exit(1)

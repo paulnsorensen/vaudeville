@@ -429,9 +429,7 @@ class TestDetectBackend:
     def test_returns_gguf_when_mlx_unavailable(self) -> None:
         with (
             patch("vaudeville.server.__main__.platform") as mock_platform,
-            patch.dict(
-                "sys.modules", {"mlx_lm": None, "llama_cpp": __import__("os")}
-            ),
+            patch.dict("sys.modules", {"mlx_lm": None, "llama_cpp": __import__("os")}),
         ):
             mock_platform.system.return_value = "Darwin"
             mock_platform.machine.return_value = "arm64"

@@ -136,9 +136,7 @@ class TestFailOpen:
         try:
             from unittest.mock import patch
 
-            with patch(
-                "vaudeville.core.client.SOCKET_TEMPLATE", fake_socket
-            ):
+            with patch("vaudeville.core.client.SOCKET_TEMPLATE", fake_socket):
                 client = VaudevilleClient("")
                 result = client.classify("test-rule", {"text": "test"})
                 # File exists but not a real socket — should fail with connection error

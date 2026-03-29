@@ -105,9 +105,13 @@ class TestDaemonSocketProtocol:
         import tempfile
 
         # Unix sockets have a 104-char path limit on macOS — use /tmp directly
-        with tempfile.NamedTemporaryFile(suffix=".sock", dir=tempfile.gettempdir(), delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            suffix=".sock", dir=tempfile.gettempdir(), delete=False
+        ) as f:
             socket_path = f.name
-        with tempfile.NamedTemporaryFile(suffix=".pid", dir=tempfile.gettempdir(), delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            suffix=".pid", dir=tempfile.gettempdir(), delete=False
+        ) as f:
             pid_file = f.name
         os.unlink(socket_path)  # daemon will re-create it
         backend = MockBackend(verdict="clean", reason="socket test")
@@ -172,9 +176,13 @@ class TestBackendLockSerialization:
                     call_log.append((start, end))
                 return "VERDICT: clean\nREASON: ok"
 
-        with tempfile.NamedTemporaryFile(suffix=".sock", dir=tempfile.gettempdir(), delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            suffix=".sock", dir=tempfile.gettempdir(), delete=False
+        ) as f:
             socket_path = f.name
-        with tempfile.NamedTemporaryFile(suffix=".pid", dir=tempfile.gettempdir(), delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            suffix=".pid", dir=tempfile.gettempdir(), delete=False
+        ) as f:
             pid_file = f.name
         os.unlink(socket_path)
 
@@ -199,7 +207,9 @@ class TestBackendLockSerialization:
                 sock.settimeout(3.0)
                 sock.connect(socket_path)
                 payload = (
-                    json.dumps({"rule": "violation-detector", "input": {"text": "test"}}).encode()
+                    json.dumps(
+                        {"rule": "violation-detector", "input": {"text": "test"}}
+                    ).encode()
                     + b"\n"
                 )
                 sock.sendall(payload)
@@ -220,8 +230,9 @@ class TestBackendLockSerialization:
         assert len(call_log) == 3
         sorted_calls = sorted(call_log)
         for i in range(len(sorted_calls) - 1):
-            assert sorted_calls[i][1] <= sorted_calls[i + 1][0] + 0.01, \
+            assert sorted_calls[i][1] <= sorted_calls[i + 1][0] + 0.01, (
                 f"Calls overlapped: {sorted_calls[i]} and {sorted_calls[i + 1]}"
+            )
 
 
 class TestSignalHandlers:
@@ -229,9 +240,13 @@ class TestSignalHandlers:
         """Verify SIGTERM triggers graceful shutdown via _stop_event."""
         import tempfile
 
-        with tempfile.NamedTemporaryFile(suffix=".sock", dir=tempfile.gettempdir(), delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            suffix=".sock", dir=tempfile.gettempdir(), delete=False
+        ) as f:
             socket_path = f.name
-        with tempfile.NamedTemporaryFile(suffix=".pid", dir=tempfile.gettempdir(), delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            suffix=".pid", dir=tempfile.gettempdir(), delete=False
+        ) as f:
             pid_file = f.name
         os.unlink(socket_path)
 

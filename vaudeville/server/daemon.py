@@ -152,7 +152,9 @@ class VaudevilleDaemon:
                 new_rules = load_rules_layered(self._plugin_root)
                 with self._rules_lock:
                     self._rules = new_rules
-                logger.info("[vaudeville] Rules reloaded via SIGHUP (%d rules)", len(new_rules))
+                logger.info(
+                    "[vaudeville] Rules reloaded via SIGHUP (%d rules)", len(new_rules)
+                )
             idle = time.monotonic() - self._last_request
             if idle > IDLE_TIMEOUT:
                 logger.info("[vaudeville] Idle timeout — shutting down")
@@ -220,10 +222,15 @@ class VaudevilleDaemon:
             time.sleep(10)
             count = threading.active_count()
             if count > THREAD_KILL:
-                logger.error("[vaudeville] Thread count %d exceeds kill threshold — shutting down", count)
+                logger.error(
+                    "[vaudeville] Thread count %d exceeds kill threshold — shutting down",
+                    count,
+                )
                 self._stop_event.set()
             elif count > THREAD_WARN:
-                logger.warning("[vaudeville] Thread count %d exceeds warning threshold", count)
+                logger.warning(
+                    "[vaudeville] Thread count %d exceeds warning threshold", count
+                )
 
     def _cleanup(self) -> None:
         if self._pid_fd is not None:

@@ -116,7 +116,10 @@ class TestVersionStampRace:
 
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon2 = VaudevilleDaemon(
-                socket_path2, pid_file, plugin_root, MockBackend(),
+                socket_path2,
+                pid_file,
+                plugin_root,
+                MockBackend(),
                 version_file=version_file,
             )
             # serve() should return immediately due to PID lock held by daemon1
@@ -158,7 +161,10 @@ class TestVersionStampRace:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, TracingBackend(),
+            socket_path,
+            pid_file,
+            plugin_root,
+            TracingBackend(),
             version_file=version_file,
         )
 
@@ -215,7 +221,10 @@ class TestVersionFilePermissions:
 
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon = VaudevilleDaemon(
-                socket_path, pid_file, plugin_root, MockBackend(),
+                socket_path,
+                pid_file,
+                plugin_root,
+                MockBackend(),
                 version_file=version_file,
             )
 
@@ -363,7 +372,10 @@ class TestShutdownRace:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, SlowBackend(),
+            socket_path,
+            pid_file,
+            plugin_root,
+            SlowBackend(),
             version_file=version_file,
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -379,7 +391,9 @@ class TestShutdownRace:
                 time.sleep(0.05)
 
         payload = (
-            json.dumps({"rule": "violation-detector", "input": {"text": "test"}}).encode()
+            json.dumps(
+                {"rule": "violation-detector", "input": {"text": "test"}}
+            ).encode()
             + b"\n"
         )
 
@@ -468,7 +482,10 @@ class TestPidFileGarbage:
         try:
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon = VaudevilleDaemon(
-                socket_path, pid_file, plugin_root, MockBackend(),
+                socket_path,
+                pid_file,
+                plugin_root,
+                MockBackend(),
                 version_file=version_file,
             )
             thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -506,7 +523,10 @@ class TestPidFileGarbage:
         # The daemon re-opens and relocks the PID file; garbage content shouldn't matter
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, MockBackend(),
+            socket_path,
+            pid_file,
+            plugin_root,
+            MockBackend(),
             version_file=version_file,
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -572,7 +592,10 @@ class TestCleanupInterrupted:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, MockBackend(),
+            socket_path,
+            pid_file,
+            plugin_root,
+            MockBackend(),
             version_file=version_file,
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -624,7 +647,9 @@ class TestBackendLockContention:
         daemon, thread = _ready_daemon(socket_path, pid_file, version_file)
 
         payload = (
-            json.dumps({"rule": "violation-detector", "input": {"text": "test text"}}).encode()
+            json.dumps(
+                {"rule": "violation-detector", "input": {"text": "test text"}}
+            ).encode()
             + b"\n"
         )
 
@@ -651,9 +676,7 @@ class TestBackendLockContention:
         thread.join(timeout=5)
 
         assert not errors, f"Concurrent requests raised errors: {errors}"
-        assert len(responses) == 10, (
-            f"Expected 10 responses, got {len(responses)}"
-        )
+        assert len(responses) == 10, f"Expected 10 responses, got {len(responses)}"
 
     def test_backend_lock_held_for_duration_of_classify(self) -> None:
         """Backend calls must not overlap (lock must serialize them end-to-end)."""
@@ -687,7 +710,10 @@ class TestBackendLockContention:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, TimingBackend(),
+            socket_path,
+            pid_file,
+            plugin_root,
+            TimingBackend(),
             version_file=version_file,
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -703,7 +729,9 @@ class TestBackendLockContention:
                 time.sleep(0.05)
 
         payload = (
-            json.dumps({"rule": "violation-detector", "input": {"text": "test"}}).encode()
+            json.dumps(
+                {"rule": "violation-detector", "input": {"text": "test"}}
+            ).encode()
             + b"\n"
         )
 
@@ -772,7 +800,9 @@ class TestHandleRequestEdgeCases:
         backend = MockBackend()
         giant_text = "x" * (10 * 1024 * 1024)
         payload = (
-            json.dumps({"rule": "violation-detector", "input": {"text": giant_text}}).encode()
+            json.dumps(
+                {"rule": "violation-detector", "input": {"text": giant_text}}
+            ).encode()
             + b"\n"
         )
         response = json.loads(handle_request(payload, rules, backend))
@@ -820,7 +850,9 @@ class TestHandleRequestEdgeCases:
                 raise RuntimeError("GPU on fire")
 
         payload = (
-            json.dumps({"rule": "violation-detector", "input": {"text": "test"}}).encode()
+            json.dumps(
+                {"rule": "violation-detector", "input": {"text": "test"}}
+            ).encode()
             + b"\n"
         )
         response = json.loads(handle_request(payload, rules, ExplodingBackend()))

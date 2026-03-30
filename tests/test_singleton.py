@@ -369,7 +369,6 @@ class TestRunnerNoSessionId:
             f"VaudevilleClient must be called with no keyword args, got: {kwargs}"
         )
 
-
     def test_runner_source_does_not_extract_session_id(self) -> None:
         """runner.py must not contain session_id extraction after the singleton change."""
         hooks_dir = os.path.join(

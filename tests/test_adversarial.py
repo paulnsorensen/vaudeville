@@ -62,7 +62,7 @@ def _ready_daemon(
     raise RuntimeError(f"Daemon socket {socket_path} not ready within {timeout}s")
 
 
-def _send_request(sock_path: str, payload: bytes) -> dict:
+def _send_request(sock_path: str, payload: bytes) -> dict[str, object]:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(3.0)
         sock.connect(sock_path)
@@ -73,7 +73,8 @@ def _send_request(sock_path: str, payload: bytes) -> dict:
             if not chunk or b"\n" in data + chunk:
                 data += chunk
                 break
-    return json.loads(data.decode().strip())
+    result: dict[str, object] = json.loads(data.decode().strip())
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -382,7 +383,7 @@ class TestShutdownRace:
             + b"\n"
         )
 
-        results: list[dict] = []
+        results: list[dict[str, object]] = []
         errors: list[Exception] = []
 
         def send() -> None:
@@ -627,7 +628,7 @@ class TestBackendLockContention:
             + b"\n"
         )
 
-        responses: list[dict] = []
+        responses: list[dict[str, object]] = []
         errors: list[Exception] = []
         lock = threading.Lock()
 

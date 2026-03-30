@@ -25,6 +25,7 @@ class MLXBackend:
             self._tokenizer,
             prompt=formatted,
             max_tokens=max_tokens,
+            temp=0.0,
             verbose=False,
         )
         return result

@@ -20,6 +20,25 @@ from typing import Any
 import yaml
 
 
+MAX_INPUT_TOKENS = 1500
+CHARS_PER_TOKEN = 4  # conservative English approximation
+
+
+def _sanitize_input(text: str) -> str:
+    """Neutralize verdict/reason markers that could spoof parse_verdict()."""
+    return text.replace("VERDICT:", "VERDICT\u200b:").replace(
+        "REASON:", "REASON\u200b:"
+    )
+
+
+def back_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
+    """Keep the last max_tokens tokens (approx). Violations cluster at the end."""
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
 def _resolve_field(data: dict[str, object], path: str) -> object:
     """Resolve a dot-notation path like 'tool_input.body' from a nested dict."""
     current: object = data
@@ -61,7 +80,8 @@ class Rule:
     message: str
 
     def format_prompt(self, text: str, context: str = "") -> str:
-        return self.prompt.replace("{text}", text).replace("{context}", context)
+        sanitized = _sanitize_input(text)
+        return self.prompt.replace("{text}", sanitized).replace("{context}", context)
 
     def resolve_context(
         self,

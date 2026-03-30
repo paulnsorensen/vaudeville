@@ -8,8 +8,10 @@ import signal
 import socket
 import threading
 import time
+from unittest.mock import patch
 
 from vaudeville.server.daemon import handle_request, VaudevilleDaemon
+from vaudeville.server.__main__ import detect_backend
 from vaudeville.core.rules import load_rules
 from conftest import MockBackend
 
@@ -162,6 +164,45 @@ class TestDaemonSocketProtocol:
 
         response = json.loads(data.decode().strip())
         assert response["verdict"] == "clean"
+        daemon._stop_event.set()
+
+    def test_oversized_payload_returns_fail_open(self) -> None:
+        """Daemon drops payloads exceeding MAX_REQUEST_SIZE and fails open."""
+        import tempfile
+        import os
+        from vaudeville.server.daemon import MAX_REQUEST_SIZE
+
+        with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
+            socket_path = f.name
+        with tempfile.NamedTemporaryFile(suffix=".pid", dir="/tmp", delete=False) as f:
+            pid_file = f.name
+        os.unlink(socket_path)
+
+        backend = MockBackend(verdict="violation", reason="should not reach backend")
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        daemon = VaudevilleDaemon(socket_path, pid_file, plugin_root, backend)
+
+        thread = threading.Thread(target=daemon.serve, daemon=True)
+        thread.start()
+        time.sleep(0.2)
+
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(3.0)
+            sock.connect(socket_path)
+            # Send payload larger than MAX_REQUEST_SIZE with no newline
+            sock.sendall(b"x" * (MAX_REQUEST_SIZE + 1))
+            data = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+                if b"\n" in data:
+                    break
+
+        response = json.loads(data.decode().strip())
+        assert response["verdict"] == "clean"
+        assert backend.calls == []  # backend should never be called
         daemon._stop_event.set()
 
 
@@ -364,3 +405,44 @@ class TestVersionStamp:
         thread.join(timeout=5)
 
         assert not os.path.exists(version_file), "version file not removed on cleanup"
+
+
+class TestDetectBackend:
+    def test_returns_mlx_on_apple_silicon(self) -> None:
+        with (
+            patch("vaudeville.server.__main__.platform") as mock_platform,
+            patch.dict("sys.modules", {"mlx_lm": __import__("os")}),
+        ):
+            mock_platform.system.return_value = "Darwin"
+            mock_platform.machine.return_value = "arm64"
+            assert detect_backend() == "mlx"
+
+    def test_returns_gguf_on_linux(self) -> None:
+        with (
+            patch("vaudeville.server.__main__.platform") as mock_platform,
+            patch.dict("sys.modules", {"llama_cpp": __import__("os")}),
+        ):
+            mock_platform.system.return_value = "Linux"
+            mock_platform.machine.return_value = "x86_64"
+            assert detect_backend() == "gguf"
+
+    def test_returns_gguf_when_mlx_unavailable(self) -> None:
+        with (
+            patch("vaudeville.server.__main__.platform") as mock_platform,
+            patch.dict("sys.modules", {"mlx_lm": None, "llama_cpp": __import__("os")}),
+        ):
+            mock_platform.system.return_value = "Darwin"
+            mock_platform.machine.return_value = "arm64"
+            assert detect_backend() == "gguf"
+
+    def test_raises_when_no_backend_available(self) -> None:
+        with (
+            patch("vaudeville.server.__main__.platform") as mock_platform,
+            patch.dict("sys.modules", {"mlx_lm": None, "llama_cpp": None}),
+        ):
+            mock_platform.system.return_value = "Linux"
+            mock_platform.machine.return_value = "x86_64"
+            import pytest
+
+            with pytest.raises(RuntimeError, match="No inference backend"):
+                detect_backend()

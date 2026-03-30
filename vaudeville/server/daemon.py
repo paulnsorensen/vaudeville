@@ -18,7 +18,7 @@ import time
 
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ..core.protocol import parse_verdict
-from ..core.rules import Rule, load_rules_layered, rules_search_path
+from ..core.rules import Rule, back_truncate, load_rules_layered, rules_search_path
 from .inference import InferenceBackend
 
 IDLE_TIMEOUT = 60 * 60  # 60 minutes
@@ -30,6 +30,22 @@ THREAD_WARN = 20
 THREAD_KILL = 50
 
 logger = logging.getLogger(__name__)
+
+
+def _find_project_root() -> str | None:
+    """Find the git working tree root, or None if not in a repo."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def handle_request(
@@ -47,7 +63,7 @@ def handle_request(
         if rule is None:
             return _response("clean", f"Unknown rule: {rule_name}")
 
-        text = str(input_data.get("text", ""))
+        text = back_truncate(str(input_data.get("text", "")))
         plugin_root = os.environ.get(
             "CLAUDE_PLUGIN_ROOT",
             os.path.dirname(
@@ -78,6 +94,19 @@ def _response(verdict: str, reason: str, action: str = "block") -> bytes:
     )
 
 
+def _scan_dir_mtime(rules_dir: str) -> float:
+    """Return the max mtime of YAML files in a single rules directory."""
+    max_mtime = 0.0
+    try:
+        for f in os.listdir(rules_dir):
+            if f.endswith(".yaml") or f.endswith(".yml"):
+                mtime = os.path.getmtime(os.path.join(rules_dir, f))
+                max_mtime = max(max_mtime, mtime)
+    except OSError:
+        pass
+    return max_mtime
+
+
 class VaudevilleDaemon:
     def __init__(
         self,
@@ -92,6 +121,7 @@ class VaudevilleDaemon:
         self._plugin_root = plugin_root
         self._backend = backend
         self._version_file = version_file
+        self._project_root = _find_project_root()
         self._rules: dict[str, Rule] = {}
         self._rules_lock = threading.Lock()
         self._backend_lock = threading.Lock()
@@ -119,7 +149,7 @@ class VaudevilleDaemon:
             self._install_signal_handlers()
 
         with self._rules_lock:
-            self._rules = load_rules_layered(self._plugin_root)
+            self._rules = load_rules_layered(self._plugin_root, self._project_root)
         logger.info("[vaudeville] Loaded %d rules", len(self._rules))
 
         pid_fd = os.open(self._pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
@@ -158,7 +188,7 @@ class VaudevilleDaemon:
         while not self._stop_event.is_set():
             if self._reload_event.is_set():
                 self._reload_event.clear()
-                new_rules = load_rules_layered(self._plugin_root)
+                new_rules = load_rules_layered(self._plugin_root, self._project_root)
                 with self._rules_lock:
                     self._rules = new_rules
                 logger.info(
@@ -211,23 +241,26 @@ class VaudevilleDaemon:
             time.sleep(RULE_POLL_INTERVAL)
             current = self._rules_mtime()
             if current != last_mtime:
-                new_rules = load_rules_layered(self._plugin_root)
+                new_rules = load_rules_layered(
+                    self._plugin_root,
+                    self._project_root,
+                )
                 with self._rules_lock:
                     self._rules = new_rules
                 last_mtime = current
                 logger.info("[vaudeville] Rules reloaded (%d rules)", len(new_rules))
 
     def _rules_mtime(self) -> float:
-        max_mtime = 0.0
-        for rules_dir in rules_search_path(self._plugin_root):
-            try:
-                for f in os.listdir(rules_dir):
-                    if f.endswith(".yaml") or f.endswith(".yml"):
-                        mtime = os.path.getmtime(os.path.join(rules_dir, f))
-                        max_mtime = max(max_mtime, mtime)
-            except OSError:
-                continue
-        return max_mtime
+        return max(
+            (
+                _scan_dir_mtime(d)
+                for d in rules_search_path(
+                    self._plugin_root,
+                    self._project_root,
+                )
+            ),
+            default=0.0,
+        )
 
     def _watch_threads(self) -> None:
         while not self._stop_event.is_set():

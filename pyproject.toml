@@ -22,6 +22,15 @@ warn_unused_ignores = false
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 
+[tool.coverage.run]
+source = ["vaudeville"]
+omit = [
+    "vaudeville/server/mlx_backend.py",
+    "vaudeville/server/gguf_backend.py",
+    "vaudeville/setup.py",
+    "vaudeville/server/__main__.py",
+]
+
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",

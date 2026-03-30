@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
@@ -147,23 +148,50 @@ def _run() -> None:
 
     client = VaudevilleClient()
 
+    # Build classify tasks for all valid rules
+    tasks: list[tuple[str, dict]] = []
     for name in rule_names:
         rule = load_rule(name)
         if rule is None:
             continue
-
         text = extract_text(hook_input, rule)
         if not text or len(text) < MIN_TEXT_LENGTH:
             continue
+        tasks.append((name, rule))
 
+    if not tasks:
+        print("{}")
+        sys.exit(0)
+
+    # Single rule: no threading overhead
+    if len(tasks) == 1:
+        name, rule = tasks[0]
+        text = extract_text(hook_input, rule)
         result = client.classify(name, {"text": text})
-        if result is None:
-            continue
-
-        if result.verdict == "violation":
-            response = verdict_to_hook_response(rule, result.reason, result.action)
-            print(json.dumps(response))
+        if result and result.verdict == "violation":
+            print(
+                json.dumps(verdict_to_hook_response(rule, result.reason, result.action))
+            )
             sys.exit(0)
+        print("{}")
+        sys.exit(0)
+
+    # Multiple rules: dispatch concurrently, first violation wins
+    def _classify(name: str, rule: dict) -> tuple[dict, str, str] | None:
+        text = extract_text(hook_input, rule)
+        result = client.classify(name, {"text": text})
+        if result and result.verdict == "violation":
+            return (rule, result.reason, result.action)
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+        futures = {pool.submit(_classify, n, r): n for n, r in tasks}
+        for future in as_completed(futures):
+            hit = future.result()
+            if hit:
+                rule, reason, action = hit
+                print(json.dumps(verdict_to_hook_response(rule, reason, action)))
+                sys.exit(0)
 
     print("{}")
     sys.exit(0)

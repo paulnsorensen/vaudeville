@@ -86,8 +86,11 @@ class Rule:
     message: str
 
     def format_prompt(self, text: str, context: str = "") -> str:
-        sanitized = _sanitize_input(text)
-        return self.prompt.replace("{text}", sanitized).replace("{context}", context)
+        safe_text = _sanitize_input(back_truncate(text))
+        safe_context = _sanitize_input(context) if context else ""
+        return self.prompt.replace("{text}", safe_text).replace(
+            "{context}", safe_context
+        )
 
     def resolve_context(
         self,

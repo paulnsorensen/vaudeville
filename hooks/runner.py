@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
@@ -33,6 +34,12 @@ except ImportError as _exc:
     sys.exit(0)
 
 MIN_TEXT_LENGTH = 100
+_DEBUG = os.environ.get("VAUDEVILLE_DEBUG", "") == "1"
+
+
+def _dbg(msg: str) -> None:
+    if _DEBUG:
+        print(f"[vaudeville:debug] {msg}", file=sys.stderr)
 
 
 def _find_project_root() -> str | None:
@@ -139,17 +146,23 @@ def _run() -> None:
         print("{}")
         sys.exit(0)
 
+    _dbg(f"hook fired — rules: {rule_names}")
+
     try:
         hook_input = json.load(sys.stdin)
     except (json.JSONDecodeError, EOFError):
+        _dbg("no valid JSON on stdin — pass")
         print("{}")
         sys.exit(0)
 
     session_id = hook_input.get("session_id", "unknown")
+    hook_type = hook_input.get("hook_type", "?")
+    _dbg(f"session={session_id} hook={hook_type}")
 
     # Fast path: if daemon socket doesn't exist, skip (~μs vs timeout)
     socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
     if not os.path.exists(socket_path):
+        _dbg(f"no socket at {socket_path} — pass")
         print("{}")
         sys.exit(0)
 
@@ -162,17 +175,29 @@ def _run() -> None:
 
         text = extract_text(hook_input, rule)
         if not text or len(text) < MIN_TEXT_LENGTH:
+            _dbg(f"{name}: text too short ({len(text) if text else 0} chars) — skip")
             continue
 
+        _dbg(f"{name}: classifying {len(text)} chars...")
+        t0 = time.monotonic()
         result = client.classify(name, {"text": text})
+        elapsed_ms = (time.monotonic() - t0) * 1000
+
         if result is None:
+            _dbg(f"{name}: classify returned None ({elapsed_ms:.0f}ms) — pass")
             continue
+
+        _dbg(
+            f"{name}: verdict={result.verdict} action={result.action}"
+            f" ({elapsed_ms:.0f}ms) reason={result.reason!r}"
+        )
 
         if result.verdict == "violation":
             response = verdict_to_hook_response(rule, result.reason, result.action)
             print(json.dumps(response))
             sys.exit(0)
 
+    _dbg("all rules clean — pass")
     print("{}")
     sys.exit(0)
 

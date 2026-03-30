@@ -26,13 +26,20 @@ echo "uv $(uv --version)"
 
 ```bash
 arch=$(uname -m)
-if [ "$arch" = "arm64" ]; then
-  echo "Apple Silicon detected — syncing mlx backend..."
-  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group mlx
-else
-  echo "x86_64 detected — syncing gguf backend..."
-  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group gguf
-fi
+case "$arch" in
+  arm64|aarch64)
+    echo "ARM64 detected — syncing mlx backend..."
+    uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group mlx
+    ;;
+  x86_64|amd64)
+    echo "x86_64 detected — syncing gguf backend..."
+    uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group gguf
+    ;;
+  *)
+    echo "Unknown architecture '$arch' — defaulting to gguf backend..."
+    uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group gguf
+    ;;
+esac
 ```
 
 3. **Download the model** (~2.4 GB, one-time):

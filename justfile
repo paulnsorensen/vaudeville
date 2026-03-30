@@ -9,13 +9,20 @@ install:
     #!/usr/bin/env bash
     set -euo pipefail
     arch=$(uname -m)
-    if [ "$arch" = "arm64" ]; then
-        echo "Apple Silicon detected — installing with mlx backend"
-        uv sync --group dev --group mlx
-    else
-        echo "x86_64 detected — installing with gguf backend"
-        uv sync --group dev --group gguf
-    fi
+    case "$arch" in
+        arm64|aarch64)
+            echo "ARM64 detected — installing with mlx backend"
+            uv sync --group dev --group mlx
+            ;;
+        x86_64|amd64)
+            echo "x86_64 detected — installing with gguf backend"
+            uv sync --group dev --group gguf
+            ;;
+        *)
+            echo "Warning: unknown architecture '$arch' — defaulting to gguf backend" >&2
+            uv sync --group dev --group gguf
+            ;;
+    esac
 
 # Run the full test suite
 test *args:
@@ -45,9 +52,21 @@ fmt-check:
 type-check:
     uv run mypy --strict vaudeville/ tests/
 
-# Download the MLX model for inference (one-time setup, ~2.4 GB)
+# Download the inference model (one-time setup, ~2.4 GB, arch-aware backend)
 setup:
-    uv sync --group mlx
+    #!/usr/bin/env bash
+    set -euo pipefail
+    arch=$(uname -m)
+    case "$arch" in
+        arm64|aarch64)
+            echo "ARM64 detected — syncing mlx backend"
+            uv sync --group mlx
+            ;;
+        *)
+            echo "Non-ARM detected — syncing gguf backend"
+            uv sync --group gguf
+            ;;
+    esac
     uv run python -m vaudeville.setup
 
 # Run the eval harness on all rules

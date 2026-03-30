@@ -9,8 +9,10 @@ from __future__ import annotations
 import os
 
 RUNTIME_DIR = f"/tmp/vaudeville-{os.getuid()}"
-SOCKET_PATH = os.environ.get(
-    "VAUDEVILLE_SOCKET", os.path.join(RUNTIME_DIR, "vaudeville.sock")
+# VAUDEVILLE_SOCKET may be set by SessionStart via CLAUDE_ENV_FILE to avoid
+# re-deriving the path in each hook. Treat empty string as unset.
+SOCKET_PATH = os.environ.get("VAUDEVILLE_SOCKET") or os.path.join(
+    RUNTIME_DIR, "vaudeville.sock"
 )
 PID_FILE = os.path.join(RUNTIME_DIR, "vaudeville.pid")
 LOG_FILE = os.path.join(RUNTIME_DIR, "vaudeville.log")

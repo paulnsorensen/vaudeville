@@ -28,7 +28,7 @@ VERSION_FILE="${RUNTIME_DIR}/vaudeville.version"
 # Write socket path to session env so subsequent hooks skip re-derivation
 export_socket_path() {
   if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-    echo "export VAUDEVILLE_SOCKET=${SOCKET_PATH}" >> "${CLAUDE_ENV_FILE}"
+    printf 'export VAUDEVILLE_SOCKET=%q\n' "${SOCKET_PATH}" >> "${CLAUDE_ENV_FILE}"
   fi
 }
 

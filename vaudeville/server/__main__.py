@@ -69,7 +69,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    log_level = logging.DEBUG if os.environ.get("VAUDEVILLE_DEBUG") == "1" else logging.INFO
+    log_level = (
+        logging.DEBUG if os.environ.get("VAUDEVILLE_DEBUG") == "1" else logging.INFO
+    )
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s [vaudeville] %(message)s",

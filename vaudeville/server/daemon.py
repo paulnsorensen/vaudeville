@@ -68,14 +68,19 @@ def handle_request(
         )
         context = rule.resolve_context(input_data, plugin_root)
         prompt = rule.format_prompt(text, context)
-        logger.debug("rule=%s text=%d chars prompt=%d chars", rule_name, len(text), len(prompt))
+        logger.debug(
+            "rule=%s text=%d chars prompt=%d chars", rule_name, len(text), len(prompt)
+        )
         t0 = time.monotonic()
         raw_output = backend.classify(prompt, max_tokens=50)
         elapsed_ms = (time.monotonic() - t0) * 1000
         response = parse_verdict(raw_output)
         logger.debug(
             "rule=%s verdict=%s reason=%r (%.0fms)",
-            rule_name, response.verdict, response.reason, elapsed_ms,
+            rule_name,
+            response.verdict,
+            response.reason,
+            elapsed_ms,
         )
         return _response(response.verdict, response.reason, rule.action)
 

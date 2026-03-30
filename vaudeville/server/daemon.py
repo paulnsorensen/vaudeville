@@ -137,7 +137,7 @@ class VaudevilleDaemon:
         server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             os.unlink(self._socket_path)
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             pass
         server_socket.bind(self._socket_path)
         server_socket.listen(16)

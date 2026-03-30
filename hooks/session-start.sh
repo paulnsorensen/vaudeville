@@ -31,7 +31,7 @@ if [ -f "${PID_FILE}" ]; then
   if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
     # Daemon alive — check version
     RUNNING_VERSION=$(cat "${VERSION_FILE}" 2>/dev/null || echo "")
-    if [ "${RUNNING_VERSION}" = "${CURRENT_VERSION}" ]; then
+    if [ -z "${RUNNING_VERSION}" ] || [ "${RUNNING_VERSION}" = "${CURRENT_VERSION}" ]; then
       echo "[vaudeville] Daemon up to date (PID ${PID})" >&2
       exit 0
     fi
@@ -47,11 +47,11 @@ if [ -f "${PID_FILE}" ]; then
     if kill -0 "${PID}" 2>/dev/null; then
       kill -9 "${PID}" 2>/dev/null || true
     fi
-    rm -f "${SOCKET_PATH}" "${PID_FILE}" "${VERSION_FILE}"
+    rm -f "${SOCKET_PATH}" "${PID_FILE}" "${VERSION_FILE}" || true
   else
     # Stale PID — clean up
     echo "[vaudeville] Stale PID ${PID} — cleaning up" >&2
-    rm -f "${SOCKET_PATH}" "${PID_FILE}" "${VERSION_FILE}"
+    rm -f "${SOCKET_PATH}" "${PID_FILE}" "${VERSION_FILE}" || true
   fi
 fi
 

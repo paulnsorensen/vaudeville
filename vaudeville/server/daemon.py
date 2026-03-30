@@ -179,12 +179,12 @@ class VaudevilleDaemon:
         try:
             conn.settimeout(CLIENT_TIMEOUT)
             t0 = time.monotonic()
-            data = b""
+            data = bytearray()
             while True:
                 chunk = conn.recv(RECV_CHUNK)
                 if not chunk:
                     break
-                data += chunk
+                data.extend(chunk)
                 if len(data) > MAX_REQUEST_SIZE:
                     break
                 if b"\n" in data:
@@ -194,7 +194,7 @@ class VaudevilleDaemon:
                 current_rules = dict(self._rules)
 
             with self._backend_lock:
-                response = handle_request(data, current_rules, self._backend)
+                response = handle_request(bytes(data), current_rules, self._backend)
             conn.sendall(response)
             elapsed_ms = (time.monotonic() - t0) * 1000
             logger.info("[vaudeville] Request handled in %.1fms", elapsed_ms)

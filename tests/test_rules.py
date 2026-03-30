@@ -71,7 +71,7 @@ class TestEvaluateRule:
         rules = load_rules(rules_dir)
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="test", label="violation")] * 5
-        results = evaluate_rule("violation-detector", cases, rules, backend)
+        results, _ = evaluate_rule("violation-detector", cases, rules, backend)
         assert results.accuracy == 1.0
         assert results.tp == 5
 
@@ -79,7 +79,7 @@ class TestEvaluateRule:
         rules = load_rules(rules_dir)
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="test", label="clean")] * 5
-        results = evaluate_rule("violation-detector", cases, rules, backend)
+        results, _ = evaluate_rule("violation-detector", cases, rules, backend)
         assert results.fp == 5
         assert results.accuracy == 0.0
 
@@ -93,7 +93,7 @@ class TestEvaluateRule:
         rules = load_rules(rules_dir)
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="clean text", label="clean")]
-        results = evaluate_rule("violation-detector", cases, rules, backend)
+        results, _ = evaluate_rule("violation-detector", cases, rules, backend)
         assert results.misclassified is not None
         assert len(results.misclassified) == 1
         assert results.misclassified[0]["actual"] == "clean"

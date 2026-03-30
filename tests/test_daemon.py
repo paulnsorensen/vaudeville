@@ -99,6 +99,107 @@ class TestHandleRequest:
         response = handle_request(data, rules, backend)
         assert response.endswith(b"\n")
 
+    def test_response_includes_confidence(self, rules_dir: str) -> None:
+        rules = load_rules(rules_dir)
+        backend = MockBackend(
+            verdict="violation",
+            reason="test",
+            logprobs={"violation": -0.3, "clean": -2.5},
+        )
+        data = (
+            json.dumps(
+                {
+                    "rule": "violation-detector",
+                    "input": {"text": "test"},
+                }
+            ).encode()
+            + b"\n"
+        )
+        response = json.loads(handle_request(data, rules, backend))
+        assert "confidence" in response
+        assert 0.0 <= response["confidence"] <= 1.0
+
+    def test_threshold_downgrades_low_confidence_violation(self) -> None:
+        from vaudeville.core.rules import Rule
+
+        rule = Rule(
+            name="strict-rule",
+            event="Stop",
+            prompt="{text}",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.8,
+        )
+        rules = {"strict-rule": rule}
+        # Low confidence: violation barely edges out clean
+        backend = MockBackend(
+            verdict="violation",
+            reason="hedging detected",
+            logprobs={"violation": -0.9, "clean": -1.0},
+        )
+        data = (
+            json.dumps(
+                {"rule": "strict-rule", "input": {"text": "test input"}}
+            ).encode()
+            + b"\n"
+        )
+        response = json.loads(handle_request(data, rules, backend))
+        # Confidence ~0.52 < threshold 0.8 → downgraded to clean
+        assert response["verdict"] == "clean"
+
+    def test_threshold_keeps_high_confidence_violation(self) -> None:
+        from vaudeville.core.rules import Rule
+
+        rule = Rule(
+            name="strict-rule",
+            event="Stop",
+            prompt="{text}",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.7,
+        )
+        rules = {"strict-rule": rule}
+        backend = MockBackend(
+            verdict="violation",
+            reason="hedging detected",
+            logprobs={"violation": -0.2, "clean": -3.0},
+        )
+        data = (
+            json.dumps(
+                {"rule": "strict-rule", "input": {"text": "test input"}}
+            ).encode()
+            + b"\n"
+        )
+        response = json.loads(handle_request(data, rules, backend))
+        # Confidence ~0.94 > threshold 0.7 → stays violation
+        assert response["verdict"] == "violation"
+
+    def test_fallback_when_backend_lacks_logprobs(self, rules_dir: str) -> None:
+        """Backend without classify_with_logprobs falls back gracefully."""
+        from typing import Any
+
+        rules = load_rules(rules_dir)
+
+        class TextOnlyBackend:
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:
+                return "VERDICT: violation\nREASON: fallback test"
+
+        backend: Any = TextOnlyBackend()
+        data = (
+            json.dumps(
+                {
+                    "rule": "violation-detector",
+                    "input": {"text": "test"},
+                }
+            ).encode()
+            + b"\n"
+        )
+        response = json.loads(handle_request(data, rules, backend))
+        assert response["verdict"] == "violation"
+        assert response["confidence"] == 1.0
+
 
 class TestDaemonSocketProtocol:
     def test_daemon_serves_request_via_socket(self) -> None:

@@ -15,7 +15,7 @@ import threading
 import time
 from pathlib import Path
 
-from ..core.protocol import parse_verdict
+from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
 from .inference import InferenceBackend
 
@@ -43,6 +43,15 @@ def _find_project_root() -> str | None:
     return None
 
 
+def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
+    """Run inference, preferring logprobs when available."""
+    try:
+        return backend.classify_with_logprobs(prompt, max_tokens=50)
+    except AttributeError:
+        raw = backend.classify(prompt, max_tokens=50)
+        return ClassifyResult(text=raw)
+
+
 def handle_request(
     data: bytes,
     rules: dict[str, Rule],
@@ -67,22 +76,41 @@ def handle_request(
         )
         context = rule.resolve_context(input_data, plugin_root)
         prompt = rule.format_prompt(text, context)
-        raw_output = backend.classify(prompt, max_tokens=50)
-        response = parse_verdict(raw_output)
-        return _response(response.verdict, response.reason, rule.action)
+
+        result = _run_inference(backend, prompt)
+        response = parse_verdict(result.text)
+        confidence = compute_confidence(result.logprobs, response.verdict)
+
+        verdict = response.verdict
+        if verdict == "violation" and confidence < rule.threshold:
+            logger.debug(
+                "[vaudeville] %s: below threshold (%.2f < %.2f) — downgrading",
+                rule_name,
+                confidence,
+                rule.threshold,
+            )
+            verdict = "clean"
+
+        return _response(verdict, response.reason, rule.action, confidence)
 
     except Exception as exc:
         logger.error("[vaudeville] Request error: %s", exc)
         return _response("clean", "Inference error — fail open")
 
 
-def _response(verdict: str, reason: str, action: str = "block") -> bytes:
+def _response(
+    verdict: str,
+    reason: str,
+    action: str = "block",
+    confidence: float = 1.0,
+) -> bytes:
     return (
         json.dumps(
             {
                 "verdict": verdict,
                 "reason": reason,
                 "action": action,
+                "confidence": round(confidence, 4),
             }
         ).encode()
         + b"\n"

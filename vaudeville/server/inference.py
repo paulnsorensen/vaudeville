@@ -8,8 +8,14 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from ..core.protocol import ClassifyResult
+
 
 class InferenceBackend(Protocol):
     def classify(self, prompt: str, max_tokens: int) -> str:
         """Run inference and return raw model output."""
+        ...
+
+    def classify_with_logprobs(self, prompt: str, max_tokens: int) -> ClassifyResult:
+        """Run inference and return output with first-token logprobs."""
         ...

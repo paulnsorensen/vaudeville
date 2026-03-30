@@ -64,4 +64,5 @@ class VaudevilleClient:
             verdict=response.get("verdict", "clean"),
             reason=response.get("reason", ""),
             action=response.get("action", "block"),
+            confidence=float(response.get("confidence", 1.0)),
         )

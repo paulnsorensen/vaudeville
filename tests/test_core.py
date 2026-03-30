@@ -7,7 +7,12 @@ import os
 import tempfile
 
 from vaudeville.core.client import VaudevilleClient
-from vaudeville.core.protocol import ClassifyRequest, parse_verdict
+from vaudeville.core.protocol import (
+    ClassifyRequest,
+    ClassifyResponse,
+    compute_confidence,
+    parse_verdict,
+)
 from vaudeville.core.rules import (
     Rule,
     load_rules,
@@ -55,6 +60,61 @@ class TestParseVerdict:
     def test_mixed_case_verdict_value(self) -> None:
         result = parse_verdict("VERDICT: Violation\nREASON: test")
         assert result.verdict == "violation"
+
+
+# --- compute_confidence ---
+
+
+class TestComputeConfidence:
+    def test_high_confidence_violation(self) -> None:
+        logprobs = {"violation": -0.3, "clean": -2.5}
+        conf = compute_confidence(logprobs, "violation")
+        assert conf > 0.85
+
+    def test_high_confidence_clean(self) -> None:
+        logprobs = {"violation": -3.0, "clean": -0.1}
+        conf = compute_confidence(logprobs, "clean")
+        assert conf > 0.9
+
+    def test_low_confidence_violation(self) -> None:
+        logprobs = {"violation": -0.8, "clean": -0.9}
+        conf = compute_confidence(logprobs, "violation")
+        assert 0.5 < conf < 0.6
+
+    def test_empty_logprobs_returns_one(self) -> None:
+        assert compute_confidence({}, "violation") == 1.0
+
+    def test_no_matching_tokens_returns_one(self) -> None:
+        logprobs = {"VERDICT": -0.5, ":": -1.0}
+        assert compute_confidence(logprobs, "violation") == 1.0
+
+    def test_prefix_matching(self) -> None:
+        logprobs = {"v": -0.5, "cl": -2.0}
+        conf = compute_confidence(logprobs, "violation")
+        assert conf > 0.7
+
+    def test_whitespace_token_normalization(self) -> None:
+        logprobs = {" violation": -0.3, " clean": -2.5}
+        conf = compute_confidence(logprobs, "violation")
+        assert conf > 0.85
+
+    def test_only_violation_token_returns_one(self) -> None:
+        logprobs = {"violation": -0.3}
+        assert compute_confidence(logprobs, "violation") == 1.0
+
+    def test_only_clean_token_returns_one(self) -> None:
+        logprobs = {"clean": -0.1}
+        assert compute_confidence(logprobs, "clean") == 1.0
+
+
+class TestClassifyResponseConfidence:
+    def test_default_confidence_is_one(self) -> None:
+        r = ClassifyResponse(verdict="clean", reason="ok")
+        assert r.confidence == 1.0
+
+    def test_custom_confidence(self) -> None:
+        r = ClassifyResponse(verdict="violation", reason="x", confidence=0.75)
+        assert r.confidence == 0.75
 
 
 # --- ClassifyRequest ---

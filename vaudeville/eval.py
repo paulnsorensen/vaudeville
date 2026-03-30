@@ -219,7 +219,9 @@ def print_results(results: EvalResults) -> bool:
         return "" if ok else " << BELOW THRESHOLD"
 
     print(f"\n=== {results.rule} [{status}] ===")
-    print(f"Accuracy:  {results.accuracy * 100:.1f}% ({results.tp + results.tn}/{results.total})")
+    print(
+        f"Accuracy:  {results.accuracy * 100:.1f}% ({results.tp + results.tn}/{results.total})"
+    )
     print(f"Precision: {prec_pct:.1f}% (>= 95%){_marker(prec_ok)}")
     print(f"Recall:    {rec_pct:.1f}% (>= 80%){_marker(rec_ok)}")
     print(f"F1:        {results.f1 * 100:.1f}%")

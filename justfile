@@ -28,9 +28,12 @@ install:
 test *args:
     uv run pytest {{args}}
 
-# Run tests with coverage report
-test-coverage *args:
-    uv run pytest --cov=vaudeville --cov-report=term-missing {{args}}
+# Run tests with coverage report (fails under 70% floor)
+coverage *args:
+    uv run --with pytest-cov pytest \
+        --cov=vaudeville --cov-report=term-missing \
+        --cov-fail-under=70 \
+        --cov-config=pyproject.toml {{args}}
 
 # Run all quality checks (format, lint, type)
 check: fmt-check lint type-check

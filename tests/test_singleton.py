@@ -105,6 +105,7 @@ class TestVaudevilleClientNoArgs:
         from vaudeville.core.client import VaudevilleClient
 
         client = VaudevilleClient()
+        client._socket_path = "/tmp/vaudeville-nonexistent.sock"
         result = client.classify("violation-detector", {"text": "test"})
         assert result is None, (
             "classify() must return None when daemon is unavailable (fail-open)"

@@ -1,0 +1,73 @@
+set dotenv-load := true
+
+# Show available commands
+@default:
+    just --list
+
+# Install dependencies (sync with pyproject.toml, arch-aware backend)
+install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    arch=$(uname -m)
+    if [ "$arch" = "arm64" ]; then
+        echo "Apple Silicon detected — installing with mlx backend"
+        uv sync --group dev --group mlx
+    else
+        echo "x86_64 detected — installing with gguf backend"
+        uv sync --group dev --group gguf
+    fi
+
+# Run the full test suite
+test *args:
+    uv run pytest {{args}}
+
+# Run tests with coverage report
+test-coverage *args:
+    uv run pytest --cov=vaudeville --cov-report=term-missing {{args}}
+
+# Run all quality checks (format, lint, type)
+check: fmt-check lint type-check
+    @echo "All checks passed ✓"
+
+# Run ruff linter
+lint:
+    uv run ruff check .
+
+# Format code with ruff
+fmt:
+    uv run ruff format .
+
+# Verify format compliance (used in CI)
+fmt-check:
+    uv run ruff format --check .
+
+# Run mypy type checker (strict mode)
+type-check:
+    uv run mypy --strict vaudeville/ tests/
+
+# Download the MLX model for inference (one-time setup, ~2.4 GB)
+setup:
+    uv sync --group mlx
+    uv run python -m vaudeville.setup
+
+# Run the eval harness on all rules
+eval:
+    uv run python -m vaudeville.eval
+
+# Run eval with cross-validation
+eval-cv:
+    uv run python -m vaudeville.eval --cross-validate
+
+# Run eval for a specific rule (e.g., `just eval-rule violation-detector`)
+eval-rule rule:
+    uv run python -m vaudeville.eval --rule {{rule}}
+
+# Clean build and test artifacts
+clean:
+    rm -rf .pytest_cache .mypy_cache .ruff_cache
+    find . -type d -name __pycache__ -exec rm -rf {} + || true
+    find . -type f -name "*.pyc" -delete || true
+
+# Run a development shell with dependencies
+dev:
+    uv run python -c "import sys; print(f'Python {sys.version}')" && bash

@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/runner.py violation-detector dismissal-detector",
+            "command": "uv run --project ${CLAUDE_PLUGIN_ROOT} python ${CLAUDE_PLUGIN_ROOT}/hooks/runner.py violation-detector dismissal-detector",
             "timeout": 30,
             "statusMessage": "Evaluating response quality..."
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/runner.py deferral-detector",
+            "command": "uv run --project ${CLAUDE_PLUGIN_ROOT} python ${CLAUDE_PLUGIN_ROOT}/hooks/runner.py deferral-detector",
             "timeout": 10,
             "statusMessage": "Checking PR reply for deferral..."
           }

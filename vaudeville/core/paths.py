@@ -9,7 +9,9 @@ from __future__ import annotations
 import os
 
 RUNTIME_DIR = f"/tmp/vaudeville-{os.getuid()}"
-SOCKET_PATH = os.path.join(RUNTIME_DIR, "vaudeville.sock")
+SOCKET_PATH = os.environ.get(
+    "VAUDEVILLE_SOCKET", os.path.join(RUNTIME_DIR, "vaudeville.sock")
+)
 PID_FILE = os.path.join(RUNTIME_DIR, "vaudeville.pid")
 LOG_FILE = os.path.join(RUNTIME_DIR, "vaudeville.log")
 VERSION_FILE = os.path.join(RUNTIME_DIR, "vaudeville.version")

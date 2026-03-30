@@ -26,7 +26,7 @@ if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
 try:
-    from vaudeville.core.client import SOCKET_TEMPLATE, VaudevilleClient  # noqa: E402
+    from vaudeville.core.client import VaudevilleClient  # noqa: E402
 except ImportError as _exc:
     print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
     print("{}")
@@ -53,7 +53,7 @@ def _find_project_root() -> str | None:
 
 def load_rule(name: str) -> dict | None:
     """Load a rule YAML file by name, searching layered paths (project wins)."""
-    import yaml  # deferred — only needed when daemon socket exists
+    import yaml
 
     from vaudeville.core.rules import rules_search_path  # noqa: E402
 
@@ -145,15 +145,7 @@ def _run() -> None:
         print("{}")
         sys.exit(0)
 
-    session_id = hook_input.get("session_id", "unknown")
-
-    # Fast path: if daemon socket doesn't exist, skip (~μs vs timeout)
-    socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
-    if not os.path.exists(socket_path):
-        print("{}")
-        sys.exit(0)
-
-    client = VaudevilleClient(session_id)
+    client = VaudevilleClient()
 
     for name in rule_names:
         rule = load_rule(name)

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Generic hook runner — evaluates rules by name against hook input.
+"""Generic hook runner — evaluates rules against hook input.
 
-Usage: python3 runner.py <rule-name> [rule-name ...]
+Usage:
+  python3 runner.py --event Stop          # auto-discover rules for event
+  python3 runner.py <rule-name> [...]     # explicit rule names (legacy)
 
-Reads Claude Code hook JSON from stdin, extracts text per each rule's
-`context.field` dotted path, classifies via daemon socket, and returns
-the first blocking verdict (or passes if all clean).
+Reads Claude Code hook JSON from stdin, loads rules (layered: bundled ->
+~/.vaudeville/rules/ -> project/.vaudeville/rules/), classifies via daemon
+socket, and returns the first blocking verdict (or passes if all clean).
 
 Fails open: if daemon is unavailable or input is missing, allows the hook.
 """
@@ -133,10 +135,28 @@ def main() -> None:
         sys.exit(0)
 
 
+def _load_rules_for_event(event: str) -> list:
+    """Auto-discover all rules matching an event via layered resolution."""
+    from vaudeville.core.rules import load_rules_layered  # noqa: E402
+
+    project_root = _find_project_root()
+    all_rules = load_rules_layered(PLUGIN_ROOT, project_root)
+    return [r for r in all_rules.values() if r.event == event]
+
+
 def _run() -> None:
-    rule_names = sys.argv[1:]
-    if not rule_names:
-        print("[vaudeville] runner: no rules specified", file=sys.stderr)
+    args = sys.argv[1:]
+
+    # Parse --event flag for auto-discovery mode
+    event = None
+    rule_names: list[str] = []
+    if len(args) >= 2 and args[0] == "--event":
+        event = args[1]
+    else:
+        rule_names = args
+
+    if not event and not rule_names:
+        print("[vaudeville] runner: no rules or --event specified", file=sys.stderr)
         print("{}")
         sys.exit(0)
 
@@ -148,6 +168,41 @@ def _run() -> None:
 
     client = VaudevilleClient()
 
+    if event:
+        _run_event_rules(event, hook_input, client)
+    else:
+        _run_named_rules(rule_names, hook_input, client)
+
+
+def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> None:
+    """Evaluate all rules matching the given event."""
+    rules = _load_rules_for_event(event)
+    for rule in rules:
+        text = extract_field(hook_input, rule.context[0]["field"]) if rule.context else ""
+        if not text or len(text) < MIN_TEXT_LENGTH:
+            continue
+
+        result = client.classify(rule.name, {"text": text})
+        if result is None:
+            continue
+
+        if result.verdict == "violation":
+            response = verdict_to_hook_response(
+                {"name": rule.name, "message": rule.message},
+                result.reason,
+                rule.action,
+            )
+            print(json.dumps(response))
+            sys.exit(0)
+
+    print("{}")
+    sys.exit(0)
+
+
+def _run_named_rules(
+    rule_names: list[str], hook_input: dict, client: VaudevilleClient
+) -> None:
+    """Evaluate explicitly named rules (legacy mode)."""
     # Build classify tasks for all valid rules
     tasks: list[tuple[str, dict]] = []
     for name in rule_names:

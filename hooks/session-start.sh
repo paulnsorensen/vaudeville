@@ -10,6 +10,12 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # Always read stdin (Claude Code sends JSON; not reading causes SIGPIPE)
 INPUT=$(cat)
 
+# uv is required for dependency management
+if ! command -v uv &>/dev/null; then
+  echo "[vaudeville] uv not found. Run /vaudeville:setup to install prerequisites." >&2
+  exit 0
+fi
+
 # Per-UID runtime directory (0700) prevents other users from intercepting socket
 RUNTIME_DIR="/tmp/vaudeville-$(id -u)"
 mkdir -m 0700 "${RUNTIME_DIR}" 2>/dev/null || true
@@ -19,10 +25,17 @@ PID_FILE="${RUNTIME_DIR}/vaudeville.pid"
 LOG_FILE="${RUNTIME_DIR}/vaudeville.log"
 VERSION_FILE="${RUNTIME_DIR}/vaudeville.version"
 
+# Write socket path to session env so subsequent hooks skip re-derivation
+export_socket_path() {
+  if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    printf 'export VAUDEVILLE_SOCKET=%q\n' "${SOCKET_PATH}" >> "${CLAUDE_ENV_FILE}"
+  fi
+}
+
 # Check if model cache exists
 MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-3-mini-4k-instruct-4bit"
 if [ ! -d "${MODEL_CACHE}" ]; then
-  echo "[vaudeville] Model not downloaded. Run: cd ${PLUGIN_ROOT} && uv run python -m vaudeville.setup" >&2
+  echo "[vaudeville] Model not downloaded. Run /vaudeville:setup to download it." >&2
   exit 0
 fi
 
@@ -37,6 +50,7 @@ if [ -f "${PID_FILE}" ]; then
     RUNNING_VERSION=$(cat "${VERSION_FILE}" 2>/dev/null || echo "")
     if [ -z "${RUNNING_VERSION}" ] || [ "${RUNNING_VERSION}" = "${CURRENT_VERSION}" ]; then
       echo "[vaudeville] Daemon up to date (PID ${PID})" >&2
+      export_socket_path
       exit 0
     fi
     # Version mismatch — restart daemon
@@ -68,4 +82,5 @@ DAEMON_PID=$!
 disown "${DAEMON_PID}"
 
 echo "[vaudeville] Daemon spawned (PID ${DAEMON_PID}, socket ${SOCKET_PATH})" >&2
+export_socket_path
 exit 0

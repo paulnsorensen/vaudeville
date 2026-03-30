@@ -104,11 +104,13 @@ class TestVaudevilleClientNoArgs:
         """Fail-open semantics must still hold with no-arg constructor."""
         from vaudeville.core.client import VaudevilleClient
 
-        client = VaudevilleClient()
-        result = client.classify("violation-detector", {"text": "test"})
-        assert result is None, (
-            "classify() must return None when daemon is unavailable (fail-open)"
-        )
+        with tempfile.TemporaryDirectory() as td:
+            client = VaudevilleClient()
+            client._socket_path = os.path.join(td, "nonexistent.sock")
+            result = client.classify("violation-detector", {"text": "test"})
+            assert result is None, (
+                "classify() must return None when daemon is unavailable (fail-open)"
+            )
 
 
 # ---------------------------------------------------------------------------

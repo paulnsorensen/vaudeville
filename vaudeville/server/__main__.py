@@ -2,7 +2,7 @@
 
 Usage: uv run python -m vaudeville.server [--socket PATH] [--pid-file PATH]
 
-Defaults to /tmp/vaudeville.sock and /tmp/vaudeville.pid (singleton daemon).
+Defaults to per-UID runtime directory (singleton daemon).
 """
 
 from __future__ import annotations
@@ -13,17 +13,14 @@ import os
 import sys
 from pathlib import Path
 
+from ..core.paths import PID_FILE, SOCKET_PATH
 from .inference import InferenceBackend
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Vaudeville inference daemon")
-    parser.add_argument(
-        "--socket", default="/tmp/vaudeville.sock", help="Unix socket path"
-    )
-    parser.add_argument(
-        "--pid-file", default="/tmp/vaudeville.pid", help="PID file path"
-    )
+    parser.add_argument("--socket", default=SOCKET_PATH, help="Unix socket path")
+    parser.add_argument("--pid-file", default=PID_FILE, help="PID file path")
     parser.add_argument(
         "--backend", default="mlx", choices=["mlx", "gguf"], help="Inference backend"
     )

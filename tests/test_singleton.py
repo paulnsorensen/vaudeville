@@ -37,22 +37,23 @@ class TestClientSocketPath:
             "SOCKET_TEMPLATE should be removed; SOCKET_PATH replaces it"
         )
 
-    def test_SOCKET_PATH_value_is_tmp_vaudeville_sock(self) -> None:
-        """Fixed path must be /tmp/vaudeville.sock."""
-        from vaudeville.core.client import SOCKET_PATH
+    def test_SOCKET_PATH_is_per_uid(self) -> None:
+        """Socket must live in a per-UID runtime directory."""
+        from vaudeville.core.paths import SOCKET_PATH
 
-        assert SOCKET_PATH == "/tmp/vaudeville.sock", (
-            f"SOCKET_PATH is {SOCKET_PATH!r}, expected '/tmp/vaudeville.sock'"
+        expected = f"/tmp/vaudeville-{os.getuid()}/vaudeville.sock"
+        assert SOCKET_PATH == expected, (
+            f"SOCKET_PATH is {SOCKET_PATH!r}, expected {expected!r}"
         )
 
     def test_SOCKET_PATH_is_a_string(self) -> None:
-        from vaudeville.core.client import SOCKET_PATH
+        from vaudeville.core.paths import SOCKET_PATH
 
         assert isinstance(SOCKET_PATH, str)
 
     def test_SOCKET_PATH_has_no_format_placeholder(self) -> None:
         """Must not contain {session_id} or any other {} placeholder."""
-        from vaudeville.core.client import SOCKET_PATH
+        from vaudeville.core.paths import SOCKET_PATH
 
         assert "{" not in SOCKET_PATH and "}" not in SOCKET_PATH, (
             f"SOCKET_PATH must be a fixed path, not a template: {SOCKET_PATH!r}"
@@ -92,7 +93,8 @@ class TestVaudevilleClientNoArgs:
 
     def test_client_uses_fixed_socket_path_internally(self) -> None:
         """Client must connect to /tmp/vaudeville.sock, not a session path."""
-        from vaudeville.core.client import SOCKET_PATH, VaudevilleClient
+        from vaudeville.core.client import VaudevilleClient
+        from vaudeville.core.paths import SOCKET_PATH
 
         client = VaudevilleClient()
         # The internal socket path should match the module-level constant
@@ -131,16 +133,17 @@ class TestDaemonConstants:
             "VERSION_FILE constant is missing from vaudeville.server.daemon"
         )
 
-    def test_VERSION_FILE_value_is_tmp_vaudeville_version(self) -> None:
-        """VERSION_FILE must be /tmp/vaudeville.version."""
-        from vaudeville.server.daemon import VERSION_FILE
+    def test_VERSION_FILE_is_per_uid(self) -> None:
+        """VERSION_FILE must live in a per-UID runtime directory."""
+        from vaudeville.core.paths import VERSION_FILE
 
-        assert VERSION_FILE == "/tmp/vaudeville.version", (
-            f"VERSION_FILE is {VERSION_FILE!r}, expected '/tmp/vaudeville.version'"
+        expected = f"/tmp/vaudeville-{os.getuid()}/vaudeville.version"
+        assert VERSION_FILE == expected, (
+            f"VERSION_FILE is {VERSION_FILE!r}, expected {expected!r}"
         )
 
     def test_VERSION_FILE_is_a_string(self) -> None:
-        from vaudeville.server.daemon import VERSION_FILE
+        from vaudeville.core.paths import VERSION_FILE
 
         assert isinstance(VERSION_FILE, str)
 
@@ -160,7 +163,7 @@ class TestVersionStamp:
 
     def test_version_file_written_after_pid_lock(self) -> None:
         """serve() must write VERSION_FILE once the PID lock is acquired."""
-        from vaudeville.server.daemon import VERSION_FILE
+        from vaudeville.core.paths import VERSION_FILE
 
         with tempfile.NamedTemporaryFile(
             suffix=".sock", dir=tempfile.gettempdir(), delete=False
@@ -205,7 +208,7 @@ class TestVersionStamp:
 
     def test_version_file_contains_nonempty_content(self) -> None:
         """VERSION_FILE must not be empty — it should contain a git HEAD hash."""
-        from vaudeville.server.daemon import VERSION_FILE
+        from vaudeville.core.paths import VERSION_FILE
 
         with tempfile.NamedTemporaryFile(
             suffix=".sock", dir=tempfile.gettempdir(), delete=False
@@ -245,7 +248,7 @@ class TestVersionStamp:
 
     def test_version_file_removed_on_cleanup(self) -> None:
         """_cleanup() must remove VERSION_FILE alongside socket and PID."""
-        from vaudeville.server.daemon import VERSION_FILE
+        from vaudeville.core.paths import VERSION_FILE
 
         with tempfile.NamedTemporaryFile(
             suffix=".sock", dir=tempfile.gettempdir(), delete=False
@@ -298,7 +301,7 @@ class TestVersionStamp:
         )
 
         # Ensure file absent
-        from vaudeville.server.daemon import VERSION_FILE
+        from vaudeville.core.paths import VERSION_FILE
 
         try:
             os.unlink(VERSION_FILE)

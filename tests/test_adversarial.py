@@ -22,7 +22,8 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
-from vaudeville.server.daemon import VERSION_FILE, VaudevilleDaemon, handle_request
+from vaudeville.core.paths import VERSION_FILE
+from vaudeville.server.daemon import VaudevilleDaemon, handle_request
 from conftest import MockBackend
 
 

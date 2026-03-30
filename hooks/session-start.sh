@@ -10,10 +10,14 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # Always read stdin (Claude Code sends JSON; not reading causes SIGPIPE)
 INPUT=$(cat)
 
-SOCKET_PATH="/tmp/vaudeville.sock"
-PID_FILE="/tmp/vaudeville.pid"
-LOG_FILE="/tmp/vaudeville.log"
-VERSION_FILE="/tmp/vaudeville.version"
+# Per-UID runtime directory (0700) prevents other users from intercepting socket
+RUNTIME_DIR="/tmp/vaudeville-$(id -u)"
+mkdir -m 0700 "${RUNTIME_DIR}" 2>/dev/null || true
+
+SOCKET_PATH="${RUNTIME_DIR}/vaudeville.sock"
+PID_FILE="${RUNTIME_DIR}/vaudeville.pid"
+LOG_FILE="${RUNTIME_DIR}/vaudeville.log"
+VERSION_FILE="${RUNTIME_DIR}/vaudeville.version"
 
 # Check if model cache exists
 MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-3-mini-4k-instruct-4bit"

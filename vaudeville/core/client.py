@@ -9,9 +9,9 @@ import json
 import logging
 import socket
 
+from .paths import SOCKET_PATH
 from .protocol import ClassifyRequest, ClassifyResponse
 
-SOCKET_PATH = "/tmp/vaudeville.sock"
 CONNECT_TIMEOUT = 4.0  # Stay under PreToolUse 5s limit
 READ_TIMEOUT = 4.0
 RECV_CHUNK = 4096

@@ -16,12 +16,12 @@ import subprocess
 import threading
 import time
 
+from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ..core.protocol import parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
 from .inference import InferenceBackend
 
 IDLE_TIMEOUT = 60 * 60  # 60 minutes
-VERSION_FILE = "/tmp/vaudeville.version"
 RULE_POLL_INTERVAL = 30  # seconds
 RECV_CHUNK = 4096
 MAX_REQUEST_SIZE = 1 * 1024 * 1024  # 1 MB
@@ -114,6 +114,7 @@ class VaudevilleDaemon:
 
     def serve(self) -> None:
         """Load rules, write PID, bind socket, serve until idle timeout."""
+        ensure_runtime_dir()
         if threading.current_thread() is threading.main_thread():
             self._install_signal_handlers()
 

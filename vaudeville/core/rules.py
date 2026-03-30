@@ -25,10 +25,16 @@ CHARS_PER_TOKEN = 4  # conservative English approximation
 
 
 def _sanitize_input(text: str) -> str:
-    """Neutralize verdict/reason markers that could spoof parse_verdict()."""
-    return text.replace("VERDICT:", "VERDICT\u200b:").replace(
-        "REASON:", "REASON\u200b:"
-    )
+    """Neutralize verdict/reason markers that could spoof parse_verdict().
+
+    parse_verdict() matches case-insensitively, so sanitization must too.
+    Zero-width space breaks the pattern match without altering visible text.
+    """
+    import re
+
+    text = re.sub(r"(?i)VERDICT\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
+    text = re.sub(r"(?i)REASON\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
+    return text
 
 
 def back_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:

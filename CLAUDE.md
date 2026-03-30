@@ -6,7 +6,7 @@ SLM-powered hook enforcement plugin for Claude Code. Uses Phi-3-mini (3.8B, int4
 
 ```bash
 just check        # lint + typecheck + test
-just coverage     # tests with line coverage report (fails under 80%)
+just coverage     # tests with line coverage report (fails under 70%)
 just test         # tests only
 just lint         # ruff check + format check
 just typecheck    # mypy strict

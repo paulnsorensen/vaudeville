@@ -25,7 +25,12 @@ def _setup_mlx() -> None:
     model_obj, tokenizer = load(model_id)
     print("Model loaded. Verifying inference...")
     _ = generate(
-        model_obj, tokenizer, prompt="VERDICT: clean", max_tokens=5, verbose=False
+        model_obj,
+        tokenizer,
+        prompt="VERDICT: clean",
+        max_tokens=5,
+        temp=0.0,
+        verbose=False,
     )
     print("Inference verified.")
 

@@ -94,28 +94,6 @@ def _response(verdict: str, reason: str, action: str = "block") -> bytes:
     )
 
 
-def _read_message(conn: socket.socket) -> bytes:
-    """Read a newline-terminated message from a socket connection.
-
-    Returns bytes up to and including the first newline.
-    Returns empty bytes if the connection closes or the payload exceeds MAX_REQUEST_SIZE.
-    """
-    buf = bytearray()
-    while True:
-        chunk = conn.recv(RECV_CHUNK)
-        if not chunk:
-            break
-        buf.extend(chunk)
-        if b"\n" in buf:
-            return bytes(buf.split(b"\n", 1)[0])
-        if len(buf) > MAX_REQUEST_SIZE:
-            logger.warning(
-                "[vaudeville] Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE
-            )
-            return b""
-    return bytes(buf)
-
-
 def _scan_dir_mtime(rules_dir: str) -> float:
     """Return the max mtime of YAML files in a single rules directory."""
     max_mtime = 0.0
@@ -210,7 +188,7 @@ class VaudevilleDaemon:
         while not self._stop_event.is_set():
             if self._reload_event.is_set():
                 self._reload_event.clear()
-                new_rules = load_rules_layered(self._plugin_root)
+                new_rules = load_rules_layered(self._plugin_root, self._project_root)
                 with self._rules_lock:
                     self._rules = new_rules
                 logger.info(

@@ -7,7 +7,12 @@ import os
 import tempfile
 
 from vaudeville.core.client import VaudevilleClient
-from vaudeville.core.protocol import ClassifyRequest, parse_verdict
+from vaudeville.core.protocol import (
+    ClassifyRequest,
+    ClassifyResponse,
+    compute_confidence,
+    parse_verdict,
+)
 from vaudeville.core.rules import (
     Rule,
     _sanitize_input,
@@ -389,3 +394,48 @@ class TestLoadRulesLayered:
             rules = load_rules_layered(plugin_root, project_root=project_dir)
             assert rules["violation-detector"].action == "warn"
             assert "override" in rules["violation-detector"].prompt
+
+
+# --- compute_confidence ---
+
+
+class TestComputeConfidence:
+    def test_high_confidence_violation(self) -> None:
+        logprobs = {"violation": -0.1, "clean": -3.0}
+        conf = compute_confidence(logprobs, "violation")
+        assert conf > 0.9
+
+    def test_high_confidence_clean(self) -> None:
+        logprobs = {"violation": -3.0, "clean": -0.1}
+        conf = compute_confidence(logprobs, "clean")
+        assert conf > 0.9
+
+    def test_empty_logprobs_returns_one(self) -> None:
+        assert compute_confidence({}, "violation") == 1.0
+
+    def test_no_matching_tokens_returns_one(self) -> None:
+        logprobs = {"hello": -1.0, "world": -2.0}
+        assert compute_confidence(logprobs, "violation") == 1.0
+
+    def test_prefix_matching(self) -> None:
+        logprobs = {"v": -0.5, "c": -1.5}
+        conf = compute_confidence(logprobs, "violation")
+        assert 0.5 < conf < 1.0
+
+    def test_case_insensitive(self) -> None:
+        logprobs = {"VIOLATION": -0.2, "CLEAN": -2.0}
+        conf = compute_confidence(logprobs, "violation")
+        assert conf > 0.8
+
+
+# --- ClassifyResponse.confidence ---
+
+
+class TestClassifyResponseConfidence:
+    def test_defaults_to_one(self) -> None:
+        resp = ClassifyResponse(verdict="clean", reason="ok")
+        assert resp.confidence == 1.0
+
+    def test_custom_confidence(self) -> None:
+        resp = ClassifyResponse(verdict="violation", reason="bad", confidence=0.75)
+        assert resp.confidence == 0.75

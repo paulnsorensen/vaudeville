@@ -184,14 +184,16 @@ def _run() -> None:
             return (rule, result.reason, result.action)
         return None
 
-    with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
-        futures = {pool.submit(_classify, n, r): n for n, r in tasks}
-        for future in as_completed(futures):
-            hit = future.result()
-            if hit:
-                rule, reason, action = hit
-                print(json.dumps(verdict_to_hook_response(rule, reason, action)))
-                sys.exit(0)
+    pool = ThreadPoolExecutor(max_workers=len(tasks))
+    futures = {pool.submit(_classify, n, r): n for n, r in tasks}
+    for future in as_completed(futures):
+        hit = future.result()
+        if hit:
+            rule, reason, action = hit
+            print(json.dumps(verdict_to_hook_response(rule, reason, action)))
+            pool.shutdown(wait=False, cancel_futures=True)
+            sys.exit(0)
+    pool.shutdown(wait=False, cancel_futures=True)
 
     print("{}")
     sys.exit(0)

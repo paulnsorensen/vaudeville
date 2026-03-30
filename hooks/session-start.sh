@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
-# Spawns the vaudeville inference daemon as a detached process.
-# Called on SessionStart. Reads session_id from stdin JSON.
-# Daemon binds to /tmp/vaudeville-{session_id}.sock.
+# Spawns the vaudeville inference daemon as a global singleton.
+# Called on SessionStart. Reads stdin to avoid SIGPIPE.
 # Fails open — if anything goes wrong, session continues normally.
 
 set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
-# Read session_id from stdin JSON
+# Always read stdin (Claude Code sends JSON; not reading causes SIGPIPE)
 INPUT=$(cat)
-SESSION_ID=$(echo "$INPUT" | python3 -c \
-  "import sys,json; print(json.load(sys.stdin).get('session_id','unknown'))" \
-  2>/dev/null || echo "unknown")
 
-SOCKET_PATH="/tmp/vaudeville-${SESSION_ID}.sock"
-PID_FILE="/tmp/vaudeville-${SESSION_ID}.pid"
-LOG_FILE="/tmp/vaudeville-${SESSION_ID}.log"
+# Per-UID runtime directory (0700) prevents other users from intercepting socket
+RUNTIME_DIR="/tmp/vaudeville-$(id -u)"
+mkdir -m 0700 "${RUNTIME_DIR}" 2>/dev/null || true
+
+SOCKET_PATH="${RUNTIME_DIR}/vaudeville.sock"
+PID_FILE="${RUNTIME_DIR}/vaudeville.pid"
+LOG_FILE="${RUNTIME_DIR}/vaudeville.log"
+VERSION_FILE="${RUNTIME_DIR}/vaudeville.version"
 
 # Check if model cache exists
 MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-3-mini-4k-instruct-4bit"
@@ -25,19 +26,40 @@ if [ ! -d "${MODEL_CACHE}" ]; then
   exit 0
 fi
 
-# Check if daemon already running for this session
-# Daemon uses fcntl PID lock (self-healing on crash) — this check is defense-in-depth
+# Compute current version stamp
+CURRENT_VERSION=$(git -C "${PLUGIN_ROOT}" rev-parse HEAD 2>/dev/null || echo "unknown")
+
+# Check if daemon is already running
 if [ -f "${PID_FILE}" ]; then
   PID=$(cat "${PID_FILE}" 2>/dev/null || echo "")
   if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
-    echo "[vaudeville] Daemon already running (PID ${PID})" >&2
-    exit 0
+    # Daemon alive — check version
+    RUNNING_VERSION=$(cat "${VERSION_FILE}" 2>/dev/null || echo "")
+    if [ -z "${RUNNING_VERSION}" ] || [ "${RUNNING_VERSION}" = "${CURRENT_VERSION}" ]; then
+      echo "[vaudeville] Daemon up to date (PID ${PID})" >&2
+      exit 0
+    fi
+    # Version mismatch — restart daemon
+    echo "[vaudeville] Version mismatch — restarting daemon (PID ${PID})" >&2
+    kill "${PID}" 2>/dev/null || true
+    # Wait up to 2s for socket to disappear (20 x 0.1s)
+    for i in $(seq 1 20); do
+      [ ! -S "${SOCKET_PATH}" ] && break
+      sleep 0.1
+    done
+    # Force kill if still alive
+    if kill -0 "${PID}" 2>/dev/null; then
+      kill -9 "${PID}" 2>/dev/null || true
+    fi
+    rm -f "${SOCKET_PATH}" "${PID_FILE}" "${VERSION_FILE}" || true
+  else
+    # Stale PID — clean up
+    echo "[vaudeville] Stale PID ${PID} — cleaning up" >&2
+    rm -f "${SOCKET_PATH}" "${PID_FILE}" "${VERSION_FILE}" || true
   fi
-  # Stale PID — clean up
-  rm -f "${PID_FILE}" "${SOCKET_PATH}"
 fi
 
-# Spawn daemon as detached process (nohup + disown mirrors detached:true + unref())
+# Spawn daemon as detached process
 nohup uv run --project "${PLUGIN_ROOT}" python -m vaudeville.server \
   --socket "${SOCKET_PATH}" \
   --pid-file "${PID_FILE}" \

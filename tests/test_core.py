@@ -111,7 +111,7 @@ class TestLoadRules:
 
 class TestFailOpen:
     def test_client_returns_none_for_missing_socket(self) -> None:
-        client = VaudevilleClient("nonexistent-session-id-xyz")
+        client = VaudevilleClient()
         result = client.classify("violation-detector", {"text": "test"})
         assert result is None
 

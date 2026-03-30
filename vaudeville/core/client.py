@@ -9,9 +9,9 @@ import json
 import logging
 import socket
 
+from .paths import SOCKET_PATH
 from .protocol import ClassifyRequest, ClassifyResponse
 
-SOCKET_TEMPLATE = "/tmp/vaudeville-{session_id}.sock"
 CONNECT_TIMEOUT = 4.0  # Stay under PreToolUse 5s limit
 READ_TIMEOUT = 4.0
 RECV_CHUNK = 4096
@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class VaudevilleClient:
-    def __init__(self, session_id: str) -> None:
-        self._socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
+    def __init__(self) -> None:
+        self._socket_path = SOCKET_PATH
 
     def classify(
         self, rule: str, input_data: dict[str, object]

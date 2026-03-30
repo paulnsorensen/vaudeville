@@ -144,8 +144,7 @@ def main() -> None:
         print("{}")
         sys.exit(0)
 
-    session_id = hook_input.get("session_id", "unknown")
-    client = VaudevilleClient(session_id)
+    client = VaudevilleClient()
 
     for name in rule_names:
         rule = load_rule(name)

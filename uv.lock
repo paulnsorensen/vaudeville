@@ -1036,4 +1036,4 @@ gguf = [
     { name = "huggingface-hub", specifier = ">=0.24.0" },
     { name = "llama-cpp-python", specifier = ">=0.3.4" },
 ]
-mlx = [{ name = "mlx-lm", specifier = ">=0.21.0" }]
+mlx = [{ name = "mlx-lm", specifier = ">=0.31.0,<0.32" }]

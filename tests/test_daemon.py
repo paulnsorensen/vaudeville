@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import signal
 import socket
 import threading
 import time
 from unittest.mock import patch
+
+import pytest
 
 from vaudeville.server.daemon import handle_request, VaudevilleDaemon
 from vaudeville.server.__main__ import detect_backend
@@ -533,3 +536,51 @@ class TestDetectBackend:
 
             with pytest.raises(RuntimeError, match="No inference backend"):
                 detect_backend()
+
+
+@pytest.mark.skipif(
+    platform.system() != "Darwin" or platform.machine() != "arm64",
+    reason="MLX only available on Apple Silicon",
+)
+class TestMLXImportSmoke:
+    """Verify real mlx_lm imports resolve — catches API drift."""
+
+    def test_mlx_backend_imports_resolve(self) -> None:
+        """MLXBackend.__init__ imports must not raise ImportError."""
+        from mlx_lm import stream_generate  # noqa: F401
+        from mlx_lm.generate import generate_step  # noqa: F401
+
+    def test_generate_step_signature_has_sampler(self) -> None:
+        """generate_step must accept sampler= (not temp=)."""
+        import inspect
+
+        from mlx_lm.generate import generate_step
+
+        params = inspect.signature(generate_step).parameters
+        assert "sampler" in params, "generate_step lost sampler= param"
+        assert "temp" not in params, "generate_step still has temp= (old API)"
+
+
+@pytest.mark.skipif(
+    platform.system() == "Darwin" and platform.machine() == "arm64",
+    reason="GGUF tests target Linux/x86 — skipped on Apple Silicon",
+)
+class TestGGUFImportSmoke:
+    """Verify real llama_cpp imports resolve — catches API drift."""
+
+    def test_gguf_backend_imports_resolve(self) -> None:
+        """GGUFBackend.__init__ imports must not raise ImportError."""
+        try:
+            from llama_cpp import Llama  # noqa: F401
+        except ImportError:
+            pytest.skip("llama-cpp-python not installed")
+
+    def test_llama_has_create_chat_completion(self) -> None:
+        """Llama must have create_chat_completion method."""
+        try:
+            from llama_cpp import Llama
+        except ImportError:
+            pytest.skip("llama-cpp-python not installed")
+        assert hasattr(Llama, "create_chat_completion"), (
+            "Llama lost create_chat_completion method"
+        )

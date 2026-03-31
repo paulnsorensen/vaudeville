@@ -29,7 +29,6 @@ def _setup_mlx() -> None:
         tokenizer,
         prompt="VERDICT: clean",
         max_tokens=5,
-        temp=0.0,
         verbose=False,
     )
     print("Inference verified.")

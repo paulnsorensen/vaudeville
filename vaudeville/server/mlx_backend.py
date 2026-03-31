@@ -18,25 +18,27 @@ logger = logging.getLogger(__name__)
 
 class MLXBackend:
     def __init__(self, model_path: str = DEFAULT_MODEL) -> None:
-        from mlx_lm import load, generate
-        from mlx_lm.utils import generate_step
+        from mlx_lm import load, stream_generate
+        from mlx_lm.generate import generate_step
 
         self._model, self._tokenizer = load(model_path)
-        self._generate = generate
+        self._stream_generate = stream_generate
         self._generate_step = generate_step
 
     def classify(self, prompt: str, max_tokens: int = 50) -> str:
         """Run inference on prompt, return raw text output."""
         formatted = self._apply_chat_template(prompt)
-        result: str = self._generate(
+        parts: list[str] = []
+        for response in self._stream_generate(
             self._model,
             self._tokenizer,
             prompt=formatted,
             max_tokens=max_tokens,
-            temp=0.0,
-            verbose=False,
-        )
-        return result
+        ):
+            parts.append(response.text)
+            if response.finish_reason is not None:
+                break
+        return "".join(parts)
 
     def classify_with_logprobs(
         self, prompt: str, max_tokens: int = 50
@@ -57,7 +59,7 @@ class MLXBackend:
         first_logprobs: dict[str, float] = {}
 
         for i, (token, logprobs_arr) in enumerate(
-            self._generate_step(prompt_tokens, self._model, temp=0.0)
+            self._generate_step(prompt_tokens, self._model, max_tokens=max_tokens)
         ):
             token_id = token.item()
             tokens.append(token_id)

@@ -84,6 +84,7 @@ class Rule:
     context: list[dict[str, str]]
     action: str
     message: str
+    threshold: float = 0.0
 
     def format_prompt(self, text: str, context: str = "") -> str:
         safe_text = _sanitize_input(back_truncate(text))
@@ -177,4 +178,5 @@ def _parse_rule(data: dict[str, Any]) -> Rule:
         context=[c for c in data.get("context", []) if isinstance(c, dict)],
         action=str(data.get("action", "block")),
         message=str(data.get("message", "{reason}")),
+        threshold=float(data.get("threshold", 0.0)),
     )

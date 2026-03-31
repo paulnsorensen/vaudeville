@@ -17,9 +17,9 @@ import threading
 import time
 
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
-from ..core.protocol import parse_verdict
+from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
-from .inference import InferenceBackend
+from .inference import InferenceBackend, LogprobBackend
 
 IDLE_TIMEOUT = 60 * 60  # 60 minutes
 RULE_POLL_INTERVAL = 30  # seconds
@@ -46,6 +46,14 @@ def _find_project_root() -> str | None:
     except (OSError, subprocess.TimeoutExpired):
         pass
     return None
+
+
+def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
+    """Run inference with logprobs, falling back to plain classify."""
+    if isinstance(backend, LogprobBackend):
+        return backend.classify_with_logprobs(prompt, max_tokens=50)
+    text = backend.classify(prompt, max_tokens=50)
+    return ClassifyResult(text=text)
 
 
 def handle_request(
@@ -77,34 +85,73 @@ def handle_request(
             "rule=%s text=%d chars prompt=%d chars", rule_name, len(text), len(prompt)
         )
         t0 = time.monotonic()
-        raw_output = backend.classify(prompt, max_tokens=50)
+        result = _run_inference(backend, prompt)
         elapsed_ms = (time.monotonic() - t0) * 1000
-        response = parse_verdict(raw_output)
+        response = parse_verdict(result.text)
+        confidence = compute_confidence(result.logprobs, response.verdict)
         logger.debug(
-            "rule=%s verdict=%s reason=%r (%.0fms)",
+            "rule=%s verdict=%s confidence=%.3f reason=%r (%.0fms)",
             rule_name,
             response.verdict,
+            confidence,
             response.reason,
             elapsed_ms,
         )
-        return _response(response.verdict, response.reason, rule.action)
+
+        verdict = response.verdict
+        if verdict == "violation" and confidence < rule.threshold:
+            logger.info(
+                "Downgrading violation (confidence=%.3f < threshold=%.3f)",
+                confidence,
+                rule.threshold,
+            )
+            verdict = "clean"
+
+        return _response(verdict, response.reason, rule.action, confidence)
 
     except Exception as exc:
         logger.error("Request error: %s", exc)
         return _response("clean", "Inference error — fail open")
 
 
-def _response(verdict: str, reason: str, action: str = "block") -> bytes:
+def _response(
+    verdict: str, reason: str, action: str = "block", confidence: float = 1.0
+) -> bytes:
     return (
         json.dumps(
             {
                 "verdict": verdict,
                 "reason": reason,
                 "action": action,
+                "confidence": confidence,
             }
         ).encode()
         + b"\n"
     )
+
+
+def _read_message(conn: socket.socket) -> bytes:
+    """Read a newline-terminated message from a socket connection.
+
+    Returns the bytes up to (but not including) the first newline.
+    If the connection closes before a newline is received, returns all buffered
+    bytes read so far (which may be empty). Returns empty bytes if the payload
+    exceeds MAX_REQUEST_SIZE.
+    """
+    buf = bytearray()
+    while True:
+        chunk = conn.recv(RECV_CHUNK)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if b"\n" in buf:
+            return bytes(buf.split(b"\n", 1)[0])
+        if len(buf) > MAX_REQUEST_SIZE:
+            logger.warning(
+                "[vaudeville] Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE
+            )
+            return b""
+    return bytes(buf)
 
 
 def _scan_dir_mtime(rules_dir: str) -> float:
@@ -221,16 +268,7 @@ class VaudevilleDaemon:
         try:
             conn.settimeout(CLIENT_TIMEOUT)
             t0 = time.monotonic()
-            data = bytearray()
-            while True:
-                chunk = conn.recv(RECV_CHUNK)
-                if not chunk:
-                    break
-                data.extend(chunk)
-                if len(data) > MAX_REQUEST_SIZE:
-                    break
-                if b"\n" in data:
-                    break
+            data = _read_message(conn)
 
             with self._rules_lock:
                 current_rules = dict(self._rules)

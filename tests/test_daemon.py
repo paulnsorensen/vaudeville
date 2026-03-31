@@ -407,6 +407,93 @@ class TestVersionStamp:
         assert not os.path.exists(version_file), "version file not removed on cleanup"
 
 
+class TestConfidenceScoring:
+    def test_response_includes_confidence(self, rules_dir: str) -> None:
+        rules = load_rules(rules_dir)
+        backend = MockBackend(
+            verdict="violation",
+            reason="test",
+            logprobs={"violation": -0.2, "clean": -2.5},
+        )
+        data = (
+            json.dumps(
+                {
+                    "rule": "violation-detector",
+                    "input": {"text": "test"},
+                }
+            ).encode()
+            + b"\n"
+        )
+        response = json.loads(handle_request(data, rules, backend))
+        assert "confidence" in response
+        assert 0.0 <= response["confidence"] <= 1.0
+
+    def test_threshold_downgrades_low_confidence_violation(
+        self, rules_dir: str
+    ) -> None:
+        rules = load_rules(rules_dir)
+        # Set a high threshold on the rule
+        rules["violation-detector"].threshold = 0.95
+        backend = MockBackend(
+            verdict="violation",
+            reason="low confidence",
+            logprobs={"violation": -0.8, "clean": -1.0},
+        )
+        data = (
+            json.dumps(
+                {
+                    "rule": "violation-detector",
+                    "input": {"text": "borderline"},
+                }
+            ).encode()
+            + b"\n"
+        )
+        response = json.loads(handle_request(data, rules, backend))
+        # Confidence ~0.55 is below threshold 0.95 → downgraded to clean
+        assert response["verdict"] == "clean"
+
+    def test_threshold_keeps_high_confidence_violation(self, rules_dir: str) -> None:
+        rules = load_rules(rules_dir)
+        rules["violation-detector"].threshold = 0.5
+        backend = MockBackend(
+            verdict="violation",
+            reason="high confidence",
+            logprobs={"violation": -0.1, "clean": -3.0},
+        )
+        data = (
+            json.dumps(
+                {
+                    "rule": "violation-detector",
+                    "input": {"text": "clearly bad"},
+                }
+            ).encode()
+            + b"\n"
+        )
+        response = json.loads(handle_request(data, rules, backend))
+        assert response["verdict"] == "violation"
+
+    def test_fallback_when_backend_lacks_logprobs(self, rules_dir: str) -> None:
+        """Backend without classify_with_logprobs falls back gracefully."""
+        rules = load_rules(rules_dir)
+
+        class PlainBackend:
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+                return "VERDICT: clean\nREASON: ok"
+
+        data = (
+            json.dumps(
+                {
+                    "rule": "violation-detector",
+                    "input": {"text": "test"},
+                }
+            ).encode()
+            + b"\n"
+        )
+        response = json.loads(handle_request(data, rules, PlainBackend()))
+        assert response["verdict"] == "clean"
+        assert response["confidence"] == 1.0
+
+
 class TestDetectBackend:
     def test_returns_mlx_on_apple_silicon(self) -> None:
         with (

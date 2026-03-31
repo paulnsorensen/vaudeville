@@ -18,7 +18,7 @@ import time
 
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ..core.protocol import parse_verdict
-from ..core.rules import Rule, back_truncate, load_rules_layered, rules_search_path
+from ..core.rules import Rule, load_rules_layered, rules_search_path
 from .inference import InferenceBackend
 
 IDLE_TIMEOUT = 60 * 60  # 60 minutes
@@ -63,7 +63,7 @@ def handle_request(
         if rule is None:
             return _response("clean", f"Unknown rule: {rule_name}")
 
-        text = back_truncate(str(input_data.get("text", "")))
+        text = str(input_data.get("text", ""))
         plugin_root = os.environ.get(
             "CLAUDE_PLUGIN_ROOT",
             os.path.dirname(

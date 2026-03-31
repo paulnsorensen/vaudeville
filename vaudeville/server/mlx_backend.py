@@ -61,7 +61,7 @@ class MLXBackend:
         for i, (token, logprobs_arr) in enumerate(
             self._generate_step(prompt_tokens, self._model, max_tokens=max_tokens)
         ):
-            token_id = token.item()
+            token_id: int = token.item() if hasattr(token, "item") else int(token)
             tokens.append(token_id)
 
             if i == 0:

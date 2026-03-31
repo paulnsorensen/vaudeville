@@ -70,11 +70,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    log_level = (
+        logging.DEBUG if os.environ.get("VAUDEVILLE_DEBUG") == "1" else logging.INFO
+    )
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s [vaudeville] %(message)s",
         stream=sys.stderr,
     )
+
+    backend_name = args.backend if args.backend != "auto" else detect_backend()
 
     backend_name = args.backend if args.backend != "auto" else detect_backend()
 

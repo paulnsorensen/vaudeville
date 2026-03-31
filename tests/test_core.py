@@ -116,13 +116,6 @@ class TestLoadRules:
 
 
 class TestFailOpen:
-    def test_client_returns_none_for_missing_socket(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            client = VaudevilleClient()
-            client._socket_path = os.path.join(td, "nonexistent.sock")
-            result = client.classify("violation-detector", {"text": "test"})
-            assert result is None
-
     def test_client_fast_path_missing_socket(self) -> None:
         """Socket-exists guard returns None in <100ms, not the 1s connect timeout."""
         import time
@@ -149,6 +142,13 @@ class TestFailOpen:
             assert result is None
         finally:
             os.unlink(fake_socket)
+
+    def test_client_returns_none_for_missing_socket(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            client = VaudevilleClient()
+            client._socket_path = os.path.join(td, "nonexistent.sock")
+            result = client.classify("violation-detector", {"text": "test"})
+            assert result is None
 
     def test_runner_allows_when_daemon_unavailable(self) -> None:
         """runner.main() exits 0 when client returns None for all rules."""

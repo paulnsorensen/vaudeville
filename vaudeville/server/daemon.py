@@ -69,6 +69,7 @@ def handle_request(
 
         rule = rules.get(rule_name)
         if rule is None:
+            logger.debug("unknown rule %r — clean", rule_name)
             return _response("clean", f"Unknown rule: {rule_name}")
 
         text = str(input_data.get("text", ""))
@@ -80,15 +81,27 @@ def handle_request(
         )
         context = rule.resolve_context(input_data, plugin_root)
         prompt = rule.format_prompt(text, context)
+        logger.debug(
+            "rule=%s text=%d chars prompt=%d chars", rule_name, len(text), len(prompt)
+        )
+        t0 = time.monotonic()
         result = _run_inference(backend, prompt)
+        elapsed_ms = (time.monotonic() - t0) * 1000
         response = parse_verdict(result.text)
         confidence = compute_confidence(result.logprobs, response.verdict)
-        logger.debug("[vaudeville] confidence=%.3f for rule=%s", confidence, rule_name)
+        logger.debug(
+            "rule=%s verdict=%s confidence=%.3f reason=%r (%.0fms)",
+            rule_name,
+            response.verdict,
+            confidence,
+            response.reason,
+            elapsed_ms,
+        )
 
         verdict = response.verdict
         if verdict == "violation" and confidence < rule.threshold:
             logger.info(
-                "[vaudeville] Downgrading violation (confidence=%.3f < threshold=%.3f)",
+                "Downgrading violation (confidence=%.3f < threshold=%.3f)",
                 confidence,
                 rule.threshold,
             )
@@ -97,7 +110,7 @@ def handle_request(
         return _response(verdict, response.reason, rule.action, confidence)
 
     except Exception as exc:
-        logger.error("[vaudeville] Request error: %s", exc)
+        logger.error("Request error: %s", exc)
         return _response("clean", "Inference error — fail open")
 
 
@@ -197,14 +210,14 @@ class VaudevilleDaemon:
 
         with self._rules_lock:
             self._rules = load_rules_layered(self._plugin_root, self._project_root)
-        logger.info("[vaudeville] Loaded %d rules", len(self._rules))
+        logger.info("Loaded %d rules", len(self._rules))
 
         pid_fd = os.open(self._pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
         try:
             fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             os.close(pid_fd)
-            logger.info("[vaudeville] Another instance holds PID lock — exiting")
+            logger.info("Another instance holds PID lock — exiting")
             return
         os.ftruncate(pid_fd, 0)
         os.write(pid_fd, f"{os.getpid()}\n".encode())
@@ -223,7 +236,7 @@ class VaudevilleDaemon:
 
         threading.Thread(target=self._watch_rules, daemon=True).start()
         threading.Thread(target=self._watch_threads, daemon=True).start()
-        logger.info("[vaudeville] Listening on %s", self._socket_path)
+        logger.info("Listening on %s", self._socket_path)
 
         try:
             self._accept_loop(server_socket)
@@ -238,12 +251,10 @@ class VaudevilleDaemon:
                 new_rules = load_rules_layered(self._plugin_root, self._project_root)
                 with self._rules_lock:
                     self._rules = new_rules
-                logger.info(
-                    "[vaudeville] Rules reloaded via SIGHUP (%d rules)", len(new_rules)
-                )
+                logger.info("Rules reloaded via SIGHUP (%d rules)", len(new_rules))
             idle = time.monotonic() - self._last_request
             if idle > IDLE_TIMEOUT:
-                logger.info("[vaudeville] Idle timeout — shutting down")
+                logger.info("Idle timeout — shutting down")
                 break
             try:
                 conn, _ = server_socket.accept()
@@ -266,10 +277,10 @@ class VaudevilleDaemon:
                 response = handle_request(bytes(data), current_rules, self._backend)
             conn.sendall(response)
             elapsed_ms = (time.monotonic() - t0) * 1000
-            logger.info("[vaudeville] Request handled in %.1fms", elapsed_ms)
+            logger.info("Request handled in %.1fms", elapsed_ms)
             self._last_request = time.monotonic()
         except Exception as exc:
-            logger.error("[vaudeville] Client handler error: %s", exc)
+            logger.error("Client handler error: %s", exc)
         finally:
             conn.close()
 
@@ -286,7 +297,7 @@ class VaudevilleDaemon:
                 with self._rules_lock:
                     self._rules = new_rules
                 last_mtime = current
-                logger.info("[vaudeville] Rules reloaded (%d rules)", len(new_rules))
+                logger.info("Rules reloaded (%d rules)", len(new_rules))
 
     def _rules_mtime(self) -> float:
         return max(
@@ -306,14 +317,12 @@ class VaudevilleDaemon:
             count = threading.active_count()
             if count > THREAD_KILL:
                 logger.error(
-                    "[vaudeville] Thread count %d exceeds kill threshold — shutting down",
+                    "Thread count %d exceeds kill threshold — shutting down",
                     count,
                 )
                 self._stop_event.set()
             elif count > THREAD_WARN:
-                logger.warning(
-                    "[vaudeville] Thread count %d exceeds warning threshold", count
-                )
+                logger.warning("Thread count %d exceeds warning threshold", count)
 
     def _write_version_stamp(self) -> None:
         try:
@@ -331,7 +340,7 @@ class VaudevilleDaemon:
             with open(self._version_file, "w") as f:
                 f.write(stamp + "\n")
         except OSError:
-            logger.warning("[vaudeville] Could not write version stamp")
+            logger.warning("Could not write version stamp")
 
     def _cleanup(self) -> None:
         if self._pid_fd is not None:

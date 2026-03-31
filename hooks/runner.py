@@ -18,6 +18,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PLUGIN_ROOT = os.environ.get(
@@ -36,6 +37,12 @@ except ImportError as _exc:
     sys.exit(0)
 
 MIN_TEXT_LENGTH = 100
+_DEBUG = os.environ.get("VAUDEVILLE_DEBUG", "") == "1"
+
+
+def _dbg(msg: str, *args: object) -> None:
+    if _DEBUG:
+        print(f"[vaudeville:debug] {msg % args if args else msg}", file=sys.stderr)
 
 
 def _find_project_root() -> str | None:
@@ -161,11 +168,17 @@ def _run() -> None:
         print("{}")
         sys.exit(0)
 
+    _dbg("hook fired — rules: %s", rule_names)
+
     try:
         hook_input = json.load(sys.stdin)
     except (json.JSONDecodeError, EOFError):
+        _dbg("no valid JSON on stdin — pass")
         print("{}")
         sys.exit(0)
+
+    hook_type = hook_input.get("hook_type", "?")
+    _dbg("hook=%s", hook_type)
 
     client = VaudevilleClient()
 
@@ -212,6 +225,7 @@ def _run_named_rules(
             continue
         text = extract_text(hook_input, rule)
         if not text or len(text) < MIN_TEXT_LENGTH:
+            _dbg("%s: text too short (%d chars) — skip", name, len(text) if text else 0)
             continue
         tasks.append((name, rule))
 
@@ -223,21 +237,45 @@ def _run_named_rules(
     if len(tasks) == 1:
         name, rule = tasks[0]
         text = extract_text(hook_input, rule)
+        _dbg("%s: classifying %d chars...", name, len(text))
+        t0 = time.monotonic()
         result = client.classify(name, {"text": text})
+        elapsed_ms = (time.monotonic() - t0) * 1000
         if result and result.verdict == "violation":
+            _dbg(
+                "%s: verdict=%s action=%s (%.0fms) reason=%r",
+                name,
+                result.verdict,
+                result.action,
+                elapsed_ms,
+                result.reason,
+            )
             print(
                 json.dumps(verdict_to_hook_response(rule, result.reason, result.action))
             )
             sys.exit(0)
+        _dbg("%s: clean (%.0fms)", name, elapsed_ms)
         print("{}")
         sys.exit(0)
 
     # Multiple rules: dispatch concurrently, first violation wins
     def _classify(name: str, rule: dict) -> tuple[dict, str, str] | None:
         text = extract_text(hook_input, rule)
+        _dbg("%s: classifying %d chars...", name, len(text))
+        t0 = time.monotonic()
         result = client.classify(name, {"text": text})
+        elapsed_ms = (time.monotonic() - t0) * 1000
         if result and result.verdict == "violation":
+            _dbg(
+                "%s: verdict=%s action=%s (%.0fms) reason=%r",
+                name,
+                result.verdict,
+                result.action,
+                elapsed_ms,
+                result.reason,
+            )
             return (rule, result.reason, result.action)
+        _dbg("%s: clean (%.0fms)", name, elapsed_ms)
         return None
 
     pool = ThreadPoolExecutor(max_workers=len(tasks))
@@ -251,6 +289,7 @@ def _run_named_rules(
             sys.exit(0)
     pool.shutdown(wait=False, cancel_futures=True)
 
+    _dbg("all rules clean — pass")
     print("{}")
     sys.exit(0)
 

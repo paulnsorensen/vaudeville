@@ -207,15 +207,23 @@ def cross_validate_rule(
 
 
 def print_results(results: EvalResults) -> bool:
-    """Print metrics, return True if accuracy >= 90%."""
-    pct = results.accuracy * 100
-    passed = pct >= 90.0
+    """Print metrics, return True if precision >= 95% and recall >= 80%."""
+    prec_pct = results.precision * 100
+    rec_pct = results.recall * 100
+    prec_ok = prec_pct >= 95.0
+    rec_ok = rec_pct >= 80.0
+    passed = prec_ok and rec_ok
     status = "PASS" if passed else "FAIL"
 
+    def _marker(ok: bool) -> str:
+        return "" if ok else " << BELOW THRESHOLD"
+
     print(f"\n=== {results.rule} [{status}] ===")
-    print(f"Accuracy:  {pct:.1f}% ({results.tp + results.tn}/{results.total})")
-    print(f"Precision: {results.precision * 100:.1f}%")
-    print(f"Recall:    {results.recall * 100:.1f}%")
+    print(
+        f"Accuracy:  {results.accuracy * 100:.1f}% ({results.tp + results.tn}/{results.total})"
+    )
+    print(f"Precision: {prec_pct:.1f}% (>= 95%){_marker(prec_ok)}")
+    print(f"Recall:    {rec_pct:.1f}% (>= 80%){_marker(rec_ok)}")
     print(f"F1:        {results.f1 * 100:.1f}%")
     print(f"Confusion: TP={results.tp} FP={results.fp} TN={results.tn} FN={results.fn}")
 

@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
@@ -27,7 +28,7 @@ if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
 try:
-    from vaudeville.core.client import SOCKET_TEMPLATE, VaudevilleClient  # noqa: E402
+    from vaudeville.core.client import VaudevilleClient  # noqa: E402
 except ImportError as _exc:
     print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
     print("{}")
@@ -155,51 +156,82 @@ def _run() -> None:
         print("{}")
         sys.exit(0)
 
-    session_id = hook_input.get("session_id", "unknown")
     hook_type = hook_input.get("hook_type", "?")
-    _dbg("session=%s hook=%s", session_id, hook_type)
+    _dbg("hook=%s", hook_type)
 
-    # Fast path: if daemon socket doesn't exist, skip (~μs vs timeout)
-    socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
-    if not os.path.exists(socket_path):
-        _dbg("no socket at %s — pass", socket_path)
-        print("{}")
-        sys.exit(0)
+    client = VaudevilleClient()
 
-    client = VaudevilleClient(session_id)
-
+    # Build classify tasks for all valid rules
+    tasks: list[tuple[str, dict]] = []
     for name in rule_names:
         rule = load_rule(name)
         if rule is None:
             continue
-
         text = extract_text(hook_input, rule)
         if not text or len(text) < MIN_TEXT_LENGTH:
             _dbg("%s: text too short (%d chars) — skip", name, len(text) if text else 0)
             continue
+        tasks.append((name, rule))
 
+    if not tasks:
+        print("{}")
+        sys.exit(0)
+
+    # Single rule: no threading overhead
+    if len(tasks) == 1:
+        name, rule = tasks[0]
+        text = extract_text(hook_input, rule)
         _dbg("%s: classifying %d chars...", name, len(text))
         t0 = time.monotonic()
         result = client.classify(name, {"text": text})
         elapsed_ms = (time.monotonic() - t0) * 1000
-
-        if result is None:
-            _dbg(f"{name}: classify returned None ({elapsed_ms:.0f}ms) — pass")
-            continue
-
-        _dbg(
-            "%s: verdict=%s action=%s (%.0fms) reason=%r",
-            name,
-            result.verdict,
-            result.action,
-            elapsed_ms,
-            result.reason,
-        )
-
-        if result.verdict == "violation":
-            response = verdict_to_hook_response(rule, result.reason, result.action)
-            print(json.dumps(response))
+        if result and result.verdict == "violation":
+            _dbg(
+                "%s: verdict=%s action=%s (%.0fms) reason=%r",
+                name,
+                result.verdict,
+                result.action,
+                elapsed_ms,
+                result.reason,
+            )
+            print(
+                json.dumps(verdict_to_hook_response(rule, result.reason, result.action))
+            )
             sys.exit(0)
+        _dbg("%s: clean (%.0fms)", name, elapsed_ms)
+        print("{}")
+        sys.exit(0)
+
+    # Multiple rules: dispatch concurrently, first violation wins
+    def _classify(name: str, rule: dict) -> tuple[dict, str, str] | None:
+        text = extract_text(hook_input, rule)
+        _dbg("%s: classifying %d chars...", name, len(text))
+        t0 = time.monotonic()
+        result = client.classify(name, {"text": text})
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        if result and result.verdict == "violation":
+            _dbg(
+                "%s: verdict=%s action=%s (%.0fms) reason=%r",
+                name,
+                result.verdict,
+                result.action,
+                elapsed_ms,
+                result.reason,
+            )
+            return (rule, result.reason, result.action)
+        _dbg("%s: clean (%.0fms)", name, elapsed_ms)
+        return None
+
+    pool = ThreadPoolExecutor(max_workers=len(tasks))
+    futures = {pool.submit(_classify, n, r): n for n, r in tasks}
+    for future in as_completed(futures):
+        hit = future.result()
+        if hit:
+            rule, reason, action = hit
+            print(json.dumps(verdict_to_hook_response(rule, reason, action)))
+            pool.shutdown(wait=False, cancel_futures=True)
+            sys.exit(0)
+    pool.shutdown(wait=False, cancel_futures=True)
 
     _dbg("all rules clean — pass")
     print("{}")

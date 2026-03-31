@@ -14,7 +14,7 @@ class MLXBackend:
     def __init__(self, model_path: str = DEFAULT_MODEL) -> None:
         from mlx_lm import load, generate
 
-        self._model, self._tokenizer = load(model_path)  # type: ignore[misc]
+        self._model, self._tokenizer = load(model_path)
         self._generate = generate
 
     def classify(self, prompt: str, max_tokens: int = 50) -> str:
@@ -25,6 +25,7 @@ class MLXBackend:
             self._tokenizer,
             prompt=formatted,
             max_tokens=max_tokens,
+            temp=0.0,
             verbose=False,
         )
         return result

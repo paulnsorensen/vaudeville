@@ -19,6 +19,7 @@ import yaml
 from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from .core.rules import Rule, load_rules_layered
 from .server import InferenceBackend
+from .server.inference import LogprobBackend
 
 
 def _find_project_root() -> str | None:
@@ -128,11 +129,10 @@ def _load_test_file(path: str) -> tuple[list[EvalCase], str]:
 
 def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
     """Run inference with logprobs, falling back to plain classify."""
-    try:
+    if isinstance(backend, LogprobBackend):
         return backend.classify_with_logprobs(prompt, max_tokens=50)
-    except AttributeError:
-        text = backend.classify(prompt, max_tokens=50)
-        return ClassifyResult(text=text)
+    text = backend.classify(prompt, max_tokens=50)
+    return ClassifyResult(text=text)
 
 
 def _classify_case(

@@ -19,7 +19,7 @@ import time
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
-from .inference import InferenceBackend
+from .inference import InferenceBackend, LogprobBackend
 
 IDLE_TIMEOUT = 60 * 60  # 60 minutes
 RULE_POLL_INTERVAL = 30  # seconds
@@ -50,11 +50,10 @@ def _find_project_root() -> str | None:
 
 def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
     """Run inference with logprobs, falling back to plain classify."""
-    try:
+    if isinstance(backend, LogprobBackend):
         return backend.classify_with_logprobs(prompt, max_tokens=50)
-    except AttributeError:
-        text = backend.classify(prompt, max_tokens=50)
-        return ClassifyResult(text=text)
+    text = backend.classify(prompt, max_tokens=50)
+    return ClassifyResult(text=text)
 
 
 def handle_request(

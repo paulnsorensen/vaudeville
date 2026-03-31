@@ -6,6 +6,7 @@ import io
 import json
 import os
 import sys
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -201,7 +202,7 @@ class TestInterleavedExamples:
 class TestConcurrentDispatch:
     """Tests for the concurrent rule dispatch in hooks/runner.py."""
 
-    def _get_runner(self):
+    def _get_runner(self) -> types.ModuleType:
         """Import runner module fresh."""
         import importlib
 
@@ -268,7 +269,7 @@ class TestConcurrentDispatch:
     def test_multi_rule_concurrent_first_violation_wins(self) -> None:
         runner = self._get_runner()
 
-        def mock_classify(rule_name, _input_data):
+        def mock_classify(rule_name: str, _input_data: object) -> MagicMock:
             if rule_name == "violation-detector":
                 return MagicMock(verdict="violation", reason="hedging", action="block")
             return MagicMock(verdict="clean", reason="ok", action="block")
@@ -389,7 +390,7 @@ class TestConcurrentDispatch:
 
 
 class TestRunnerHelpers:
-    def _get_runner(self):
+    def _get_runner(self) -> types.ModuleType:
         import importlib
 
         hooks_dir = os.path.join(

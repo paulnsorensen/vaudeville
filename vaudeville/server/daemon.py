@@ -94,6 +94,30 @@ def _response(verdict: str, reason: str, action: str = "block") -> bytes:
     )
 
 
+def _read_message(conn: socket.socket) -> bytes:
+    """Read a newline-terminated message from a socket connection.
+
+    Returns the bytes up to (but not including) the first newline.
+    If the connection closes before a newline is received, returns all buffered
+    bytes read so far (which may be empty). Returns empty bytes if the payload
+    exceeds MAX_REQUEST_SIZE.
+    """
+    buf = bytearray()
+    while True:
+        chunk = conn.recv(RECV_CHUNK)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if b"\n" in buf:
+            return bytes(buf.split(b"\n", 1)[0])
+        if len(buf) > MAX_REQUEST_SIZE:
+            logger.warning(
+                "[vaudeville] Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE
+            )
+            return b""
+    return bytes(buf)
+
+
 def _scan_dir_mtime(rules_dir: str) -> float:
     """Return the max mtime of YAML files in a single rules directory."""
     max_mtime = 0.0
@@ -210,16 +234,7 @@ class VaudevilleDaemon:
         try:
             conn.settimeout(CLIENT_TIMEOUT)
             t0 = time.monotonic()
-            data = bytearray()
-            while True:
-                chunk = conn.recv(RECV_CHUNK)
-                if not chunk:
-                    break
-                data.extend(chunk)
-                if len(data) > MAX_REQUEST_SIZE:
-                    break
-                if b"\n" in data:
-                    break
+            data = _read_message(conn)
 
             with self._rules_lock:
                 current_rules = dict(self._rules)

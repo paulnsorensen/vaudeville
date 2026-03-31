@@ -97,8 +97,10 @@ def _response(verdict: str, reason: str, action: str = "block") -> bytes:
 def _read_message(conn: socket.socket) -> bytes:
     """Read a newline-terminated message from a socket connection.
 
-    Returns bytes up to and including the first newline.
-    Returns empty bytes if the connection closes or the payload exceeds MAX_REQUEST_SIZE.
+    Returns the bytes up to (but not including) the first newline.
+    If the connection closes before a newline is received, returns all buffered
+    bytes read so far (which may be empty). Returns empty bytes if the payload
+    exceeds MAX_REQUEST_SIZE.
     """
     buf = bytearray()
     while True:

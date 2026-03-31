@@ -141,7 +141,8 @@ def _load_rules_for_event(event: str) -> list:
 
     project_root = _find_project_root()
     all_rules = load_rules_layered(PLUGIN_ROOT, project_root)
-    return [r for r in all_rules.values() if r.event == event]
+    matching = [r for r in all_rules.values() if r.event == event]
+    return sorted(matching, key=lambda r: r.name)
 
 
 def _run() -> None:
@@ -178,7 +179,7 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
     """Evaluate all rules matching the given event."""
     rules = _load_rules_for_event(event)
     for rule in rules:
-        text = extract_field(hook_input, rule.context[0]["field"]) if rule.context else ""
+        text = extract_text(hook_input, {"context": rule.context})
         if not text or len(text) < MIN_TEXT_LENGTH:
             continue
 
@@ -190,7 +191,7 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
             response = verdict_to_hook_response(
                 {"name": rule.name, "message": rule.message},
                 result.reason,
-                rule.action,
+                result.action,
             )
             print(json.dumps(response))
             sys.exit(0)

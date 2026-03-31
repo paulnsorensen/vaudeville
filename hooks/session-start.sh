@@ -25,18 +25,7 @@ else
 fi
 
 # Always read stdin (Claude Code sends JSON; not reading causes SIGPIPE)
-INPUT=$(cat)
-
-# Read session_id from stdin JSON
-SESSION_ID=$(echo "$INPUT" | python3 -c \
-  "import sys,json; print(json.load(sys.stdin).get('session_id','unknown'))" \
-  2>/dev/null || echo "unknown")
-# Sanitize — session_id comes from stdin JSON, strip path-traversal chars
-SESSION_ID=$(echo "$SESSION_ID" | tr -cd 'a-zA-Z0-9_-')
-# Guard against empty string after sanitization (would cause path collisions)
-if [ -z "${SESSION_ID}" ]; then
-  SESSION_ID="unknown"
-fi
+cat > /dev/null
 
 # uv is required for dependency management
 if ! command -v uv &>/dev/null; then

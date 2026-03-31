@@ -85,7 +85,7 @@ def handle_request(
         return _response(response.verdict, response.reason, rule.action)
 
     except Exception as exc:
-        logger.error("[vaudeville] Request error: %s", exc)
+        logger.error("Request error: %s", exc)
         return _response("clean", "Inference error — fail open")
 
 
@@ -117,9 +117,7 @@ def _read_message(conn: socket.socket) -> bytes:
         if b"\n" in buf:
             return bytes(buf.split(b"\n", 1)[0])
         if len(buf) > MAX_REQUEST_SIZE:
-            logger.warning(
-                "[vaudeville] Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE
-            )
+            logger.warning("Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE)
             return b""
     return bytes(buf)
 
@@ -159,7 +157,7 @@ class VaudevilleDaemon:
         """Load rules, write PID, bind socket, serve until idle timeout."""
         with self._rules_lock:
             self._rules = load_rules_layered(self._plugin_root, self._project_root)
-        logger.info("[vaudeville] Loaded %d rules", len(self._rules))
+        logger.info("Loaded %d rules", len(self._rules))
 
         Path(self._pid_file).write_text(str(os.getpid()))
 
@@ -171,7 +169,7 @@ class VaudevilleDaemon:
         server_socket.settimeout(1.0)
 
         threading.Thread(target=self._watch_rules, daemon=True).start()
-        logger.info("[vaudeville] Listening on %s", self._socket_path)
+        logger.info("Listening on %s", self._socket_path)
 
         try:
             self._accept_loop(server_socket)
@@ -183,7 +181,7 @@ class VaudevilleDaemon:
         while not self._stop_event.is_set():
             idle = time.monotonic() - self._last_request
             if idle > IDLE_TIMEOUT:
-                logger.info("[vaudeville] Idle timeout — shutting down")
+                logger.info("Idle timeout — shutting down")
                 break
             try:
                 conn, _ = server_socket.accept()
@@ -203,7 +201,7 @@ class VaudevilleDaemon:
             conn.sendall(response)
             self._last_request = time.monotonic()
         except Exception as exc:
-            logger.error("[vaudeville] Client handler error: %s", exc)
+            logger.error("Client handler error: %s", exc)
         finally:
             conn.close()
 
@@ -220,7 +218,7 @@ class VaudevilleDaemon:
                 with self._rules_lock:
                     self._rules = new_rules
                 last_mtime = current
-                logger.info("[vaudeville] Rules reloaded (%d rules)", len(new_rules))
+                logger.info("Rules reloaded (%d rules)", len(new_rules))
 
     def _rules_mtime(self) -> float:
         return max(

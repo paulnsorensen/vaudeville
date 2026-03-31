@@ -37,9 +37,9 @@ MIN_TEXT_LENGTH = 100
 _DEBUG = os.environ.get("VAUDEVILLE_DEBUG", "") == "1"
 
 
-def _dbg(msg: str) -> None:
+def _dbg(msg: str, *args: object) -> None:
     if _DEBUG:
-        print(f"[vaudeville:debug] {msg}", file=sys.stderr)
+        print(f"[vaudeville:debug] {msg % args if args else msg}", file=sys.stderr)
 
 
 def _find_project_root() -> str | None:
@@ -146,7 +146,7 @@ def _run() -> None:
         print("{}")
         sys.exit(0)
 
-    _dbg(f"hook fired — rules: {rule_names}")
+    _dbg("hook fired — rules: %s", rule_names)
 
     try:
         hook_input = json.load(sys.stdin)
@@ -157,12 +157,12 @@ def _run() -> None:
 
     session_id = hook_input.get("session_id", "unknown")
     hook_type = hook_input.get("hook_type", "?")
-    _dbg(f"session={session_id} hook={hook_type}")
+    _dbg("session=%s hook=%s", session_id, hook_type)
 
     # Fast path: if daemon socket doesn't exist, skip (~μs vs timeout)
     socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
     if not os.path.exists(socket_path):
-        _dbg(f"no socket at {socket_path} — pass")
+        _dbg("no socket at %s — pass", socket_path)
         print("{}")
         sys.exit(0)
 
@@ -175,10 +175,10 @@ def _run() -> None:
 
         text = extract_text(hook_input, rule)
         if not text or len(text) < MIN_TEXT_LENGTH:
-            _dbg(f"{name}: text too short ({len(text) if text else 0} chars) — skip")
+            _dbg("%s: text too short (%d chars) — skip", name, len(text) if text else 0)
             continue
 
-        _dbg(f"{name}: classifying {len(text)} chars...")
+        _dbg("%s: classifying %d chars...", name, len(text))
         t0 = time.monotonic()
         result = client.classify(name, {"text": text})
         elapsed_ms = (time.monotonic() - t0) * 1000
@@ -188,8 +188,12 @@ def _run() -> None:
             continue
 
         _dbg(
-            f"{name}: verdict={result.verdict} action={result.action}"
-            f" ({elapsed_ms:.0f}ms) reason={result.reason!r}"
+            "%s: verdict=%s action=%s (%.0fms) reason=%r",
+            name,
+            result.verdict,
+            result.action,
+            elapsed_ms,
+            result.reason,
         )
 
         if result.verdict == "violation":

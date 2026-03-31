@@ -41,10 +41,15 @@ class MLXBackend:
     def classify_with_logprobs(
         self, prompt: str, max_tokens: int = 50
     ) -> ClassifyResult:
-        """Run inference and return output with first-token logprobs."""
+        """Run inference and return output with first-token logprobs.
+
+        Pre-fills "VERDICT:" so the first generated token IS the class label
+        ("violation"/"clean"), giving meaningful logprob distributions.
+        """
         import mlx.core as mx
 
-        formatted = self._apply_chat_template(prompt)
+        # Append anchor after chat template so model's first token = class label
+        formatted = self._apply_chat_template(prompt) + "VERDICT:"
         tokenizer: Any = self._tokenizer
         prompt_tokens = mx.array(tokenizer.encode(formatted))
 
@@ -66,7 +71,8 @@ class MLXBackend:
             if eos is not None and token_id == eos:
                 break
 
-        text: str = tokenizer.decode(tokens)
+        # Prepend the anchor back so parse_verdict can parse the full output
+        text: str = "VERDICT:" + tokenizer.decode(tokens)
         return ClassifyResult(text=text, logprobs=first_logprobs)
 
     def _extract_top_logprobs(

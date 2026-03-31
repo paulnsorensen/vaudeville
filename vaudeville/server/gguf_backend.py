@@ -62,13 +62,26 @@ class GGUFBackend:
         return ClassifyResult(text=text, logprobs=logprobs)
 
     def _extract_first_token_logprobs(self, response: Any) -> dict[str, float]:
-        """Extract first-token logprobs from OpenAI-format response."""
+        """Extract logprobs from the label-token position in the response.
+
+        Scans token positions until finding one whose top logprobs contain
+        violation/clean-prefixed tokens (skipping "VERDICT", ":", etc.).
+        """
+        from ..core.protocol import compute_confidence
+
         try:
             content = response["choices"][0]["logprobs"]["content"]
             if not content:
                 return {}
-            top = content[0]["top_logprobs"]
-            return {entry["token"]: entry["logprob"] for entry in top}
+            for position in content:
+                top = {
+                    entry["token"]: entry["logprob"]
+                    for entry in position["top_logprobs"]
+                }
+                # compute_confidence returns 1.0 when no label tokens found
+                if compute_confidence(top, "violation") != 1.0:
+                    return top
+            return {}
         except (KeyError, IndexError, TypeError) as exc:
             logger.warning("[vaudeville] Logprob extraction failed: %s", exc)
             return {}

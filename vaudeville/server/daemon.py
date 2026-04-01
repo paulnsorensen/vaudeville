@@ -56,6 +56,10 @@ def handle_request(
 
         rule = rules.get(rule_name)
         if rule is None:
+            logger.info(
+                "CLASSIFY rule=%s verdict=clean action=block latency_ms=0 reason=unknown_rule",
+                rule_name,
+            )
             return _response("clean", f"Unknown rule: {rule_name}")
 
         text = str(input_data.get("text", ""))
@@ -67,8 +71,19 @@ def handle_request(
         )
         context = rule.resolve_context(input_data, plugin_root)
         prompt = rule.format_prompt(text, context)
+        t0 = time.monotonic()
         raw_output = backend.classify(prompt, max_tokens=50)
+        latency_ms = (time.monotonic() - t0) * 1000
         response = parse_verdict(raw_output)
+        safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:200]
+        logger.info(
+            "CLASSIFY rule=%s verdict=%s action=%s latency_ms=%.0f reason=%s",
+            rule_name,
+            response.verdict,
+            rule.action,
+            latency_ms,
+            safe_reason,
+        )
         return _response(response.verdict, response.reason, rule.action)
 
     except Exception as exc:

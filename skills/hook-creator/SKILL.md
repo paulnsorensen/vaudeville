@@ -322,7 +322,7 @@ If a hook isn't firing:
 3. Add `console.error("hook fired")` to stderr to confirm execution
 4. Check `~/.claude/logs/` for hook error output
 5. Test the script standalone: `echo '{}' | node .claude/hooks/my-hook.js`
-6. Use `/session-analytics` to query `stop_hooks` table for hook execution history
+6. Use `vaudeville:session-analytics` to query `stop_hooks` table for hook execution history
 
 ## Expected Output
 

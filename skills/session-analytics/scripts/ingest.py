@@ -27,12 +27,20 @@ def db_is_fresh():
 
 
 def run_sql(sql, db_path=None):
-    result = subprocess.run(
-        ["duckdb", db_path or DB_TMP_PATH, "-c", sql],
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
+    try:
+        result = subprocess.run(
+            ["duckdb", db_path or DB_TMP_PATH, "-c", sql],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except FileNotFoundError:
+        print(
+            "ERROR: 'duckdb' not found on PATH. "
+            "Install with: brew install duckdb (macOS) or see https://duckdb.org/docs/installation",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     if result.returncode != 0:
         print(f"ERROR: {result.stderr[:500]}", file=sys.stderr)
         sys.exit(1)
@@ -95,7 +103,7 @@ def main():
 
     run_sql("SELECT count(*) AS raw_entries_loaded FROM raw_entries;")
 
-    # Step 2: Create tool_uses view (flattened from assistant content blocks)
+    # Step 2: Create tool_uses table (flattened from assistant content blocks)
     print("  Creating tool_uses...")
     run_sql("""
         CREATE TABLE tool_uses AS
@@ -133,7 +141,7 @@ def main():
         WHERE json_extract_string(block, '$.type') = 'tool_use';
     """)
 
-    # Step 3: Create tool_results view (from user message content blocks)
+    # Step 3: Create tool_results table (from user message content blocks)
     print("  Creating tool_results...")
     run_sql("""
         CREATE TABLE tool_results AS
@@ -157,7 +165,7 @@ def main():
         WHERE json_extract_string(block, '$.type') = 'tool_result';
     """)
 
-    # Step 4: Create stop_events view
+    # Step 4: Create stop_events table
     print("  Creating stop_events...")
     run_sql("""
         CREATE TABLE stop_events AS
@@ -174,7 +182,7 @@ def main():
               IN ('end_turn', 'stop_sequence', 'max_tokens');
     """)
 
-    # Step 5: Create agent_spawns view
+    # Step 5: Create agent_spawns table
     print("  Creating agent_spawns...")
     run_sql("""
         CREATE TABLE agent_spawns AS
@@ -189,7 +197,7 @@ def main():
         WHERE tool_name = 'Agent';
     """)
 
-    # Step 6: Create skill_invocations view
+    # Step 6: Create skill_invocations table
     print("  Creating skill_invocations...")
     run_sql("""
         CREATE TABLE skill_invocations AS
@@ -203,7 +211,7 @@ def main():
         WHERE tool_name = 'Skill';
     """)
 
-    # Step 7: Create mcp_calls view
+    # Step 7: Create mcp_calls table
     print("  Creating mcp_calls...")
     run_sql("""
         CREATE TABLE mcp_calls AS
@@ -229,7 +237,7 @@ def main():
         GROUP BY sessionId, cwd, gitBranch;
     """)
 
-    # Step 9: Create stop_hooks view
+    # Step 9: Create stop_hooks table
     print("  Creating stop_hooks...")
     run_sql("""
         CREATE TABLE stop_hooks AS
@@ -248,7 +256,7 @@ def main():
           AND subtype = 'stop_hook_summary';
     """)
 
-    # Step 10: Create permission_denials view (common error pattern)
+    # Step 10: Create permission_denials table (common error pattern)
     print("  Creating permission_denials...")
     run_sql("""
         CREATE TABLE permission_denials AS

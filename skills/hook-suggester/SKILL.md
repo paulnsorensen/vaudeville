@@ -78,24 +78,28 @@ The user may want all, some, or none.
 
 ### Step 4: Implement selected hooks
 
-For each suggestion the user approves, invoke the **hook-creator** skill
-to generate the actual hook. Use the Skill tool:
+For each suggestion the user approves, invoke the appropriate skill.
+
+**For SLM-powered rules** (natural language, intent detection, context-aware):
+
+```
+Skill(skill: "vaudeville:add-rule", args: "<description of what to detect>")
+```
+
+This creates a vaudeville YAML rule in `rules/`, writes test cases in `tests/`,
+registers it in `hooks/hooks.json`, and runs eval to verify accuracy. Use this
+when the suggestion involves understanding meaning — hedging, dismissal,
+sycophancy, incomplete work, deferral, etc.
+
+**For simple pattern-matching hooks** (structural, regex, deterministic):
 
 ```
 Skill(skill: "hook-creator", args: "<description of the hook to create>")
 ```
 
-Pass the suggestion details (event type, matcher, action, examples) to
-hook-creator so it can generate a properly configured hook.
-
-For vaudeville plugin hooks (SLM-based enforcement):
-- Create a new YAML rule in `rules/`
-- Register it in `hooks/hooks.json`
-- Use the existing runner.py infrastructure
-
-For simple pattern-matching hooks (no SLM needed):
-- Create a JS or bash script
-- Register in the appropriate settings file or hooks.json
+This creates a JS, Python, or bash script and registers it in settings.json
+or hooks.json. Use this for file guards, command blockers, auto-formatters,
+context injection, and other structural checks.
 
 ### Decision: SLM rule vs. simple hook
 

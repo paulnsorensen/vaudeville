@@ -331,10 +331,61 @@ For each hook created, deliver:
 2. The settings.json/hooks.json entry (written or shown for user to add)
 3. A standalone test command to verify the hook works
 
+## Vaudeville Rules (SLM-Powered Hooks)
+
+Vaudeville provides a second type of enforcement: **YAML rules** that classify
+text using a local SLM (Phi-3-mini) via the vaudeville daemon. These are more
+powerful than JS/bash hooks for detecting intent, context, and natural language
+patterns.
+
+### When to suggest a vaudeville rule instead
+
+| Scenario | Recommendation |
+|----------|---------------|
+| Detect hedging, deferral, or sycophancy | Vaudeville rule |
+| Check if work is actually complete | Vaudeville rule |
+| Classify PR reply quality | Vaudeville rule |
+| Block `rm -rf /` in bash | JS/bash hook (this skill) |
+| Auto-format files after write | JS hook (this skill) |
+| Inject context on session start | Bash hook (this skill) |
+
+### How to create a vaudeville rule
+
+Use the **add-rule** skill (`/vaudeville:add-rule`). It handles:
+1. Writing the rule YAML in `rules/`
+2. Writing test cases in `tests/`
+3. Registering in `hooks/hooks.json`
+4. Running eval to verify accuracy
+
+If the user describes behavior that requires understanding intent or context
+(not just pattern matching), suggest: "This sounds like a good fit for a
+vaudeville SLM rule. Want me to create one with `/vaudeville:add-rule`?"
+
+### Quick reference — rule format
+
+```yaml
+name: my-detector
+event: Stop
+prompt: |
+  Classify as "violation" or "clean".
+  ...examples...
+  {text}
+  VERDICT: violation or clean
+  REASON: one sentence
+context:
+  - field: last_assistant_message
+labels: [violation, clean]
+action: block
+message: "Quality violation: {reason}"
+```
+
+See existing rules in `rules/` for full examples.
+
 ## What This Skill Doesn't Do
 
 - Configure MCP servers or plugins
 - Create skills (use /skill-creator)
+- Create vaudeville YAML rules (use /vaudeville:add-rule)
 - Modify Claude Code's core settings beyond hooks
 - Debug hook script business logic (it validates config, not your logic)
 
@@ -342,3 +393,4 @@ For each hook created, deliver:
 
 For advanced hook patterns and real-world examples, read:
 - `references/hook-patterns.md` — Production hook recipes organized by use case
+- `rules/` — Existing vaudeville YAML rules (violation-detector, dismissal-detector, deferral-detector)

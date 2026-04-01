@@ -209,10 +209,10 @@ class TestCheckHookFailures:
         assert "Timeout" in result["examples"][0]
 
 
-class TestCheckWriteWithoutFormat:
+class TestCheckCodeWriteVolume:
     def test_returns_none_when_no_rows(self) -> None:
         with patch.object(analyze, "query", return_value=[]):
-            assert analyze.check_write_without_format(14, 3) is None
+            assert analyze.check_code_write_volume(14, 3) is None
 
     def test_returns_suggestion_with_language_breakdown(self) -> None:
         rows = [
@@ -220,7 +220,7 @@ class TestCheckWriteWithoutFormat:
             {"lang": "Rust", "writes": "200"},
         ]
         with patch.object(analyze, "query", return_value=rows):
-            result = analyze.check_write_without_format(14, 3)
+            result = analyze.check_code_write_volume(14, 3)
         assert result is not None
         assert result["id"] == "auto-format"
         assert any("Python" in ex for ex in result["examples"])

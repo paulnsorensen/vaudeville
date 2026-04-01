@@ -58,7 +58,7 @@ The analyzer checks 8 pattern categories:
 | Permission friction | PreToolUse | Frequently denied tool calls |
 | Missing quality hooks | Stop | Low ratio of hook-checked stops |
 | Hook failures | Stop | Hooks that error and silently pass |
-| Writes without format | PostToolUse | Code writes without auto-formatting |
+| Code write volume | PostToolUse | Code write events counted by language |
 | Repeated commands | SessionStart | Bash commands repeated many times |
 
 ### Step 3: Present findings and triage

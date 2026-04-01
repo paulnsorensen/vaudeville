@@ -279,8 +279,8 @@ def check_hook_failures(days, min_occ):
     }
 
 
-def check_write_without_format(days, min_occ):
-    """Detect frequent writes without auto-formatting."""
+def check_code_write_volume(days, min_occ):
+    """Detect languages with high code write volume."""
     rows = query(f"""
         SELECT
             CASE
@@ -376,7 +376,7 @@ def main():
         check_permission_friction,
         check_missing_quality_hooks,
         check_hook_failures,
-        check_write_without_format,
+        check_code_write_volume,
         check_repeated_bash_patterns,
     ]
 

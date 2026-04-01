@@ -6,6 +6,7 @@ Hot-reloads rules on file change. Self-terminates after idle timeout.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
@@ -13,8 +14,6 @@ import socket
 import subprocess
 import threading
 import time
-from pathlib import Path
-
 from ..core.protocol import parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
 from .inference import InferenceBackend
@@ -41,6 +40,23 @@ def _find_project_root() -> str | None:
     except (OSError, subprocess.TimeoutExpired):
         pass
     return None
+
+
+def acquire_pid_lock(pid_file: str) -> int | None:
+    """Acquire an exclusive flock on the PID file before loading the model.
+
+    Returns the open fd on success (caller must keep it open), or None if
+    another instance already holds the lock.
+    """
+    pid_fd = os.open(pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(pid_fd)
+        return None
+    os.ftruncate(pid_fd, 0)
+    os.write(pid_fd, f"{os.getpid()}\n".encode())
+    return pid_fd
 
 
 def handle_request(
@@ -75,19 +91,22 @@ def handle_request(
         raw_output = backend.classify(prompt, max_tokens=50)
         latency_ms = (time.monotonic() - t0) * 1000
         response = parse_verdict(raw_output)
-        safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:200]
+        safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:100]
         logger.info(
-            "CLASSIFY rule=%s verdict=%s action=%s latency_ms=%.0f reason=%s",
+            "CLASSIFY rule=%s verdict=%s action=%s latency_ms=%.0f"
+            " text_chars=%d prompt_chars=%d reason=%s",
             rule_name,
             response.verdict,
             rule.action,
             latency_ms,
+            len(text),
+            len(prompt),
             safe_reason,
         )
         return _response(response.verdict, response.reason, rule.action)
 
     except Exception as exc:
-        logger.error("[vaudeville] Request error: %s", exc)
+        logger.error("Request error: %s", exc)
         return _response("clean", "Inference error — fail open")
 
 
@@ -119,9 +138,7 @@ def _read_message(conn: socket.socket) -> bytes:
         if b"\n" in buf:
             return bytes(buf.split(b"\n", 1)[0])
         if len(buf) > MAX_REQUEST_SIZE:
-            logger.warning(
-                "[vaudeville] Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE
-            )
+            logger.warning("Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE)
             return b""
     return bytes(buf)
 
@@ -146,6 +163,7 @@ class VaudevilleDaemon:
         pid_file: str,
         plugin_root: str,
         backend: InferenceBackend,
+        pid_fd: int | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._pid_file = pid_file
@@ -156,14 +174,21 @@ class VaudevilleDaemon:
         self._rules_lock = threading.Lock()
         self._last_request = time.monotonic()
         self._stop_event = threading.Event()
+        self._pid_fd: int | None = pid_fd
 
     def serve(self) -> None:
         """Load rules, write PID, bind socket, serve until idle timeout."""
+        # Acquire PID lock if not pre-acquired by __main__
+        if self._pid_fd is None:
+            pid_fd = acquire_pid_lock(self._pid_file)
+            if pid_fd is None:
+                logger.info("Another instance holds PID lock — exiting")
+                return
+            self._pid_fd = pid_fd
+
         with self._rules_lock:
             self._rules = load_rules_layered(self._plugin_root, self._project_root)
-        logger.info("[vaudeville] Loaded %d rules", len(self._rules))
-
-        Path(self._pid_file).write_text(str(os.getpid()))
+        logger.info("Loaded %d rules", len(self._rules))
 
         server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         if os.path.exists(self._socket_path):
@@ -173,7 +198,7 @@ class VaudevilleDaemon:
         server_socket.settimeout(1.0)
 
         threading.Thread(target=self._watch_rules, daemon=True).start()
-        logger.info("[vaudeville] Listening on %s", self._socket_path)
+        logger.info("Listening on %s", self._socket_path)
 
         try:
             self._accept_loop(server_socket)
@@ -185,7 +210,7 @@ class VaudevilleDaemon:
         while not self._stop_event.is_set():
             idle = time.monotonic() - self._last_request
             if idle > IDLE_TIMEOUT:
-                logger.info("[vaudeville] Idle timeout — shutting down")
+                logger.info("Idle timeout — shutting down")
                 break
             try:
                 conn, _ = server_socket.accept()
@@ -205,7 +230,7 @@ class VaudevilleDaemon:
             conn.sendall(response)
             self._last_request = time.monotonic()
         except Exception as exc:
-            logger.error("[vaudeville] Client handler error: %s", exc)
+            logger.error("Client handler error: %s", exc)
         finally:
             conn.close()
 
@@ -222,7 +247,7 @@ class VaudevilleDaemon:
                 with self._rules_lock:
                     self._rules = new_rules
                 last_mtime = current
-                logger.info("[vaudeville] Rules reloaded (%d rules)", len(new_rules))
+                logger.info("Rules reloaded (%d rules)", len(new_rules))
 
     def _rules_mtime(self) -> float:
         return max(
@@ -237,6 +262,12 @@ class VaudevilleDaemon:
         )
 
     def _cleanup(self) -> None:
+        if self._pid_fd is not None:
+            try:
+                os.close(self._pid_fd)
+            except OSError:
+                pass
+            self._pid_fd = None
         for path in (self._socket_path, self._pid_file):
             try:
                 os.unlink(path)

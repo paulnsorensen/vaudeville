@@ -12,9 +12,13 @@ import logging
 import os
 import platform
 import sys
+import warnings
 from pathlib import Path
 
 from .inference import InferenceBackend
+
+# Suppress spurious "leaked semaphore" warnings from mlx_lm internals.
+warnings.filterwarnings("ignore", message=".*leaked semaphore.*", category=UserWarning)
 
 
 def detect_backend() -> str:
@@ -81,6 +85,16 @@ def main() -> None:
         "CLAUDE_PLUGIN_ROOT",
         str(Path(__file__).parent.parent.parent),
     )
+
+    # Acquire PID lock BEFORE loading the model (2.4GB) to prevent
+    # multiple processes from loading the model concurrently.
+    from .daemon import acquire_pid_lock
+
+    pid_fd = acquire_pid_lock(args.pid_file)
+    if pid_fd is None:
+        logging.info("Another instance holds PID lock — exiting")
+        return
+
     logging.info("Loading backend: %s model=%s", backend_name, args.model or "default")
     backend = _init_backend(backend_name, args.model)
     logging.info("Backend ready")
@@ -92,6 +106,7 @@ def main() -> None:
         pid_file=args.pid_file,
         plugin_root=plugin_root,
         backend=backend,
+        pid_fd=pid_fd,
     )
     daemon.serve()
 

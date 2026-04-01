@@ -14,7 +14,7 @@ from .protocol import ClassifyRequest, ClassifyResponse
 
 SOCKET_TEMPLATE = "/tmp/vaudeville-{session_id}.sock"
 CONNECT_TIMEOUT = 1.0  # Localhost socket connect is sub-ms; 1s is generous
-READ_TIMEOUT = 3.0  # Inference takes ~1-2s; 3s is sufficient
+READ_TIMEOUT = 8.0  # p95=2346ms observed; 8s fits inside all CC hook budgets
 RECV_CHUNK = 4096
 
 logger = logging.getLogger(__name__)

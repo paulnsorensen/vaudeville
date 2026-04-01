@@ -58,6 +58,16 @@ if [ -f "${PID_FILE}" ]; then
   rm -f "${PID_FILE}" "${SOCKET_PATH}"
 fi
 
+# Atomic spawn lock — mkdir is atomic on macOS and Linux.
+# Prevents thundering herd when multiple sessions start concurrently.
+SPAWN_LOCK="/tmp/vaudeville-${SESSION_ID}.spawn.lock"
+cleanup_spawn_lock() { rm -rf "${SPAWN_LOCK}" 2>/dev/null; }
+trap cleanup_spawn_lock EXIT
+if ! mkdir "${SPAWN_LOCK}" 2>/dev/null; then
+  echo "[vaudeville] Another session is spawning the daemon — skipping" >&2
+  exit 0
+fi
+
 # Spawn daemon with platform-appropriate backend and deps
 nohup uv run --project "${PLUGIN_ROOT}" --group "${DEP_GROUP}" \
   python -m vaudeville.server \

@@ -31,13 +31,20 @@ def query(sql):
         print("ERROR: duckdb not found on PATH", file=sys.stderr)
         sys.exit(1)
     if result.returncode != 0:
+        print(
+            f"WARNING: duckdb query failed (exit {result.returncode})",
+            file=sys.stderr,
+        )
+        if result.stderr:
+            print(f"  {result.stderr.strip()[:200]}", file=sys.stderr)
         return []
     raw = result.stdout.strip()
     if not raw or raw == "[{]":
         return []
     try:
         return json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"WARNING: Failed to parse DuckDB JSON output: {e}", file=sys.stderr)
         return []
 
 
@@ -243,9 +250,10 @@ def check_hook_failures(days, min_occ):
     """Detect hooks that frequently error."""
     error_rows = query(f"""
         SELECT
-            json_extract_string(unnest(hookErrors::JSON), '$') AS err,
+            json_extract_string(err_element, '$') AS err,
             count(*) AS cnt
-        FROM stop_hooks
+        FROM stop_hooks,
+             unnest(json_extract(hookErrors, '$[*]')) AS t(err_element)
         WHERE timestamp::DATE >= CURRENT_DATE - INTERVAL '{days}' DAY
           AND hookErrors IS NOT NULL
           AND json_array_length(hookErrors) > 0
@@ -314,21 +322,21 @@ def check_repeated_bash_patterns(days, min_occ):
     """Find frequently repeated bash commands that could be hooks."""
     rows = query(f"""
         SELECT
-            substr(bash_cmd, 1, 80) AS cmd,
+            bash_cmd AS cmd,
             count(*) AS uses
         FROM tool_uses
         WHERE tool_name = 'Bash'
           AND bash_cmd IS NOT NULL
           AND timestamp::DATE >= CURRENT_DATE - INTERVAL '{days}' DAY
           AND length(bash_cmd) > 20
-        GROUP BY cmd
+        GROUP BY bash_cmd
         HAVING count(*) >= {min_occ * 3}
         ORDER BY uses DESC
         LIMIT 10;
     """)
     if not rows:
         return None
-    cmds = [f"{r['cmd']} ({r['uses']}x)" for r in rows]
+    cmds = [f"{r['cmd'][:80]} ({r['uses']}x)" for r in rows]
     return {
         "id": "repeated-commands",
         "event": "SessionStart",

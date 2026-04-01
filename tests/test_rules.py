@@ -101,12 +101,27 @@ class TestEvaluateRule:
 
 
 class TestPrintResults:
-    def test_passes_at_90_percent(self) -> None:
-        r = EvalResults(rule="test-rule", tp=9, tn=9, fp=1, fn=1)
-        passed = print_results(r)
-        assert passed is True
+    def test_passes_high_precision_adequate_recall(self) -> None:
+        # precision=100%, recall=82.6%
+        r = EvalResults(rule="test-rule", tp=19, fp=0, tn=10, fn=4)
+        assert print_results(r) is True
 
-    def test_fails_below_90_percent(self) -> None:
-        r = EvalResults(rule="test-rule", tp=7, tn=7, fp=3, fn=3)
-        passed = print_results(r)
-        assert passed is False
+    def test_fails_low_precision(self) -> None:
+        # precision=80%, recall=80%
+        r = EvalResults(rule="test-rule", tp=8, fp=2, tn=8, fn=2)
+        assert print_results(r) is False
+
+    def test_fails_low_recall(self) -> None:
+        # precision=100%, recall=70%
+        r = EvalResults(rule="test-rule", tp=7, fp=0, tn=10, fn=3)
+        assert print_results(r) is False
+
+    def test_passes_at_exact_thresholds(self) -> None:
+        # precision=95% (20/21), recall=80% (20/25)
+        r = EvalResults(rule="test-rule", tp=20, fp=1, tn=10, fn=5)
+        assert print_results(r) is True
+
+    def test_fails_both_below(self) -> None:
+        # precision=75%, recall=60%
+        r = EvalResults(rule="test-rule", tp=6, fp=2, tn=8, fn=4)
+        assert print_results(r) is False

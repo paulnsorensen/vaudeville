@@ -63,6 +63,20 @@ class TestParseVerdict:
         result = parse_verdict("VERDICT: Violation\nREASON: test")
         assert result.verdict == "violation"
 
+    def test_strips_phi3_end_token(self) -> None:
+        result = parse_verdict("VERDICT: clean\nREASON: looks good<|end|>")
+        assert result.reason == "looks good"
+        assert "<|end|>" not in result.reason
+
+    def test_strips_multiple_special_tokens(self) -> None:
+        result = parse_verdict("VERDICT: clean\nREASON: text<|end|> more<|assistant|>")
+        assert "<|" not in result.reason
+        assert result.reason == "text more"
+
+    def test_strips_end_token_in_fallback(self) -> None:
+        result = parse_verdict("Everything is fine<|end|>")
+        assert "<|end|>" not in result.reason
+
 
 # --- ClassifyRequest ---
 

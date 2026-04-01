@@ -6,6 +6,7 @@ Hot-reloads rules on file change. Self-terminates after idle timeout.
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import logging
@@ -46,6 +47,30 @@ def _find_project_root() -> str | None:
     except (OSError, subprocess.TimeoutExpired):
         pass
     return None
+
+
+def acquire_pid_lock(pid_file: str) -> int | None:
+    """Acquire an exclusive flock on the PID file before loading the model.
+
+    Returns the open fd on success (caller must keep it open), or None if
+    another instance already holds the lock or the PID file cannot be prepared.
+    """
+    pid_fd: int | None = None
+    try:
+        pid_fd = os.open(pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
+        fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.ftruncate(pid_fd, 0)
+        os.write(pid_fd, f"{os.getpid()}\n".encode())
+        return pid_fd
+    except OSError as exc:
+        if pid_fd is not None:
+            try:
+                os.close(pid_fd)
+            except OSError:
+                pass
+        if exc.errno not in (errno.EWOULDBLOCK, errno.EACCES):
+            logger.error("Failed to acquire PID lock file %r: %s", pid_file, exc)
+        return None
 
 
 def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
@@ -89,13 +114,18 @@ def handle_request(
         elapsed_ms = (time.monotonic() - t0) * 1000
         response = parse_verdict(result.text)
         confidence = compute_confidence(result.logprobs, response.verdict)
-        logger.debug(
-            "rule=%s verdict=%s confidence=%.3f reason=%r (%.0fms)",
+        safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:100]
+        logger.info(
+            "CLASSIFY rule=%s verdict=%s confidence=%.3f action=%s"
+            " latency_ms=%.0f text_chars=%d prompt_chars=%d reason=%s",
             rule_name,
             response.verdict,
             confidence,
-            response.reason,
+            rule.action,
             elapsed_ms,
+            len(text),
+            len(prompt),
+            safe_reason,
         )
 
         verdict = response.verdict
@@ -147,9 +177,7 @@ def _read_message(conn: socket.socket) -> bytes:
         if b"\n" in buf:
             return bytes(buf.split(b"\n", 1)[0])
         if len(buf) > MAX_REQUEST_SIZE:
-            logger.warning(
-                "[vaudeville] Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE
-            )
+            logger.warning("Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE)
             return b""
     return bytes(buf)
 
@@ -175,6 +203,7 @@ class VaudevilleDaemon:
         plugin_root: str,
         backend: InferenceBackend,
         version_file: str = VERSION_FILE,
+        pid_fd: int | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._pid_file = pid_file
@@ -188,7 +217,7 @@ class VaudevilleDaemon:
         self._last_request = time.monotonic()
         self._stop_event = threading.Event()
         self._reload_event = threading.Event()
-        self._pid_fd: int | None = None
+        self._pid_fd: int | None = pid_fd
 
     def _install_signal_handlers(self) -> None:
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -212,16 +241,13 @@ class VaudevilleDaemon:
             self._rules = load_rules_layered(self._plugin_root, self._project_root)
         logger.info("Loaded %d rules", len(self._rules))
 
-        pid_fd = os.open(self._pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
-        try:
-            fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            os.close(pid_fd)
-            logger.info("Another instance holds PID lock — exiting")
-            return
-        os.ftruncate(pid_fd, 0)
-        os.write(pid_fd, f"{os.getpid()}\n".encode())
-        self._pid_fd = pid_fd
+        # Acquire PID lock if not pre-acquired by __main__
+        if self._pid_fd is None:
+            pid_fd = acquire_pid_lock(self._pid_file)
+            if pid_fd is None:
+                logger.info("Another instance holds PID lock — exiting")
+                return
+            self._pid_fd = pid_fd
 
         self._write_version_stamp()
 

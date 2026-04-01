@@ -6,7 +6,10 @@ Stdlib-only — safe to import in hook scripts.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
+
+_SPECIAL_TOKEN_RE = re.compile(r"<\|[a-z_]+\|>")
 
 
 @dataclass
@@ -64,6 +67,7 @@ def parse_verdict(raw: str) -> ClassifyResponse:
         verdict = "violation" if "violation" in raw.lower() else "clean"
         reason = raw.strip()[:200]
 
+    reason = _SPECIAL_TOKEN_RE.sub("", reason).strip()
     return ClassifyResponse(verdict=verdict, reason=reason)
 
 

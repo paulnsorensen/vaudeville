@@ -538,6 +538,45 @@ class TestDetectBackend:
                 detect_backend()
 
 
+class TestAcquirePidLock:
+    def test_acquires_and_writes_pid(self, tmp_path: str) -> None:
+        import os
+        from pathlib import Path
+        from vaudeville.server.daemon import acquire_pid_lock
+
+        pid_file = str(Path(tmp_path) / "test.pid")
+        fd = acquire_pid_lock(pid_file)
+        assert fd is not None
+        content = Path(pid_file).read_text()
+        assert str(os.getpid()) in content
+        os.close(fd)
+
+    def test_second_caller_gets_none(self, tmp_path: str) -> None:
+        import os
+        from pathlib import Path
+        from vaudeville.server.daemon import acquire_pid_lock
+
+        pid_file = str(Path(tmp_path) / "test.pid")
+        fd1 = acquire_pid_lock(pid_file)
+        assert fd1 is not None
+        fd2 = acquire_pid_lock(pid_file)
+        assert fd2 is None
+        os.close(fd1)
+
+    def test_lock_released_after_close(self, tmp_path: str) -> None:
+        import os
+        from pathlib import Path
+        from vaudeville.server.daemon import acquire_pid_lock
+
+        pid_file = str(Path(tmp_path) / "test.pid")
+        fd1 = acquire_pid_lock(pid_file)
+        assert fd1 is not None
+        os.close(fd1)
+        fd2 = acquire_pid_lock(pid_file)
+        assert fd2 is not None
+        os.close(fd2)
+
+
 @pytest.mark.skipif(
     platform.system() != "Darwin" or platform.machine() != "arm64",
     reason="MLX only available on Apple Silicon",

@@ -10,6 +10,7 @@ import glob
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 def _find_log_files() -> list[str]:
@@ -19,7 +20,7 @@ def _find_log_files() -> list[str]:
         session_id = log_path.removeprefix("/tmp/vaudeville-").removesuffix(".log")
         pid_file = f"/tmp/vaudeville-{session_id}.pid"
         try:
-            pid = int(open(pid_file).read().strip())
+            pid = int(Path(pid_file).read_text().strip())
             os.kill(pid, 0)  # check if alive
             logs.append(log_path)
         except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
@@ -39,7 +40,13 @@ def cmd_tail(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    if len(logs) > 1 and not args.all:
+    if args.session:
+        target = f"/tmp/vaudeville-{args.session}.log"
+        if not os.path.exists(target):
+            print(f"[vaudeville] Log not found: {target}", file=sys.stderr)
+            sys.exit(1)
+        logs = [target]
+    elif len(logs) > 1 and not args.all:
         print(f"[vaudeville] {len(logs)} active sessions found:", file=sys.stderr)
         for log in logs:
             print(f"  {log}", file=sys.stderr)
@@ -48,13 +55,6 @@ def cmd_tail(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         sys.exit(1)
-
-    if args.session:
-        target = f"/tmp/vaudeville-{args.session}.log"
-        if not os.path.exists(target):
-            print(f"[vaudeville] Log not found: {target}", file=sys.stderr)
-            sys.exit(1)
-        logs = [target]
 
     try:
         subprocess.run(["tail", "-f"] + logs)
@@ -70,10 +70,11 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command")
 
     tail_parser = sub.add_parser("tail", help="Tail active daemon logs")
-    tail_parser.add_argument(
+    session_group = tail_parser.add_mutually_exclusive_group()
+    session_group.add_argument(
         "--all", action="store_true", help="Tail all active sessions"
     )
-    tail_parser.add_argument("--session", help="Tail a specific session ID")
+    session_group.add_argument("--session", help="Tail a specific session ID")
 
     args = parser.parse_args()
     if args.command is None:

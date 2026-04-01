@@ -373,7 +373,9 @@ class TestDaemonExtras:
         from vaudeville.server.daemon import _find_project_root
 
         result = _find_project_root()
-        assert result is not None or result is None  # either is valid
+        # Running inside a git repo — should return the project root
+        assert result is not None
+        assert os.path.isdir(result)
 
     def test_find_project_root_oserror(self) -> None:
 

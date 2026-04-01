@@ -78,7 +78,7 @@ def extract_field(data: dict, dotted_path: str) -> str:
         current = current.get(key)
         if current is None:
             return ""
-    return str(current) if current else ""
+    return "" if current is None else str(current)
 
 
 def extract_text(hook_input: dict, rule: dict) -> str:

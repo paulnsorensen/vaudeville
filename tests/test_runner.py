@@ -74,6 +74,15 @@ class TestExtractField:
     def test_integer_value_converted_to_str(self) -> None:
         assert runner.extract_field({"num": 42}, "num") == "42"
 
+    def test_zero_value_preserved(self) -> None:
+        assert runner.extract_field({"num": 0}, "num") == "0"
+
+    def test_false_value_preserved(self) -> None:
+        assert runner.extract_field({"flag": False}, "flag") == "False"
+
+    def test_empty_string_preserved(self) -> None:
+        assert runner.extract_field({"val": ""}, "val") == ""
+
 
 class TestExtractText:
     def test_field_context_dict(self) -> None:

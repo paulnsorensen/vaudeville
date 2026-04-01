@@ -230,7 +230,7 @@ class TestRunEvaluations:
         out = capsys.readouterr().out
         assert "WARNING" in out
 
-    def test_passes_when_all_rules_pass(self, rules: dict) -> None:
+    def test_fails_when_no_positive_cases(self, rules: dict) -> None:
         import argparse
 
         args = argparse.Namespace(cross_validate=False)
@@ -238,16 +238,21 @@ class TestRunEvaluations:
         backend = MockBackend(verdict="clean")
         test_suites = {"violation-detector": cases}
         passed = _run_evaluations(args, rules, test_suites, backend)
-        assert isinstance(passed, bool)
+        assert (
+            passed is False
+        )  # only TN, no TP → precision/recall = 0% → fails threshold
 
-    def test_cross_validate_flag_used(self, rules: dict) -> None:
+    def test_cross_validate_flag_routes_to_cross_validate(self, rules: dict) -> None:
         import argparse
 
         args = argparse.Namespace(cross_validate=True)
         cases = [EvalCase("text", "clean")]
         backend = MockBackend(verdict="clean")
         test_suites = {"violation-detector": cases}
-        _run_evaluations(args, rules, test_suites, backend)
+        with patch("vaudeville.eval.cross_validate_rule") as mock_cv:
+            mock_cv.return_value = EvalResults(rule="violation-detector", tp=1)
+            _run_evaluations(args, rules, test_suites, backend)
+        mock_cv.assert_called_once()
 
 
 class TestMain:
@@ -288,7 +293,9 @@ class TestMain:
                 from vaudeville.eval import main
 
                 main()
-        assert exc_info.value.code in (0, 1)
+        assert (
+            exc_info.value.code == 1
+        )  # clean backend + clean case → 0 TP → fails threshold
 
     def test_exits_1_when_no_suite_for_specified_rule(self) -> None:
         mock_mlx_cls = MagicMock(return_value=MockBackend())

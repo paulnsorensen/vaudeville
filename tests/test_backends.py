@@ -79,10 +79,29 @@ class TestMLXBackend:
         mock_generate = MagicMock(return_value=output)
         return mock_model, mock_tokenizer, mock_load, mock_generate
 
+    def _mlx_modules(
+        self, mock_load: MagicMock, mock_generate: MagicMock
+    ) -> dict[str, MagicMock]:
+        """Build sys.modules dict that satisfies both mlx_lm and mlx_lm.generate imports."""
+        mock_generate_step = MagicMock()
+        mock_generate_mod = MagicMock(generate_step=mock_generate_step)
+        mock_mlx = MagicMock(
+            load=mock_load,
+            stream_generate=mock_generate,
+            generate=mock_generate_mod,
+        )
+        return {
+            "mlx_lm": mock_mlx,
+            "mlx_lm.generate": mock_generate_mod,
+        }
+
     def test_classify_returns_generated_text(self) -> None:
         _, _, mock_load, mock_generate = self._make_mocks("VERDICT: clean")
-        mock_mlx = MagicMock(load=mock_load, generate=mock_generate)
-        with patch.dict("sys.modules", {"mlx_lm": mock_mlx}):
+        # stream_generate returns an iterable of response objects
+        response_obj = MagicMock(text="VERDICT: clean", finish_reason="stop")
+        mock_stream = MagicMock(return_value=iter([response_obj]))
+        modules = self._mlx_modules(mock_load, mock_stream)
+        with patch.dict("sys.modules", modules):
             from vaudeville.server.mlx_backend import MLXBackend
 
             backend = MLXBackend("test-model")
@@ -90,10 +109,12 @@ class TestMLXBackend:
         assert result == "VERDICT: clean"
 
     def test_apply_chat_template_with_tokenizer_method(self) -> None:
-        _, mock_tokenizer, mock_load, mock_generate = self._make_mocks()
+        _, mock_tokenizer, mock_load, _ = self._make_mocks()
         mock_tokenizer.apply_chat_template.return_value = "<formatted>"
-        mock_mlx = MagicMock(load=mock_load, generate=mock_generate)
-        with patch.dict("sys.modules", {"mlx_lm": mock_mlx}):
+        response_obj = MagicMock(text="VERDICT: clean", finish_reason="stop")
+        mock_stream = MagicMock(return_value=iter([response_obj]))
+        modules = self._mlx_modules(mock_load, mock_stream)
+        with patch.dict("sys.modules", modules):
             from vaudeville.server.mlx_backend import MLXBackend
 
             backend = MLXBackend()
@@ -101,10 +122,10 @@ class TestMLXBackend:
         mock_tokenizer.apply_chat_template.assert_called_once()
 
     def test_apply_chat_template_fallback_when_no_method(self) -> None:
-        _, mock_tokenizer, mock_load, mock_generate = self._make_mocks()
+        _, mock_tokenizer, mock_load, _ = self._make_mocks()
         del mock_tokenizer.apply_chat_template  # remove method so hasattr returns False
-        mock_mlx = MagicMock(load=mock_load, generate=mock_generate)
-        with patch.dict("sys.modules", {"mlx_lm": mock_mlx}):
+        modules = self._mlx_modules(mock_load, MagicMock())
+        with patch.dict("sys.modules", modules):
             from vaudeville.server.mlx_backend import MLXBackend
 
             backend = MLXBackend()
@@ -343,9 +364,9 @@ class TestClientSocket:
 
         from vaudeville.core.client import VaudevilleClient
 
-        # patch SOCKET_TEMPLATE so client uses our socket
-        with patch("vaudeville.core.client.SOCKET_TEMPLATE", sock_path):
-            client = VaudevilleClient("ignored")
+        # patch SOCKET_PATH so client uses our test socket
+        with patch("vaudeville.core.client.SOCKET_PATH", sock_path):
+            client = VaudevilleClient()
             result = client.classify("test-rule", {"text": "hello"})
 
         server_done.wait(timeout=3.0)

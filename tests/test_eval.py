@@ -146,7 +146,7 @@ class TestEvaluateRule:
 
     def test_aggregates_results(self, rules: dict, two_cases: list[EvalCase]) -> None:
         backend = MockBackend(verdict="violation")
-        results = evaluate_rule("violation-detector", two_cases, rules, backend)
+        results, _ = evaluate_rule("violation-detector", two_cases, rules, backend)
         assert results.total == 2
 
 

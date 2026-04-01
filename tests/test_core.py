@@ -202,6 +202,7 @@ class TestFailOpen:
                     sys.path.remove(hooks_dir)
 
 
+
 # --- Rule context resolution ---
 
 

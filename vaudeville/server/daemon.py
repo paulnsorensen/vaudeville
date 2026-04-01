@@ -6,6 +6,7 @@ Hot-reloads rules on file change. Self-terminates after idle timeout.
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import logging
@@ -52,17 +53,24 @@ def acquire_pid_lock(pid_file: str) -> int | None:
     """Acquire an exclusive flock on the PID file before loading the model.
 
     Returns the open fd on success (caller must keep it open), or None if
-    another instance already holds the lock.
+    another instance already holds the lock or the PID file cannot be prepared.
     """
-    pid_fd = os.open(pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
+    pid_fd: int | None = None
     try:
+        pid_fd = os.open(pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
         fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        os.close(pid_fd)
+        os.ftruncate(pid_fd, 0)
+        os.write(pid_fd, f"{os.getpid()}\n".encode())
+        return pid_fd
+    except OSError as exc:
+        if pid_fd is not None:
+            try:
+                os.close(pid_fd)
+            except OSError:
+                pass
+        if exc.errno not in (errno.EWOULDBLOCK, errno.EACCES):
+            logger.error("Failed to acquire PID lock file %r: %s", pid_file, exc)
         return None
-    os.ftruncate(pid_fd, 0)
-    os.write(pid_fd, f"{os.getpid()}\n".encode())
-    return pid_fd
 
 
 def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:

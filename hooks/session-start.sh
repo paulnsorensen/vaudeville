@@ -91,13 +91,16 @@ fi
 
 # Atomic spawn lock — mkdir is atomic on macOS and Linux.
 # Prevents thundering herd when multiple sessions start concurrently.
+# Install the cleanup trap ONLY after we successfully create the lock,
+# so that a failed mkdir (another process holds the lock) does not
+# remove the other process's lock directory on exit.
 SPAWN_LOCK="${RUNTIME_DIR}/spawn.lock"
-cleanup_spawn_lock() { rm -rf "${SPAWN_LOCK}" 2>/dev/null; }
-trap cleanup_spawn_lock EXIT
 if ! mkdir "${SPAWN_LOCK}" 2>/dev/null; then
   echo "[vaudeville] Another session is spawning the daemon — skipping" >&2
   exit 0
 fi
+cleanup_spawn_lock() { rm -rf "${SPAWN_LOCK}" 2>/dev/null; }
+trap cleanup_spawn_lock EXIT
 
 # Spawn daemon with platform-appropriate backend and deps
 nohup uv run --project "${PLUGIN_ROOT}" --group "${DEP_GROUP}" \

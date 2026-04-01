@@ -62,9 +62,7 @@ class TestFindLogFiles:
 
 
 class TestCmdTail:
-    def _make_args(
-        self, session: str | None = None, all: bool = False
-    ) -> Namespace:
+    def _make_args(self, session: str | None = None, all: bool = False) -> Namespace:
         return Namespace(session=session, all=all)
 
     def test_no_active_daemons_exits(self) -> None:
@@ -84,9 +82,7 @@ class TestCmdTail:
 
                 cmd_tail(self._make_args())
 
-        mock_run.assert_called_once_with(
-            ["tail", "-f", "/tmp/vaudeville-abc.log"]
-        )
+        mock_run.assert_called_once_with(["tail", "-f", "/tmp/vaudeville-abc.log"])
 
     def test_multiple_sessions_without_all_exits(self) -> None:
         logs = ["/tmp/vaudeville-a.log", "/tmp/vaudeville-b.log"]
@@ -110,16 +106,12 @@ class TestCmdTail:
         logs = ["/tmp/vaudeville-a.log", "/tmp/vaudeville-b.log"]
         with patch("vaudeville.__main__._find_log_files", return_value=logs):
             with patch("vaudeville.__main__.os.path.exists", return_value=True):
-                with patch(
-                    "vaudeville.__main__.subprocess.run"
-                ) as mock_run:
+                with patch("vaudeville.__main__.subprocess.run") as mock_run:
                     from vaudeville.__main__ import cmd_tail
 
                     cmd_tail(self._make_args(session="b"))
 
-        mock_run.assert_called_once_with(
-            ["tail", "-f", "/tmp/vaudeville-b.log"]
-        )
+        mock_run.assert_called_once_with(["tail", "-f", "/tmp/vaudeville-b.log"])
 
     def test_session_flag_missing_log_exits(self) -> None:
         with patch(

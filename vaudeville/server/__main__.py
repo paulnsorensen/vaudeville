@@ -1,8 +1,8 @@
 """Entry point for the vaudeville daemon.
 
-Usage: uv run python -m vaudeville.server \\
-    --socket /tmp/vaudeville-{session_id}.sock \\
-    --pid-file /tmp/vaudeville-{session_id}.pid
+Usage: uv run python -m vaudeville.server [--socket PATH] [--pid-file PATH]
+
+Defaults to per-UID runtime directory (singleton daemon).
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import sys
 import warnings
 from pathlib import Path
 
+from ..core.paths import PID_FILE, SOCKET_PATH
 from .inference import InferenceBackend
 
 # Suppress spurious "leaked semaphore" warnings from mlx_lm internals.
@@ -58,8 +59,8 @@ def _init_backend(backend_name: str, model: str | None) -> InferenceBackend:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Vaudeville inference daemon")
-    parser.add_argument("--socket", required=True, help="Unix socket path")
-    parser.add_argument("--pid-file", required=True, help="PID file path")
+    parser.add_argument("--socket", default=SOCKET_PATH, help="Unix socket path")
+    parser.add_argument("--pid-file", default=PID_FILE, help="PID file path")
     parser.add_argument(
         "--backend",
         default="auto",
@@ -73,8 +74,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    log_level = (
+        logging.DEBUG if os.environ.get("VAUDEVILLE_DEBUG") == "1" else logging.INFO
+    )
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s [vaudeville] %(message)s",
         stream=sys.stderr,
     )

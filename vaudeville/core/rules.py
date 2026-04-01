@@ -20,6 +20,31 @@ from typing import Any
 import yaml
 
 
+MAX_INPUT_TOKENS = 1500
+CHARS_PER_TOKEN = 4  # conservative English approximation
+
+
+def _sanitize_input(text: str) -> str:
+    """Neutralize verdict/reason markers that could spoof parse_verdict().
+
+    parse_verdict() matches case-insensitively, so sanitization must too.
+    Zero-width space breaks the pattern match without altering visible text.
+    """
+    import re
+
+    text = re.sub(r"(?i)VERDICT\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
+    text = re.sub(r"(?i)REASON\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
+    return text
+
+
+def back_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
+    """Keep the last max_tokens tokens (approx). Violations cluster at the end."""
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
 def _resolve_field(data: dict[str, object], path: str) -> object:
     """Resolve a dot-notation path like 'tool_input.body' from a nested dict."""
     current: object = data
@@ -59,9 +84,14 @@ class Rule:
     context: list[dict[str, str]]
     action: str
     message: str
+    threshold: float = 0.0
 
     def format_prompt(self, text: str, context: str = "") -> str:
-        return self.prompt.replace("{text}", text).replace("{context}", context)
+        safe_text = _sanitize_input(back_truncate(text))
+        safe_context = _sanitize_input(context) if context else ""
+        return self.prompt.replace("{text}", safe_text).replace(
+            "{context}", safe_context
+        )
 
     def resolve_context(
         self,
@@ -148,4 +178,5 @@ def _parse_rule(data: dict[str, Any]) -> Rule:
         context=[c for c in data.get("context", []) if isinstance(c, dict)],
         action=str(data.get("action", "block")),
         message=str(data.get("message", "{reason}")),
+        threshold=float(data.get("threshold", 0.0)),
     )

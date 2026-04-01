@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Generic hook runner — evaluates rules by name against hook input.
+"""Generic hook runner — evaluates rules against hook input.
 
-Usage: python3 runner.py <rule-name> [rule-name ...]
+Usage:
+  python3 runner.py --event Stop          # auto-discover rules for event
+  python3 runner.py <rule-name> [...]     # explicit rule names (legacy)
 
-Reads Claude Code hook JSON from stdin, extracts text per each rule's
-`context.field` dotted path, classifies via daemon socket, and returns
-the first blocking verdict (or passes if all clean).
+Reads Claude Code hook JSON from stdin, loads rules (layered: bundled ->
+~/.vaudeville/rules/ -> project/.vaudeville/rules/), classifies via daemon
+socket, and returns the first blocking verdict (or passes if all clean).
 
 Fails open: if daemon is unavailable or input is missing, allows the hook.
 """
@@ -16,6 +18,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
@@ -26,13 +30,19 @@ if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
 try:
-    from vaudeville.core.client import SOCKET_TEMPLATE, VaudevilleClient  # noqa: E402
+    from vaudeville.core.client import VaudevilleClient  # noqa: E402
 except ImportError as _exc:
     print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
     print("{}")
     sys.exit(0)
 
 MIN_TEXT_LENGTH = 100
+_DEBUG = os.environ.get("VAUDEVILLE_DEBUG", "") == "1"
+
+
+def _dbg(msg: str, *args: object) -> None:
+    if _DEBUG:
+        print(f"[vaudeville:debug] {msg % args if args else msg}", file=sys.stderr)
 
 
 def _find_project_root() -> str | None:
@@ -132,47 +142,154 @@ def main() -> None:
         sys.exit(0)
 
 
+def _load_rules_for_event(event: str) -> list:
+    """Auto-discover all rules matching an event via layered resolution."""
+    from vaudeville.core.rules import load_rules_layered  # noqa: E402
+
+    project_root = _find_project_root()
+    all_rules = load_rules_layered(PLUGIN_ROOT, project_root)
+    matching = [r for r in all_rules.values() if r.event == event]
+    return sorted(matching, key=lambda r: r.name)
+
+
 def _run() -> None:
-    rule_names = sys.argv[1:]
-    if not rule_names:
-        print("[vaudeville] runner: no rules specified", file=sys.stderr)
+    args = sys.argv[1:]
+
+    # Parse --event flag for auto-discovery mode
+    event = None
+    rule_names: list[str] = []
+    if len(args) >= 2 and args[0] == "--event":
+        event = args[1]
+    else:
+        rule_names = args
+
+    if not event and not rule_names:
+        print("[vaudeville] runner: no rules or --event specified", file=sys.stderr)
         print("{}")
         sys.exit(0)
+
+    _dbg("hook fired — rules: %s", rule_names)
 
     try:
         hook_input = json.load(sys.stdin)
     except (json.JSONDecodeError, EOFError):
+        _dbg("no valid JSON on stdin — pass")
         print("{}")
         sys.exit(0)
 
-    session_id = hook_input.get("session_id", "unknown")
+    hook_type = hook_input.get("hook_type", "?")
+    _dbg("hook=%s", hook_type)
 
-    # Fast path: if daemon socket doesn't exist, skip (~μs vs timeout)
-    socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
-    if not os.path.exists(socket_path):
-        print("{}")
-        sys.exit(0)
+    client = VaudevilleClient()
 
-    client = VaudevilleClient(session_id)
+    if event:
+        _run_event_rules(event, hook_input, client)
+    else:
+        _run_named_rules(rule_names, hook_input, client)
 
-    for name in rule_names:
-        rule = load_rule(name)
-        if rule is None:
-            continue
 
-        text = extract_text(hook_input, rule)
+def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> None:
+    """Evaluate all rules matching the given event."""
+    rules = _load_rules_for_event(event)
+    for rule in rules:
+        text = extract_text(hook_input, {"context": rule.context})
         if not text or len(text) < MIN_TEXT_LENGTH:
             continue
 
-        result = client.classify(name, {"text": text})
+        result = client.classify(rule.name, {"text": text})
         if result is None:
             continue
 
         if result.verdict == "violation":
-            response = verdict_to_hook_response(rule, result.reason, result.action)
+            response = verdict_to_hook_response(
+                {"name": rule.name, "message": rule.message},
+                result.reason,
+                result.action,
+            )
             print(json.dumps(response))
             sys.exit(0)
 
+    print("{}")
+    sys.exit(0)
+
+
+def _run_named_rules(
+    rule_names: list[str], hook_input: dict, client: VaudevilleClient
+) -> None:
+    """Evaluate explicitly named rules (legacy mode)."""
+    # Build classify tasks for all valid rules
+    tasks: list[tuple[str, dict]] = []
+    for name in rule_names:
+        rule = load_rule(name)
+        if rule is None:
+            continue
+        text = extract_text(hook_input, rule)
+        if not text or len(text) < MIN_TEXT_LENGTH:
+            _dbg("%s: text too short (%d chars) — skip", name, len(text) if text else 0)
+            continue
+        tasks.append((name, rule))
+
+    if not tasks:
+        print("{}")
+        sys.exit(0)
+
+    # Single rule: no threading overhead
+    if len(tasks) == 1:
+        name, rule = tasks[0]
+        text = extract_text(hook_input, rule)
+        _dbg("%s: classifying %d chars...", name, len(text))
+        t0 = time.monotonic()
+        result = client.classify(name, {"text": text})
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        if result and result.verdict == "violation":
+            _dbg(
+                "%s: verdict=%s action=%s (%.0fms) reason=%r",
+                name,
+                result.verdict,
+                result.action,
+                elapsed_ms,
+                result.reason,
+            )
+            print(
+                json.dumps(verdict_to_hook_response(rule, result.reason, result.action))
+            )
+            sys.exit(0)
+        _dbg("%s: clean (%.0fms)", name, elapsed_ms)
+        print("{}")
+        sys.exit(0)
+
+    # Multiple rules: dispatch concurrently, first violation wins
+    def _classify(name: str, rule: dict) -> tuple[dict, str, str] | None:
+        text = extract_text(hook_input, rule)
+        _dbg("%s: classifying %d chars...", name, len(text))
+        t0 = time.monotonic()
+        result = client.classify(name, {"text": text})
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        if result and result.verdict == "violation":
+            _dbg(
+                "%s: verdict=%s action=%s (%.0fms) reason=%r",
+                name,
+                result.verdict,
+                result.action,
+                elapsed_ms,
+                result.reason,
+            )
+            return (rule, result.reason, result.action)
+        _dbg("%s: clean (%.0fms)", name, elapsed_ms)
+        return None
+
+    pool = ThreadPoolExecutor(max_workers=len(tasks))
+    futures = {pool.submit(_classify, n, r): n for n, r in tasks}
+    for future in as_completed(futures):
+        hit = future.result()
+        if hit:
+            rule, reason, action = hit
+            print(json.dumps(verdict_to_hook_response(rule, reason, action)))
+            pool.shutdown(wait=False, cancel_futures=True)
+            sys.exit(0)
+    pool.shutdown(wait=False, cancel_futures=True)
+
+    _dbg("all rules clean — pass")
     print("{}")
     sys.exit(0)
 

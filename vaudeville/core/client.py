@@ -10,9 +10,9 @@ import logging
 import os
 import socket
 
+from .paths import SOCKET_PATH
 from .protocol import ClassifyRequest, ClassifyResponse
 
-SOCKET_TEMPLATE = "/tmp/vaudeville-{session_id}.sock"
 CONNECT_TIMEOUT = 1.0  # Localhost socket connect is sub-ms; 1s is generous
 READ_TIMEOUT = 8.0  # p95=2346ms observed; 8s fits inside all CC hook budgets
 RECV_CHUNK = 4096
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 class VaudevilleClient:
-    def __init__(self, session_id: str) -> None:
-        self._socket_path = SOCKET_TEMPLATE.format(session_id=session_id)
+    def __init__(self) -> None:
+        self._socket_path = SOCKET_PATH
 
     def classify(
         self, rule: str, input_data: dict[str, object]
@@ -64,4 +64,5 @@ class VaudevilleClient:
             verdict=response.get("verdict", "clean"),
             reason=response.get("reason", ""),
             action=response.get("action", "block"),
+            confidence=float(response.get("confidence", 1.0)),
         )

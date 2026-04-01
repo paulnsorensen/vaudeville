@@ -16,9 +16,10 @@ from dataclasses import dataclass
 
 import yaml
 
-from .core.protocol import parse_verdict
+from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from .core.rules import Rule, load_rules_layered
 from .server import InferenceBackend
+from .server.inference import LogprobBackend
 
 
 def _find_project_root() -> str | None:
@@ -46,6 +47,14 @@ class EvalCase:
 
 
 @dataclass
+class CaseResult:
+    text: str
+    label: str
+    predicted: str
+    confidence: float
+
+
+@dataclass
 class EvalResults:
     rule: str
     tp: int = 0
@@ -53,10 +62,13 @@ class EvalResults:
     tn: int = 0
     fn: int = 0
     misclassified: list[dict[str, str]] | None = None
+    confidences: list[float] | None = None
 
     def __post_init__(self) -> None:
         if self.misclassified is None:
             self.misclassified = []
+        if self.confidences is None:
+            self.confidences = []
 
     @property
     def total(self) -> int:
@@ -115,19 +127,31 @@ def _load_test_file(path: str) -> tuple[list[EvalCase], str]:
     return cases, rule_name
 
 
+def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
+    """Run inference with logprobs, falling back to plain classify."""
+    if isinstance(backend, LogprobBackend):
+        return backend.classify_with_logprobs(prompt, max_tokens=50)
+    text = backend.classify(prompt, max_tokens=50)
+    return ClassifyResult(text=text)
+
+
 def _classify_case(
     case: EvalCase,
     rule: Rule,
     backend: InferenceBackend,
     results: EvalResults,
-) -> str:
-    """Classify a single case and update results. Returns predicted label."""
+) -> CaseResult:
+    """Classify a single case and update results. Returns CaseResult."""
     prompt = rule.format_prompt(case.text)
-    raw = backend.classify(prompt, max_tokens=50)
-    response = parse_verdict(raw)
+    result = _run_inference(backend, prompt)
+    response = parse_verdict(result.text)
     predicted = response.verdict
+    confidence = compute_confidence(result.logprobs, predicted)
 
     assert results.misclassified is not None
+    assert results.confidences is not None
+    results.confidences.append(confidence)
+
     if case.label == "violation" and predicted == "violation":
         results.tp += 1
     elif case.label == "clean" and predicted == "clean":
@@ -151,7 +175,12 @@ def _classify_case(
             }
         )
 
-    return predicted
+    return CaseResult(
+        text=case.text,
+        label=case.label,
+        predicted=predicted,
+        confidence=confidence,
+    )
 
 
 def evaluate_rule(
@@ -159,15 +188,16 @@ def evaluate_rule(
     cases: list[EvalCase],
     rules: dict[str, Rule],
     backend: InferenceBackend,
-) -> EvalResults:
+) -> tuple[EvalResults, list[CaseResult]]:
     rule = rules.get(rule_name)
     if not isinstance(rule, Rule):
         raise ValueError(f"Rule not found: {rule_name}")
 
     results = EvalResults(rule=rule_name, misclassified=[])
+    case_results: list[CaseResult] = []
     for case in cases:
-        _classify_case(case, rule, backend, results)
-    return results
+        case_results.append(_classify_case(case, rule, backend, results))
+    return results, case_results
 
 
 def cross_validate_rule(
@@ -186,21 +216,24 @@ def cross_validate_rule(
 
     for i, case in enumerate(cases):
         fold = EvalResults(rule=rule_name, misclassified=[])
-        predicted = _classify_case(case, rule, backend, fold)
+        case_result = _classify_case(case, rule, backend, fold)
 
         aggregate.tp += fold.tp
         aggregate.fp += fold.fp
         aggregate.tn += fold.tn
         aggregate.fn += fold.fn
         assert aggregate.misclassified is not None
+        assert aggregate.confidences is not None
         assert fold.misclassified is not None
+        assert fold.confidences is not None
         aggregate.misclassified.extend(fold.misclassified)
+        aggregate.confidences.extend(fold.confidences)
 
-        status = "OK" if predicted == case.label else "FAIL"
-        acc = "100%" if predicted == case.label else "0%"
+        status = "OK" if case_result.predicted == case.label else "FAIL"
+        acc = "100%" if case_result.predicted == case.label else "0%"
         print(
             f"  Fold {i + 1}/{n} [{status}] acc={acc}"
-            f" expected={case.label} got={predicted}: {case.text[:50]}"
+            f" expected={case.label} got={case_result.predicted}: {case.text[:50]}"
         )
 
     return aggregate
@@ -226,6 +259,13 @@ def print_results(results: EvalResults) -> bool:
     print(f"Recall:    {rec_pct:.1f}% (>= 80%){_marker(rec_ok)}")
     print(f"F1:        {results.f1 * 100:.1f}%")
     print(f"Confusion: TP={results.tp} FP={results.fp} TN={results.tn} FN={results.fn}")
+
+    if results.confidences:
+        confs = results.confidences
+        print(
+            f"Confidence: mean={sum(confs) / len(confs):.3f}"
+            f" min={min(confs):.3f} max={max(confs):.3f}"
+        )
 
     if results.misclassified:
         print("\nMisclassifications:")
@@ -262,10 +302,54 @@ def _run_evaluations(
             print(f"  Leave-one-out cross-validation ({len(cases)} folds):")
             results = cross_validate_rule(rule_name, cases, rules, backend)
         else:
-            results = evaluate_rule(rule_name, cases, rules, backend)
+            results, _ = evaluate_rule(rule_name, cases, rules, backend)
         if not print_results(results):
             overall_pass = False
     return overall_pass
+
+
+def _threshold_sweep(
+    test_suites: dict[str, list[EvalCase]],
+    rules: dict[str, Rule],
+    backend: InferenceBackend,
+) -> None:
+    """Sweep thresholds and print confusion matrix per threshold."""
+    for rule_name, cases in sorted(test_suites.items()):
+        if rule_name not in rules:
+            continue
+        _, case_results = evaluate_rule(rule_name, cases, rules, backend)
+        print(f"\n--- Threshold sweep: {rule_name} ---")
+        print(f"{'Thresh':>7} {'Acc':>6} {'Prec':>6} {'Rec':>6} {'F1':>6}")
+        best_f1 = 0.0
+        best_thresh = 0.0
+        step = 5
+        for pct in range(30, 95, step):
+            thresh = pct / 100.0
+            r = EvalResults(rule=rule_name)
+            for cr in case_results:
+                predicted = cr.predicted
+                if predicted == "violation" and cr.confidence < thresh:
+                    predicted = "clean"
+                if cr.label == "violation" and predicted == "violation":
+                    r.tp += 1
+                elif cr.label == "clean" and predicted == "clean":
+                    r.tn += 1
+                elif cr.label == "clean" and predicted == "violation":
+                    r.fp += 1
+                else:
+                    r.fn += 1
+            marker = ""
+            if r.f1 > best_f1 and r.precision >= 0.95:
+                best_f1 = r.f1
+                best_thresh = thresh
+                marker = " <-- best"
+            print(
+                f"  {thresh:.2f}  {r.accuracy * 100:5.1f}%"
+                f" {r.precision * 100:5.1f}% {r.recall * 100:5.1f}%"
+                f" {r.f1 * 100:5.1f}%{marker}"
+            )
+        if best_thresh > 0:
+            print(f"Best threshold: {best_thresh:.2f} (F1={best_f1 * 100:.1f}%)")
 
 
 def main() -> None:
@@ -279,6 +363,11 @@ def main() -> None:
     parser.add_argument(
         "--test-file",
         help="Extra test file to include (YAML format)",
+    )
+    parser.add_argument(
+        "--threshold-sweep",
+        action="store_true",
+        help="Sweep thresholds 0.30-0.90 and print confusion matrix per threshold",
     )
     parser.add_argument(
         "--backend", default="mlx", choices=["mlx"], help="Inference backend"
@@ -317,6 +406,10 @@ def main() -> None:
             sys.exit(1)
 
     passed = _run_evaluations(args, rules, test_suites, backend)
+
+    if args.threshold_sweep:
+        _threshold_sweep(test_suites, rules, backend)
+
     print("\n" + ("ALL RULES PASS" if passed else "SOME RULES FAILED"))
     sys.exit(0 if passed else 1)
 

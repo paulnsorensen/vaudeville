@@ -151,8 +151,7 @@ def check_high_error_tools(days, min_occ):
     if not rows:
         return None
     tools = [
-        f"{r['tool_name']} ({r['error_pct']}% errors, {r['total']} calls)"
-        for r in rows
+        f"{r['tool_name']} ({r['error_pct']}% errors, {r['total']} calls)" for r in rows
     ]
     return {
         "id": "high-error-tools",
@@ -397,10 +396,10 @@ def main():
             print("No hook suggestions found. Your setup looks solid!")
             return
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  HOOK SUGGESTIONS  ({len(suggestions)} found)")
         print(f"  Based on {days} days of session data")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         for i, s in enumerate(suggestions, 1):
             icon = {"high": "!!!", "medium": " ! ", "low": " . "}
@@ -409,7 +408,7 @@ def main():
             print(f"      Event: {s['event']}  |  Type: {s['hook_type']}")
             print(f"      {s['description']}")
             if s["examples"]:
-                print(f"      Examples:")
+                print("      Examples:")
                 for ex in s["examples"][:5]:
                     print(f"        - {ex}")
             print()

@@ -101,13 +101,18 @@ def verdict_to_hook_response(
         return {
             "decision": "block",
             "reason": reason,
-            "systemMessage": f"Warning — {message}",
+            "systemMessage": (
+                f"\U0001fa9d vaudeville hook [{rule_name}] warned about: {message}"
+            ),
         }
     else:  # block (default)
         return {
             "decision": "block",
             "reason": reason,
-            "systemMessage": message,
+            "systemMessage": (
+                f"\U0001fa9d vaudeville hook [{rule_name}] prevented response: "
+                f"{message}"
+            ),
         }
 
 

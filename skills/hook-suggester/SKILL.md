@@ -1,5 +1,5 @@
 ---
-name: hook-suggester
+name: vaudeville:hook-suggester
 description: >
   Analyze Claude Code session history to suggest hooks tailored to the user's
   actual usage patterns. Mines session-analytics data for dangerous commands,

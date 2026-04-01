@@ -33,13 +33,16 @@ class TestMLXBackend:
         mock_tokenizer.apply_chat_template.assert_called_once()
 
     def test_apply_chat_template_fallback_when_no_method(self) -> None:
-        _, mock_tokenizer, mock_load, mock_generate = self._make_mocks()
-        del mock_tokenizer.apply_chat_template
+        class BareTokenizer:
+            pass
+
+        mock_model = MagicMock()
+        mock_load = MagicMock(return_value=(mock_model, BareTokenizer()))
+        _, _, _, mock_generate = self._make_mocks()
         mock_mlx = MagicMock(load=mock_load, generate=mock_generate)
         with patch.dict("sys.modules", {"mlx_lm": mock_mlx}):
             from vaudeville.server.mlx_backend import MLXBackend
 
             backend = MLXBackend()
             formatted = backend._apply_chat_template("hello")
-        assert "<|user|>" in formatted
-        assert "hello" in formatted
+        assert formatted == "<|user|>\nhello<|end|>\n<|assistant|>\n"

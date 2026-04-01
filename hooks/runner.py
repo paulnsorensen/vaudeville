@@ -111,7 +111,7 @@ def verdict_to_hook_response(rule: dict, reason: str, action: str) -> dict:
         return {}
     elif action == "warn":
         return {
-            "decision": "block",
+            "decision": "warn",
             "reason": reason,
             "systemMessage": f"Warning — {message}",
         }

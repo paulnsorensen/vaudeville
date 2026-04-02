@@ -14,11 +14,13 @@ from vaudeville.core.protocol import (
     parse_verdict,
 )
 from vaudeville.core.rules import (
+    DEFAULT_LABELS,
     Rule,
     _sanitize_input,
     back_truncate,
     load_rules,
     load_rules_layered,
+    parse_rule,
     rules_search_path,
 )
 
@@ -76,6 +78,45 @@ class TestParseVerdict:
     def test_strips_end_token_in_fallback(self) -> None:
         result = parse_verdict("Everything is fine<|end|>")
         assert "<|end|>" not in result.reason
+
+    def test_custom_labels_positive(self) -> None:
+        result = parse_verdict(
+            "VERDICT: unsafe\nREASON: dangerous code", labels=["unsafe", "safe"]
+        )
+        assert result.verdict == "unsafe"
+        assert result.reason == "dangerous code"
+
+    def test_custom_labels_negative(self) -> None:
+        result = parse_verdict(
+            "VERDICT: safe\nREASON: looks good", labels=["unsafe", "safe"]
+        )
+        assert result.verdict == "safe"
+
+    def test_custom_labels_fallback(self) -> None:
+        result = parse_verdict("this is unsafe content", labels=["unsafe", "safe"])
+        assert result.verdict == "unsafe"
+
+    def test_custom_labels_default_negative(self) -> None:
+        result = parse_verdict("nothing special here", labels=["unsafe", "safe"])
+        assert result.verdict == "safe"
+
+    def test_parse_rule_default_labels(self) -> None:
+        rule = parse_rule({"name": "test", "prompt": "{text}"})
+        assert rule.labels == DEFAULT_LABELS
+
+    def test_parse_rule_custom_labels(self) -> None:
+        rule = parse_rule(
+            {"name": "test", "prompt": "{text}", "labels": ["unsafe", "safe"]}
+        )
+        assert rule.labels == ["unsafe", "safe"]
+
+    def test_parse_rule_invalid_labels_fallback(self) -> None:
+        rule = parse_rule({"name": "test", "prompt": "{text}", "labels": "not-a-list"})
+        assert rule.labels == DEFAULT_LABELS
+
+    def test_parse_rule_wrong_length_labels_fallback(self) -> None:
+        rule = parse_rule({"name": "test", "prompt": "{text}", "labels": ["only-one"]})
+        assert rule.labels == DEFAULT_LABELS
 
     # --- Custom labels ---
 
@@ -274,7 +315,7 @@ class TestRuleContext:
             event="Stop",
             prompt="Text: {text}\nContext: {context}",
             context=[],
-            labels=["violation", "clean"],
+            labels=DEFAULT_LABELS,
             action="block",
             message="{reason}",
         )
@@ -288,7 +329,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "last_assistant_message"}],
-            labels=["violation", "clean"],
+            labels=DEFAULT_LABELS,
             action="block",
             message="{reason}",
         )
@@ -301,7 +342,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "content.txt"}],
-            labels=["violation", "clean"],
+            labels=DEFAULT_LABELS,
             action="block",
             message="{reason}",
         )
@@ -319,7 +360,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "nonexistent.txt"}],
-            labels=["violation", "clean"],
+            labels=DEFAULT_LABELS,
             action="block",
             message="{reason}",
         )
@@ -332,7 +373,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.body"}],
-            labels=["violation", "clean"],
+            labels=DEFAULT_LABELS,
             action="block",
             message="{reason}",
         )
@@ -345,7 +386,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.nonexistent"}],
-            labels=["violation", "clean"],
+            labels=DEFAULT_LABELS,
             action="block",
             message="{reason}",
         )
@@ -417,7 +458,7 @@ class TestSanitizeInput:
             event="Stop",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[],
-            labels=["violation", "clean"],
+            labels=DEFAULT_LABELS,
             action="block",
             message="{reason}",
         )

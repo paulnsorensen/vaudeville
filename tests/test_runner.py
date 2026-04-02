@@ -46,7 +46,8 @@ class TestLoadRule:
     def test_loads_existing_rule(self) -> None:
         rule = runner.load_rule("violation-detector")
         assert rule is not None
-        assert "name" in rule
+        assert rule.name == "violation-detector"
+        assert rule.labels == ["violation", "clean"]
 
     def test_returns_none_for_missing_rule(self, capsys) -> None:
         rule = runner.load_rule("nonexistent-rule-xyz")
@@ -86,58 +87,64 @@ class TestExtractField:
 
 class TestExtractText:
     def test_field_context_dict(self) -> None:
-        rule: dict = {"context": [{"field": "body"}]}
-        assert runner.extract_text({"body": "some text"}, rule) == "some text"
+        context = [{"field": "body"}]
+        assert (
+            runner.extract_text_from_dict({"body": "some text"}, context) == "some text"
+        )
 
     def test_string_context(self) -> None:
-        rule: dict = {"context": ["body"]}
-        assert runner.extract_text({"body": "some text"}, rule) == "some text"
+        context = ["body"]
+        assert (
+            runner.extract_text_from_dict({"body": "some text"}, context) == "some text"
+        )
 
     def test_empty_context_returns_empty(self) -> None:
-        rule: dict = {"context": []}
-        assert runner.extract_text({}, rule) == ""
+        assert runner.extract_text_from_dict({}, []) == ""
 
-    def test_no_context_key_returns_empty(self) -> None:
-        assert runner.extract_text({}, {}) == ""
+    def test_no_context_returns_empty(self) -> None:
+        assert runner.extract_text_from_dict({}, []) == ""
 
     def test_falls_through_to_second_entry(self) -> None:
-        rule: dict = {"context": [{"field": "missing"}, {"field": "body"}]}
-        assert runner.extract_text({"body": "found"}, rule) == "found"
+        context = [{"field": "missing"}, {"field": "body"}]
+        assert runner.extract_text_from_dict({"body": "found"}, context) == "found"
 
     def test_first_non_empty_wins(self) -> None:
-        rule: dict = {"context": [{"field": "first"}, {"field": "second"}]}
+        context = [{"field": "first"}, {"field": "second"}]
         data = {"first": "wins", "second": "loses"}
-        assert runner.extract_text(data, rule) == "wins"
+        assert runner.extract_text_from_dict(data, context) == "wins"
 
 
 class TestVerdictToHookResponse:
-    def _rule(self, action: str = "block") -> dict:
-        return {"name": "test-rule", "message": "Caught: {reason}", "action": action}
-
     def test_block_returns_decision_block(self) -> None:
-        resp = runner.verdict_to_hook_response(self._rule("block"), "hedging", "block")
+        resp = runner.verdict_to_hook_response(
+            "test-rule", "Caught: {reason}", "hedging", "block"
+        )
         assert resp["decision"] == "block"
         assert "Caught: hedging" in resp["systemMessage"]
 
     def test_warn_returns_warning_system_message(self) -> None:
-        resp = runner.verdict_to_hook_response(self._rule("warn"), "mild issue", "warn")
+        resp = runner.verdict_to_hook_response(
+            "test-rule", "Caught: {reason}", "mild issue", "warn"
+        )
         assert resp["decision"] == "block"
         assert "Warning" in resp["systemMessage"]
         assert "mild issue" in resp["systemMessage"]
 
     def test_log_action_returns_empty_dict(self, capsys) -> None:
-        resp = runner.verdict_to_hook_response(self._rule("log"), "logged", "log")
+        resp = runner.verdict_to_hook_response(
+            "test-rule", "Caught: {reason}", "logged", "log"
+        )
         assert resp == {}
         assert "logged" in capsys.readouterr().err
 
     def test_default_message_uses_reason(self) -> None:
-        rule = {"name": "r", "action": "block"}  # no message key
-        resp = runner.verdict_to_hook_response(rule, "my reason", "block")
+        resp = runner.verdict_to_hook_response("r", "{reason}", "my reason", "block")
         assert "my reason" in resp["systemMessage"]
 
     def test_reason_interpolated_in_message(self) -> None:
-        rule = {"name": "r", "message": "Issue: {reason}", "action": "block"}
-        resp = runner.verdict_to_hook_response(rule, "hedging detected", "block")
+        resp = runner.verdict_to_hook_response(
+            "r", "Issue: {reason}", "hedging detected", "block"
+        )
         assert resp["systemMessage"] == "Issue: hedging detected"
 
 

@@ -142,9 +142,10 @@ def _classify_case(
     results: EvalResults,
 ) -> CaseResult:
     """Classify a single case and update results. Returns CaseResult."""
+    positive, negative = rule.labels[0], rule.labels[1]
     prompt = rule.format_prompt(case.text)
     result = _run_inference(backend, prompt)
-    response = parse_verdict(result.text)
+    response = parse_verdict(result.text, labels=rule.labels)
     predicted = response.verdict
     confidence = compute_confidence(result.logprobs, predicted)
 
@@ -152,17 +153,17 @@ def _classify_case(
     assert results.confidences is not None
     results.confidences.append(confidence)
 
-    if case.label == "violation" and predicted == "violation":
+    if case.label == positive and predicted == positive:
         results.tp += 1
-    elif case.label == "clean" and predicted == "clean":
+    elif case.label == negative and predicted == negative:
         results.tn += 1
-    elif case.label == "clean" and predicted == "violation":
+    elif case.label == negative and predicted == positive:
         results.fp += 1
         results.misclassified.append(
             {
                 "text": case.text,
-                "actual": "clean",
-                "predicted": "violation",
+                "actual": negative,
+                "predicted": positive,
             }
         )
     else:
@@ -170,8 +171,8 @@ def _classify_case(
         results.misclassified.append(
             {
                 "text": case.text,
-                "actual": "violation",
-                "predicted": "clean",
+                "actual": positive,
+                "predicted": negative,
             }
         )
 

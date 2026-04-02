@@ -110,8 +110,7 @@ def verdict_to_hook_response(
             "decision": "block",
             "reason": reason,
             "systemMessage": (
-                f"\U0001fa9d vaudeville hook [{rule_name}] prevented response: "
-                f"{message}"
+                f"\U0001fa9d vaudeville hook [{rule_name}] prevented response: {message}"
             ),
         }
 

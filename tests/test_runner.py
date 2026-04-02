@@ -131,7 +131,7 @@ class TestVerdictToHookResponse:
         assert "my reason" in resp["systemMessage"]
 
     def test_reason_interpolated_in_message(self) -> None:
-        
+
         resp = runner.verdict_to_hook_response(
             "r", "Issue: {reason}", "hedging detected", "block"
         )

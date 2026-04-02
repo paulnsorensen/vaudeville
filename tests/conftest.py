@@ -44,16 +44,6 @@ class MockBackend:
 
 
 @pytest.fixture
-def mock_violation_backend() -> MockBackend:
-    return MockBackend(verdict="violation", reason="test violation detected")
-
-
-@pytest.fixture
-def mock_clean_backend() -> MockBackend:
-    return MockBackend(verdict="clean", reason="no issues found")
-
-
-@pytest.fixture
 def rules_dir() -> str:
     return os.path.join(PROJECT_ROOT, "rules")
 

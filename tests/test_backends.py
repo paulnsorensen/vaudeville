@@ -44,9 +44,9 @@ class TestClientSocket:
 
         from vaudeville.core.client import VaudevilleClient
 
-        with patch("vaudeville.core.client.SOCKET_TEMPLATE", sock_path):
-            client = VaudevilleClient("ignored")
-            result = client.classify("test-rule", {"text": "hello"})
+        client = VaudevilleClient()
+        client._socket_path = sock_path
+        result = client.classify("test-rule", {"text": "hello"})
 
         server_done.wait(timeout=3.0)
         assert result is not None

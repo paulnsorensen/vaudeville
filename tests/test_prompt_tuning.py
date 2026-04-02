@@ -101,6 +101,7 @@ class TestFormatPromptIntegration:
             event="Stop",
             prompt=prompt,
             context=[],
+            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -421,25 +422,26 @@ class TestRunnerHelpers:
 
     def test_extract_text_string_context_entry(self) -> None:
         runner = self._get_runner()
-        rule = {"context": ["last_assistant_message"]}
+        context = ["last_assistant_message"]
         hook_input = {"last_assistant_message": "hello"}
-        assert runner.extract_text(hook_input, rule) == "hello"
+        assert runner.extract_text_from_dict(hook_input, context) == "hello"
 
     def test_extract_text_no_context(self) -> None:
         runner = self._get_runner()
-        assert runner.extract_text({}, {"context": []}) == ""
-        assert runner.extract_text({}, {}) == ""
+        assert runner.extract_text_from_dict({}, []) == ""
 
     def test_verdict_to_hook_response_log(self) -> None:
         runner = self._get_runner()
-        rule = {"name": "test-rule", "message": "{reason}"}
-        result = runner.verdict_to_hook_response(rule, "test reason", "log")
+        result = runner.verdict_to_hook_response(
+            "test-rule", "{reason}", "test reason", "log"
+        )
         assert result == {}
 
     def test_verdict_to_hook_response_warn(self) -> None:
         runner = self._get_runner()
-        rule = {"name": "test-rule", "message": "{reason}"}
-        result = runner.verdict_to_hook_response(rule, "test reason", "warn")
+        result = runner.verdict_to_hook_response(
+            "test-rule", "{reason}", "test reason", "warn"
+        )
         assert result == {
             "decision": "warn",
             "reason": "test reason",
@@ -448,8 +450,9 @@ class TestRunnerHelpers:
 
     def test_verdict_to_hook_response_block(self) -> None:
         runner = self._get_runner()
-        rule = {"name": "test-rule", "message": "Quality: {reason}"}
-        result = runner.verdict_to_hook_response(rule, "hedging", "block")
+        result = runner.verdict_to_hook_response(
+            "test-rule", "Quality: {reason}", "hedging", "block"
+        )
         assert result["decision"] == "block"
         assert result["systemMessage"] == "Quality: hedging"
 
@@ -534,6 +537,7 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
+                labels=["violation", "clean"],
                 action="block",
                 message="{reason}",
             ),
@@ -542,6 +546,7 @@ class TestEventDiscovery:
                 event="PostToolUse",
                 prompt="{text}",
                 context=[{"field": "tool_input.body"}],
+                labels=["violation", "clean"],
                 action="block",
                 message="{reason}",
             ),
@@ -586,6 +591,7 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
+                labels=["violation", "clean"],
                 action="block",
                 message="{reason}",
             ),
@@ -620,6 +626,7 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
+                labels=["violation", "clean"],
                 action="block",
                 message="{reason}",
             ),
@@ -671,6 +678,7 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
+                labels=["violation", "clean"],
                 action="block",
                 message="{reason}",
             ),
@@ -702,6 +710,7 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
+                labels=["violation", "clean"],
                 action="block",
                 message="{reason}",
             ),

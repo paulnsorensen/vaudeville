@@ -112,7 +112,7 @@ def handle_request(
         t0 = time.monotonic()
         result = _run_inference(backend, prompt)
         elapsed_ms = (time.monotonic() - t0) * 1000
-        response = parse_verdict(result.text)
+        response = parse_verdict(result.text, labels=rule.labels)
         confidence = compute_confidence(result.logprobs, response.verdict)
         safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:100]
         logger.info(

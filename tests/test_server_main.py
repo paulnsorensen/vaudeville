@@ -139,6 +139,7 @@ class TestServerMain:
         mock_backend = MockBackend()
         mock_daemon = MagicMock()
         mock_daemon_cls = MagicMock(return_value=mock_daemon)
+        mock_pid_fd = MagicMock()
 
         with (
             patch(
@@ -156,6 +157,10 @@ class TestServerMain:
             patch(
                 "vaudeville.server.__main__._init_backend", return_value=mock_backend
             ),
+            patch(
+                "vaudeville.server.daemon.acquire_pid_lock",
+                return_value=mock_pid_fd,
+            ),
             patch("vaudeville.server.daemon.VaudevilleDaemon", mock_daemon_cls),
         ):
             from vaudeville.server.__main__ import main
@@ -166,6 +171,7 @@ class TestServerMain:
     def test_main_auto_detects_backend(self) -> None:
         mock_backend = MockBackend()
         mock_daemon = MagicMock()
+        mock_pid_fd = MagicMock()
 
         with (
             patch(
@@ -186,6 +192,10 @@ class TestServerMain:
             ),
             patch(
                 "vaudeville.server.__main__._init_backend", return_value=mock_backend
+            ),
+            patch(
+                "vaudeville.server.daemon.acquire_pid_lock",
+                return_value=mock_pid_fd,
             ),
             patch(
                 "vaudeville.server.daemon.VaudevilleDaemon",

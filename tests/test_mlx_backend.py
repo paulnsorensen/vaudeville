@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 
 class TestMLXBackend:
+    def _make_stream_response(self, text: str, finish_reason: str = "stop") -> Any:
+        resp = MagicMock()
+        resp.text = text
+        resp.finish_reason = finish_reason
+        return resp
+
     def _make_mocks(self, output: str = "VERDICT: clean") -> tuple:
         mock_model = MagicMock()
         mock_tokenizer = MagicMock()
         mock_load = MagicMock(return_value=(mock_model, mock_tokenizer))
-        # stream_generate yields response objects with .text and .finish_reason
-        response = MagicMock(text=output, finish_reason="stop")
+        response = self._make_stream_response(output)
         mock_stream_generate = MagicMock(return_value=iter([response]))
         mock_generate_step = MagicMock()
         return (

@@ -14,11 +14,11 @@ OS=$(uname -s)
 if [[ "$OS" == "Darwin" && "$ARCH" == "arm64" ]]; then
   BACKEND="mlx"
   DEP_GROUP="mlx"
-  MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-3-mini-4k-instruct-4bit"
+  MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-4-mini-instruct-4bit"
 elif [[ "$ARCH" == "x86_64" || "$ARCH" == "aarch64" ]]; then
   BACKEND="gguf"
   DEP_GROUP="gguf"
-  MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--microsoft--Phi-3-mini-4k-instruct-gguf"
+  MODEL_CACHE="${HOME}/.cache/huggingface/hub/models--microsoft--Phi-4-mini-instruct-gguf"
 else
   echo "[vaudeville] Unsupported platform: ${OS}/${ARCH} — skipping daemon" >&2
   exit 0

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Download the Phi-3-mini model required for inference.
+# Download the Phi-4-mini model required for inference.
 # Run once after installing the plugin.
 set -euo pipefail
 

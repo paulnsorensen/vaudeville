@@ -74,7 +74,7 @@ def handle_request(
         t0 = time.monotonic()
         raw_output = backend.classify(prompt, max_tokens=50)
         latency_ms = (time.monotonic() - t0) * 1000
-        response = parse_verdict(raw_output)
+        response = parse_verdict(raw_output, labels=rule.labels)
         safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:200]
         logger.info(
             "CLASSIFY rule=%s verdict=%s action=%s latency_ms=%.0f reason=%s",

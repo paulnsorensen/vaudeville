@@ -16,6 +16,10 @@ import json
 import os
 import subprocess
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vaudeville.core.rules import Rule
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
@@ -51,11 +55,11 @@ def _find_project_root() -> str | None:
     return None
 
 
-def load_rule(name: str) -> dict | None:
+def load_rule(name: str) -> Rule | None:
     """Load a rule YAML file by name, searching layered paths (project wins)."""
     import yaml  # deferred — only needed when daemon socket exists
 
-    from vaudeville.core.rules import rules_search_path  # noqa: E402
+    from vaudeville.core.rules import parse_rule, rules_search_path  # noqa: E402
 
     filename = f"{name}.yaml"
     project_root = _find_project_root()
@@ -63,7 +67,8 @@ def load_rule(name: str) -> dict | None:
         path = os.path.join(rules_dir, filename)
         if os.path.isfile(path):
             with open(path) as f:
-                return yaml.safe_load(f)
+                data = yaml.safe_load(f)
+            return parse_rule(data)
 
     print(f"[vaudeville] rule not found: {name}", file=sys.stderr)
     return None
@@ -81,9 +86,8 @@ def extract_field(data: dict, dotted_path: str) -> str:
     return "" if current is None else str(current)
 
 
-def extract_text(hook_input: dict, rule: dict) -> str:
-    """Extract classifiable text from hook input using rule's context fields."""
-    context = rule.get("context", [])
+def extract_text_from_dict(hook_input: dict, context: list) -> str:
+    """Extract classifiable text from hook input using rule context entries."""
     if not context:
         return ""
 
@@ -100,14 +104,14 @@ def extract_text(hook_input: dict, rule: dict) -> str:
     return ""
 
 
-def verdict_to_hook_response(rule: dict, reason: str, action: str) -> dict:
+def verdict_to_hook_response(
+    name: str, message_template: str, reason: str, action: str
+) -> dict:
     """Translate a daemon verdict into a Claude Code hook response."""
-    rule_name = rule.get("name", "unknown")
-    message_template = rule.get("message", "{reason}")
     message = message_template.replace("{reason}", reason)
 
     if action == "log":
-        print(f"[vaudeville] {rule_name}: {reason}", file=sys.stderr)
+        print(f"[vaudeville] {name}: {reason}", file=sys.stderr)
         return {}
     elif action == "warn":
         return {
@@ -155,21 +159,23 @@ def _run() -> None:
 
     client = VaudevilleClient(session_id)
 
-    for name in rule_names:
-        rule = load_rule(name)
+    for rule_name in rule_names:
+        rule = load_rule(rule_name)
         if rule is None:
             continue
 
-        text = extract_text(hook_input, rule)
+        text = extract_text_from_dict(hook_input, rule.context)
         if not text or len(text) < MIN_TEXT_LENGTH:
             continue
 
-        result = client.classify(name, {"text": text})
+        result = client.classify(rule_name, {"text": text})
         if result is None:
             continue
 
-        if result.verdict == "violation":
-            response = verdict_to_hook_response(rule, result.reason, result.action)
+        if result.verdict == rule.labels[0]:
+            response = verdict_to_hook_response(
+                rule.name, rule.message, result.reason, rule.action
+            )
             print(json.dumps(response))
             sys.exit(0)
 

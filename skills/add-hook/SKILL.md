@@ -7,14 +7,14 @@ description: >
   hook", "new hook", "enforce X", "guard against X", "block X", "prevent X",
   "detect when Claude does X", "catch X", "stop Claude from X", "add
   enforcement", "quality gate for X", or describes any behavior to enforce.
-  This skill routes to hard-hook-writer (JS/bash) or slm-rule-writer
+  This skill routes to hard-hook-writer (JS/Python/Bash) or slm-rule-writer
   (SLM/YAML) based on whether the enforcement is structural or semantic.
   Also trigger when the user says "add a rule", "new rule", "create a
   detector", "SLM rule for X", or describes behavior requiring semantic
   classification. Do NOT use for suggesting hooks from usage data (use
   hook-suggester), querying session analytics (use session-analytics),
-  checking daemon status (use status), or debugging existing hooks.
-model: opus
+  checking daemon status (use `status` skill), or debugging existing hooks.
+model: sonnet
 context: fork
 allowed-tools: Agent, Read, Glob, Grep
 ---
@@ -118,7 +118,7 @@ This skill only does routing and tradeoff communication.
 
 - Query session analytics (use `session-analytics`)
 - Suggest hooks from usage data (use `hook-suggester`)
-- Check daemon status (use `status`)
+- Check daemon status (use `status` skill)
 - Modify existing hooks without explicit approval
 
 ## UX Principles
@@ -135,8 +135,8 @@ This skill only does routing and tradeoff communication.
 ## Gotchas
 
 - If the vaudeville daemon isn't running, slm-rule-writer will create the
-  rule but it won't fire at runtime — remind user to check with
-  `/vaudeville:status` after creation
+  rule but it won't fire at runtime — remind user to run `/vaudeville:status`
+  to verify the daemon is healthy
 - Ambiguous requests that contain BOTH structural and semantic signals
   (e.g., "block sloppy commit messages") should lean SLM — regex on natural
   language content has high false-positive rates

@@ -51,6 +51,66 @@ class TestParseVerdict:
         result = parse_verdict("VERDICT: Violation\nREASON: test")
         assert result.verdict == "violation"
 
+    # --- Custom labels ---
+
+    def test_custom_labels_positive_match(self) -> None:
+        result = parse_verdict(
+            "VERDICT: spam\nREASON: looks like spam",
+            labels=["spam", "ham"],
+        )
+        assert result.verdict == "spam"
+        assert result.reason == "looks like spam"
+
+    def test_custom_labels_negative_match(self) -> None:
+        result = parse_verdict(
+            "VERDICT: ham\nREASON: legitimate message",
+            labels=["spam", "ham"],
+        )
+        assert result.verdict == "ham"
+        assert result.reason == "legitimate message"
+
+    def test_custom_labels_fallback_keyword(self) -> None:
+        result = parse_verdict(
+            "This message is spam and should be blocked.",
+            labels=["spam", "ham"],
+        )
+        assert result.verdict == "spam"
+
+    def test_custom_labels_fallback_negative(self) -> None:
+        result = parse_verdict(
+            "This message is perfectly fine.",
+            labels=["spam", "ham"],
+        )
+        assert result.verdict == "ham"
+
+    def test_custom_labels_empty_defaults_to_negative(self) -> None:
+        result = parse_verdict("", labels=["spam", "ham"])
+        assert result.verdict == "ham"
+
+    def test_substring_no_false_positive(self) -> None:
+        """'clean' should NOT match 'unclean' — word boundary required."""
+        result = parse_verdict(
+            "VERDICT: unclean\nREASON: dirty data",
+            labels=["clean", "dirty"],
+        )
+        assert result.verdict == "dirty"
+
+    def test_substring_no_false_positive_fallback(self) -> None:
+        """Fallback keyword scan also uses word boundaries."""
+        result = parse_verdict(
+            "The data was unclean and needed washing.",
+            labels=["clean", "dirty"],
+        )
+        assert result.verdict == "dirty"
+
+    def test_exact_match_still_works(self) -> None:
+        """Exact label in VERDICT line still matches."""
+        result = parse_verdict(
+            "VERDICT: clean\nREASON: all good",
+            labels=["clean", "dirty"],
+        )
+        assert result.verdict == "clean"
+
 
 # --- ClassifyRequest ---
 

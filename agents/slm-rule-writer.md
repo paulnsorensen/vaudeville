@@ -279,7 +279,10 @@ Read these in `rules/` for style guidance:
 - Rule names must match filenames exactly (without `.yaml`)
 - The `{text}` placeholder must appear exactly once in the prompt
 - If eval shows high recall but low precision, check for unbalanced few-shot examples
-- The `labels` field is used by the test harness for coverage validation, not runtime
+- The `labels` field is enforced: `labels[0]` is the positive/trigger label,
+  `labels[1]` is the negative/pass label. The daemon, runner, and eval all use
+  these for verdict matching — custom labels work but must be consistent across
+  the rule prompt, test cases, and YAML `labels` field
 
 ## Deliverables
 

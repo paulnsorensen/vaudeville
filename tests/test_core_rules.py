@@ -6,8 +6,10 @@ import os
 import tempfile
 
 from vaudeville.core.rules import (
+    DEFAULT_LABELS,
     Rule,
     load_rules_layered,
+    parse_rule,
     rules_search_path,
 )
 
@@ -19,6 +21,7 @@ class TestRuleContext:
             event="Stop",
             prompt="Text: {text}\nContext: {context}",
             context=[],
+            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -32,6 +35,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "last_assistant_message"}],
+            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -44,6 +48,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "content.txt"}],
+            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -59,6 +64,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "nonexistent.txt"}],
+            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -71,6 +77,7 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.body"}],
+            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -83,11 +90,59 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.nonexistent"}],
+            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
         ctx = rule.resolve_context({"tool_input": {"body": "value"}})
         assert ctx == ""
+
+
+class TestParseRuleLabels:
+    """Tests for label validation in parse_rule."""
+
+    def _minimal_data(self, **overrides) -> dict:
+        base = {"name": "test", "prompt": "{text}"}
+        base.update(overrides)
+        return base
+
+    def test_valid_custom_labels(self) -> None:
+        rule = parse_rule(self._minimal_data(labels=["spam", "ham"]))
+        assert rule.labels == ["spam", "ham"]
+
+    def test_default_labels_when_missing(self) -> None:
+        rule = parse_rule(self._minimal_data())
+        assert rule.labels == list(DEFAULT_LABELS)
+
+    def test_null_labels_fallback_to_default(self) -> None:
+        rule = parse_rule(self._minimal_data(labels=None))
+        assert rule.labels == list(DEFAULT_LABELS)
+
+    def test_scalar_labels_fallback_to_default(self) -> None:
+        rule = parse_rule(self._minimal_data(labels="violation"))
+        assert rule.labels == list(DEFAULT_LABELS)
+
+    def test_three_element_labels_fallback_to_default(self) -> None:
+        rule = parse_rule(self._minimal_data(labels=["a", "b", "c"]))
+        assert rule.labels == list(DEFAULT_LABELS)
+
+    def test_single_element_labels_fallback_to_default(self) -> None:
+        rule = parse_rule(self._minimal_data(labels=["only-one"]))
+        assert rule.labels == list(DEFAULT_LABELS)
+
+    def test_empty_list_fallback_to_default(self) -> None:
+        rule = parse_rule(self._minimal_data(labels=[]))
+        assert rule.labels == list(DEFAULT_LABELS)
+
+    def test_integer_labels_converted_to_strings(self) -> None:
+        rule = parse_rule(self._minimal_data(labels=[1, 0]))
+        assert rule.labels == ["1", "0"]
+
+    def test_labels_are_independent_of_default(self) -> None:
+        """Ensure returned labels are a new list, not a reference to DEFAULT_LABELS."""
+        rule = parse_rule(self._minimal_data())
+        rule.labels[0] = "mutated"
+        assert DEFAULT_LABELS == ["violation", "clean"]
 
 
 class TestRulesSearchPath:

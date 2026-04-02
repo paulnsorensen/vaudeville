@@ -3,7 +3,7 @@
 
 Queries the DuckDB analytics database and identifies opportunities for
 hook-based enforcement. Outputs JSON suggestions that can be fed to
-hook-creator for implementation.
+add-hook for implementation.
 
 Usage: python3 analyze.py [--days N] [--min-occurrences N] [--json]
 """

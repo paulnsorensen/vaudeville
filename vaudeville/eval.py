@@ -122,23 +122,24 @@ def _classify_case(
     results: EvalResults,
 ) -> str:
     """Classify a single case and update results. Returns predicted label."""
+    positive, negative = rule.labels[0], rule.labels[1]
     prompt = rule.format_prompt(case.text)
     raw = backend.classify(prompt, max_tokens=50)
-    response = parse_verdict(raw)
+    response = parse_verdict(raw, labels=rule.labels)
     predicted = response.verdict
 
     assert results.misclassified is not None
-    if case.label == "violation" and predicted == "violation":
+    if case.label == positive and predicted == positive:
         results.tp += 1
-    elif case.label == "clean" and predicted == "clean":
+    elif case.label == negative and predicted == negative:
         results.tn += 1
-    elif case.label == "clean" and predicted == "violation":
+    elif case.label == negative and predicted == positive:
         results.fp += 1
         results.misclassified.append(
             {
                 "text": case.text,
-                "actual": "clean",
-                "predicted": "violation",
+                "actual": negative,
+                "predicted": positive,
             }
         )
     else:
@@ -146,8 +147,8 @@ def _classify_case(
         results.misclassified.append(
             {
                 "text": case.text,
-                "actual": "violation",
-                "predicted": "clean",
+                "actual": positive,
+                "predicted": negative,
             }
         )
 

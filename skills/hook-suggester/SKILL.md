@@ -2,10 +2,10 @@
 name: hook-suggester
 description: >
   Analyze Claude Code session history to suggest hooks tailored to the user's
-  actual usage patterns. Mines session-analytics data for dangerous commands,
+  actual usage patterns. Mines vaudeville:session-analytics data for dangerous commands,
   tool misuse, high error rates, permission friction, missing quality gates,
   broken hooks, and repeated automatable patterns — then generates concrete
-  hook implementations via add-hook. Use when the user asks "what hooks
+  hook implementations via vaudeville:add-hook. Use when the user asks "what hooks
   should I add", "suggest hooks", "analyze my usage for hooks", "what should
   I enforce", "improve my hooks", "hook suggestions", or wants to discover
   enforcement opportunities they haven't thought of. Also trigger for
@@ -13,8 +13,8 @@ description: >
   "what hooks do I need", "hook audit", "analyze my hooks", "optimize my
   workflow", "what's failing in my sessions", "guard against", or any question
   about optimizing their Claude Code workflow through hooks. Do NOT use for
-  creating a specific known hook (use add-hook), querying raw session data
-  (use session-analytics), or general workflow questions.
+  creating a specific known hook (use vaudeville:add-hook), querying raw session data
+  (use vaudeville:session-analytics), or general workflow questions.
 model: sonnet
 context: fork
 allowed-tools: Bash(python3:*), Bash(duckdb:*), Read, Skill
@@ -24,7 +24,7 @@ allowed-tools: Bash(python3:*), Bash(duckdb:*), Read, Skill
 
 Analyze session history → find patterns → suggest hooks → implement them.
 
-This skill bridges session-analytics (the data) and add-hook (the builder).
+This skill bridges vaudeville:session-analytics (the data) and vaudeville:add-hook (the builder).
 It answers: "What hooks would actually help me, based on how I work?"
 
 ## Workflow
@@ -78,19 +78,19 @@ The user may want all, some, or none.
 
 ### Step 4: Implement selected hooks
 
-For each suggestion the user approves, route through the unified `add-hook`
+For each suggestion the user approves, route through the unified `vaudeville:add-hook`
 skill. It handles the SLM-vs-JS routing decision automatically:
 
 ```
 Skill(skill: "vaudeville:add-hook", args: "<description of what to enforce>")
 ```
 
-`add-hook` will analyze the description and route to either:
-- **slm-rule-writer** agent — for semantic/intent checks (hedging, dismissal, deferral, etc.)
-- **hard-hook-writer** agent — for structural pattern checks (command guards, file guards, etc.)
+`vaudeville:add-hook` will analyze the description and route to either:
+- **vaudeville:slm-rule-writer** agent — for semantic/intent checks (hedging, dismissal, deferral, etc.)
+- **vaudeville:hard-hook-writer** agent — for structural pattern checks (command guards, file guards, etc.)
 
 Do NOT invoke these agents directly from this skill — always go through
-`add-hook` so routing logic stays centralized.
+`vaudeville:add-hook` so routing logic stays centralized.
 
 ## Example Session
 
@@ -117,14 +117,14 @@ User: suggest some hooks for me
          Found 230 code writes across 3 languages...
 
 4. Ask user which to implement
-5. Invoke add-hook for each approved suggestion
+5. Invoke vaudeville:add-hook for each approved suggestion
 ```
 
 ## What This Skill Doesn't Do
 
-- Create hooks without data backing (use add-hook directly)
-- Query arbitrary session analytics (use session-analytics)
-- Modify existing hooks (use add-hook)
+- Create hooks without data backing (use vaudeville:add-hook directly)
+- Query arbitrary session analytics (use vaudeville:session-analytics)
+- Modify existing hooks (use vaudeville:add-hook)
 - Make decisions for the user — always present and let them choose
 
 ## Gotchas
@@ -138,6 +138,6 @@ User: suggest some hooks for me
   may reflect agent behavior that's already correct for the subagent's context.
 - The analyzer runs 8 independent DuckDB queries. If the database is large (>100K
   entries), this can take 5-10 seconds. Don't run with --force unnecessarily.
-- add-hook is invoked per suggestion — if the user approves 5 hooks, that's
+- vaudeville:add-hook is invoked per suggestion — if the user approves 5 hooks, that's
   5 sequential Skill invocations. Batch acknowledgment is fine but implementation
   is serial.

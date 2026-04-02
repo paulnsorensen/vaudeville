@@ -7,13 +7,13 @@ description: >
   hook", "new hook", "enforce X", "guard against X", "block X", "prevent X",
   "detect when Claude does X", "catch X", "stop Claude from X", "add
   enforcement", "quality gate for X", or describes any behavior to enforce.
-  This skill routes to hard-hook-writer (JS/Python/Bash) or slm-rule-writer
+  This skill routes to vaudeville:hard-hook-writer (JS/Python/Bash) or vaudeville:slm-rule-writer
   (SLM/YAML) based on whether the enforcement is structural or semantic.
   Also trigger when the user says "add a rule", "new rule", "create a
   detector", "SLM rule for X", or describes behavior requiring semantic
   classification. Do NOT use for suggesting hooks from usage data (use
-  hook-suggester), querying session analytics (use session-analytics),
-  checking daemon status (use `status` skill), or debugging existing hooks.
+  vaudeville:hook-suggester), querying session analytics (use vaudeville:session-analytics),
+  checking daemon status (use `vaudeville:status` skill), or debugging existing hooks.
 model: sonnet
 context: fork
 allowed-tools: Agent, Read, Glob, Grep
@@ -37,7 +37,7 @@ The user describes what they want to enforce in natural language:
 
 Analyze the description and route to the correct specialist.
 
-**Route to `slm-rule-writer` agent when:**
+**Route to `vaudeville:slm-rule-writer` agent when:**
 - The check requires understanding intent or context
 - Simple regex would have high false positives
 - Content being checked is natural language (responses, PR comments, commit messages)
@@ -45,7 +45,7 @@ Analyze the description and route to the correct specialist.
 - Keywords: detect, catch, tone, quality, hedging, dismissal, deferral, sycophancy,
   completeness, "when Claude does X"
 
-**Route to `hard-hook-writer` agent when:**
+**Route to `vaudeville:hard-hook-writer` agent when:**
 - The check is structural (file paths, command patterns, JSON fields)
 - A regex or string match is sufficient
 - Speed matters (structural hooks are <100ms, SLM is 1-5s)
@@ -64,9 +64,9 @@ If the request could reasonably go either way, ask:
 
 Before spawning, tell the user which type was chosen and why:
 
-- "Routing to **slm-rule-writer** because detecting [X] requires
+- "Routing to **vaudeville:slm-rule-writer** because detecting [X] requires
   understanding intent — a regex would miss variations."
-- "Routing to **hard-hook-writer** because blocking [X] is a structural
+- "Routing to **vaudeville:hard-hook-writer** because blocking [X] is a structural
   pattern match — fast and deterministic."
 - "Hooks are runtime-enforced — Claude cannot override them, unlike
   CLAUDE.md instructions."
@@ -77,7 +77,7 @@ Then spawn the named agent:
 
 ```
 Agent(
-  subagent_type: "slm-rule-writer",
+  subagent_type: "vaudeville:slm-rule-writer",
   description: "Create SLM rule: <short summary>",
   prompt: "Create a vaudeville rule for: <user's description>.
     The plugin root is <CLAUDE_PLUGIN_ROOT path>.
@@ -89,7 +89,7 @@ Agent(
 
 ```
 Agent(
-  subagent_type: "hard-hook-writer",
+  subagent_type: "vaudeville:hard-hook-writer",
   description: "Create JS hook: <short summary>",
   prompt: "Create a hook for: <user's description>.
     Target location: <user or plugin scope>.
@@ -104,21 +104,21 @@ This skill only does routing and tradeoff communication.
 
 | Signal in user description | Route | Reason |
 |---------------------------|-------|--------|
-| "hedging", "sycophancy", "dismissal" | slm-rule-writer | Semantic classification |
-| "deferral", "follow-up PR", "separate commit" | slm-rule-writer | Intent detection |
-| "completeness", "TODO", "unfinished" | slm-rule-writer | Context understanding |
-| "tone", "quality", "when Claude does X" | slm-rule-writer | Natural language |
-| "block command X", "prevent rm" | hard-hook-writer | Exact pattern match |
-| "guard file X", "protect path" | hard-hook-writer | File path check |
-| "format after write", "auto-run" | hard-hook-writer | Structural automation |
-| "inject context", "add to prompt" | hard-hook-writer | Context injection |
-| "block force push", "no --no-verify" | hard-hook-writer | Command argument match |
+| "hedging", "sycophancy", "dismissal" | vaudeville:slm-rule-writer | Semantic classification |
+| "deferral", "follow-up PR", "separate commit" | vaudeville:slm-rule-writer | Intent detection |
+| "completeness", "TODO", "unfinished" | vaudeville:slm-rule-writer | Context understanding |
+| "tone", "quality", "when Claude does X" | vaudeville:slm-rule-writer | Natural language |
+| "block command X", "prevent rm" | vaudeville:hard-hook-writer | Exact pattern match |
+| "guard file X", "protect path" | vaudeville:hard-hook-writer | File path check |
+| "format after write", "auto-run" | vaudeville:hard-hook-writer | Structural automation |
+| "inject context", "add to prompt" | vaudeville:hard-hook-writer | Context injection |
+| "block force push", "no --no-verify" | vaudeville:hard-hook-writer | Command argument match |
 
 ## What This Skill Does NOT Do
 
-- Query session analytics (use `session-analytics`)
-- Suggest hooks from usage data (use `hook-suggester`)
-- Check daemon status (use `status` skill)
+- Query session analytics (use `vaudeville:session-analytics`)
+- Suggest hooks from usage data (use `vaudeville:hook-suggester`)
+- Check daemon status (use `vaudeville:status` skill)
 - Modify existing hooks without explicit approval
 
 ## UX Principles
@@ -134,7 +134,7 @@ This skill only does routing and tradeoff communication.
 
 ## Gotchas
 
-- If the vaudeville daemon isn't running, slm-rule-writer will create the
+- If the vaudeville daemon isn't running, vaudeville:slm-rule-writer will create the
   rule but it won't fire at runtime — remind user to run `/vaudeville:status`
   to verify the daemon is healthy
 - Ambiguous requests that contain BOTH structural and semantic signals

@@ -5,13 +5,13 @@ description: >
   settings.json or hooks.json. Use this agent when the user describes enforcement
   that can be done with regex, string matching, file inspection, or structural
   checks. The enforcement target is shaped data (commands, file paths, JSON
-  fields), not natural language. Spawned by the add-hook skill, but also
+  fields), not natural language. Spawned by the vaudeville:add-hook skill, but also
   directly invocable.
 
   <example>
   Context: User wants to prevent a dangerous command
   user: "Block rm -rf /"
-  assistant: "I'll use the hard-hook-writer agent to create a PreToolUse Bash guard."
+  assistant: "I'll use the vaudeville:hard-hook-writer agent to create a PreToolUse Bash guard."
   <commentary>
   Structural pattern match on a command string — deterministic, no SLM needed.
   </commentary>
@@ -20,7 +20,7 @@ description: >
   <example>
   Context: User wants automatic formatting after writes
   user: "Auto-format Python files after Claude writes them"
-  assistant: "I'll use the hard-hook-writer agent to create a PostToolUse formatter hook."
+  assistant: "I'll use the vaudeville:hard-hook-writer agent to create a PostToolUse formatter hook."
   <commentary>
   Structural automation triggered by file extension — fast, deterministic.
   </commentary>
@@ -29,7 +29,7 @@ description: >
   <example>
   Context: User wants to protect sensitive files
   user: "Warn when editing .env files"
-  assistant: "I'll use the hard-hook-writer agent to create a PreToolUse Edit/Write guard."
+  assistant: "I'll use the vaudeville:hard-hook-writer agent to create a PreToolUse Edit/Write guard."
   <commentary>
   File path pattern match — regex is sufficient, no intent classification needed.
   </commentary>
@@ -38,7 +38,7 @@ description: >
   <example>
   Context: User wants context injection at session start
   user: "Inject my team's coding standards when a session starts"
-  assistant: "I'll use the hard-hook-writer agent to create a SessionStart context hook."
+  assistant: "I'll use the vaudeville:hard-hook-writer agent to create a SessionStart context hook."
   <commentary>
   Context injection is structural — read a file, print to stdout. No classification.
   </commentary>
@@ -54,7 +54,7 @@ JS/Python/Bash hook scripts for Claude Code.
 
 Your hooks run in <100ms. They enforce structural rules: command patterns, file
 paths, JSON field checks, automated formatting, context injection. They do NOT
-classify natural language — that's the slm-rule-writer's job.
+classify natural language — that's the vaudeville:slm-rule-writer's job.
 
 ## Hook Locations
 
@@ -273,7 +273,7 @@ Always explain what the hook does, which event it targets, and how to test it.
 
 ## What This Agent Does NOT Do
 
-- Classify natural language intent, tone, or meaning (use slm-rule-writer)
+- Classify natural language intent, tone, or meaning (use vaudeville:slm-rule-writer)
 - Create vaudeville YAML rules or run the eval harness
 - Modify existing hooks without explicit user approval
 - Debug hook execution failures (troubleshoot manually via session logs)

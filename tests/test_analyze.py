@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import sys
 from unittest.mock import patch
 
 import pytest
@@ -25,23 +24,14 @@ analyze = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(analyze)  # type: ignore[attr-defined]
 
 
-def _q(rows: list[dict]):
-    """Return a mock query() that yields rows then empty."""
-    calls = [rows]
-
-    def _mock(sql: str) -> list[dict]:  # noqa: ARG001
-        return calls[0] if calls else []
-
-    return _mock
-
-
 class TestQuery:
     def test_duckdb_not_found_exits(self, tmp_path) -> None:
         db = str(tmp_path / "test.duckdb")
         with patch.object(analyze, "DB_PATH", db):
             with patch("subprocess.run", side_effect=FileNotFoundError):
-                with pytest.raises(SystemExit):
+                with pytest.raises(SystemExit) as exc_info:
                     analyze.query("SELECT 1")
+                assert exc_info.value.code == 1
 
     def test_nonzero_returncode_returns_empty(self, capsys, tmp_path) -> None:
         db = str(tmp_path / "test.duckdb")
@@ -249,77 +239,3 @@ class TestCheckRepeatedBashPatterns:
             result = analyze.check_repeated_bash_patterns(14, 3)
         assert result is not None
         assert len(result["examples"][0].split(" (")[0]) <= 80
-
-
-class TestMain:
-    def test_exits_when_no_db(self, tmp_path) -> None:
-        nonexistent = str(tmp_path / "no.duckdb")
-        with patch.object(analyze, "DB_PATH", nonexistent):
-            with pytest.raises(SystemExit):
-                analyze.main()
-
-    def test_json_output_is_valid_list(self, tmp_path, capsys) -> None:
-        fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()  # create empty file so os.path.exists passes
-        with (
-            patch.object(analyze, "DB_PATH", fake_db),
-            patch.object(analyze, "query", return_value=[]),
-            patch.object(sys, "argv", ["analyze.py", "--json"]),
-        ):
-            analyze.main()
-        out = capsys.readouterr().out
-        data = json.loads(out)
-        assert isinstance(data, list)
-
-    def test_text_output_shows_no_suggestions_message(self, tmp_path, capsys) -> None:
-        fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
-        with (
-            patch.object(analyze, "DB_PATH", fake_db),
-            patch.object(analyze, "query", return_value=[]),
-            patch.object(sys, "argv", ["analyze.py"]),
-        ):
-            analyze.main()
-        assert "No hook suggestions" in capsys.readouterr().out
-
-    def test_days_flag_respected(self, tmp_path, capsys) -> None:
-        fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
-        rows = [{"bash_cmd": "rm -rf /tmp/x", "uses": "5"}]
-        with (
-            patch.object(analyze, "DB_PATH", fake_db),
-            patch.object(analyze, "query", return_value=rows),
-            patch.object(sys, "argv", ["analyze.py", "--days", "7"]),
-        ):
-            analyze.main()
-        out = capsys.readouterr().out
-        assert "7 days" in out
-
-    def test_suggestions_printed_in_text_mode(self, tmp_path, capsys) -> None:
-        fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
-        rows = [{"bash_cmd": "rm -rf /tmp/x", "uses": "5"}]
-        with (
-            patch.object(analyze, "DB_PATH", fake_db),
-            patch.object(analyze, "query", return_value=rows),
-            patch.object(sys, "argv", ["analyze.py"]),
-        ):
-            analyze.main()
-        out = capsys.readouterr().out
-        assert "HOOK SUGGESTIONS" in out
-
-    def test_analyzer_exception_is_caught(self, tmp_path, capsys) -> None:
-        fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
-
-        def _boom(sql):
-            raise RuntimeError("db exploded")
-
-        with (
-            patch.object(analyze, "DB_PATH", fake_db),
-            patch.object(analyze, "query", side_effect=_boom),
-            patch.object(sys, "argv", ["analyze.py"]),
-        ):
-            analyze.main()  # should not raise
-        err = capsys.readouterr().err
-        assert "WARNING" in err

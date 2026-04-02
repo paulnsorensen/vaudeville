@@ -242,6 +242,14 @@ After writing, verify:
 4. Matcher regex matches intended tools
 5. Timeout is appropriate (most hooks <5s)
 
+### 6. Run the test
+
+Execute the standalone test command and verify the hook behaves correctly:
+- Happy path: input that should pass → exits 0, no output
+- Violation path: input that should block → exits non-zero, prints reason
+
+Do not deliver a hook you haven't tested.
+
 ## Validation Checklist
 
 - JSON syntax — trailing commas, missing quotes, wrong nesting
@@ -262,3 +270,10 @@ For each hook created, deliver:
 3. A standalone test command: `echo '...' | node .claude/hooks/my-hook.js`
 
 Always explain what the hook does, which event it targets, and how to test it.
+
+## What This Agent Does NOT Do
+
+- Classify natural language intent, tone, or meaning (use slm-rule-writer)
+- Create vaudeville YAML rules or run the eval harness
+- Modify existing hooks without explicit user approval
+- Debug hook execution failures (troubleshoot manually via session logs)

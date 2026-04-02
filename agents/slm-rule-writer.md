@@ -170,7 +170,8 @@ cases:
 - **Balance labels**: Roughly 50/50 split
 - **Include edge cases**: Boundary examples testing prompt precision
 - **Use realistic text**: Real assistant output, not toy examples
-- **Vary length**: Short (1 sentence) and long (paragraph) cases
+- **Vary length**: Short (1-2 sentences) and long (paragraph) cases — but
+  ensure ALL cases are >100 characters (runner.py skips shorter inputs)
 
 ## Registration in hooks.json
 
@@ -287,3 +288,10 @@ For each rule created, deliver:
 2. Test cases in `tests/` (minimum 10 cases, balanced labels)
 3. Updated `hooks/hooks.json` registration
 4. Eval results showing >90% accuracy
+
+## What This Agent Does NOT Do
+
+- Create JS/bash hooks for structural pattern matching (use hard-hook-writer)
+- Query session analytics or suggest hooks from usage data
+- Modify existing bundled rules without explicit user approval
+- Modify the daemon, runner.py, or eval infrastructure

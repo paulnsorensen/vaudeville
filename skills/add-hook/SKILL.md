@@ -9,9 +9,11 @@ description: >
   enforcement", "quality gate for X", or describes any behavior to enforce.
   This skill routes to hard-hook-writer (JS/bash) or slm-rule-writer
   (SLM/YAML) based on whether the enforcement is structural or semantic.
-  Do NOT use for suggesting hooks from usage data (use hook-suggester),
-  querying session analytics (use session-analytics), or checking daemon
-  status (use status).
+  Also trigger when the user says "add a rule", "new rule", "create a
+  detector", "SLM rule for X", or describes behavior requiring semantic
+  classification. Do NOT use for suggesting hooks from usage data (use
+  hook-suggester), querying session analytics (use session-analytics),
+  checking daemon status (use status), or debugging existing hooks.
 model: opus
 context: fork
 allowed-tools: Agent, Read, Glob, Grep
@@ -129,3 +131,14 @@ This skill only does routing and tradeoff communication.
    and why
 4. **Hooks vs instructions** — surface at creation time: "Hooks are
    runtime-enforced — Claude cannot override them, unlike CLAUDE.md instructions"
+
+## Gotchas
+
+- If the vaudeville daemon isn't running, slm-rule-writer will create the
+  rule but it won't fire at runtime — remind user to check with
+  `/vaudeville:status` after creation
+- Ambiguous requests that contain BOTH structural and semantic signals
+  (e.g., "block sloppy commit messages") should lean SLM — regex on natural
+  language content has high false-positive rates
+- If the user explicitly says "JS hook" or "SLM rule", routing is trivial —
+  skip the tradeoff explanation and spawn directly

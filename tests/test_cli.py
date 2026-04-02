@@ -4,48 +4,46 @@ from __future__ import annotations
 
 import os
 from argparse import Namespace
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 
 class TestFindLogFiles:
-    def test_returns_logs_with_live_daemon(self, tmp_path: Path) -> None:
-        log = tmp_path / "vaudeville-abc123.log"
-        pid = tmp_path / "vaudeville-abc123.pid"
-        log.write_text("some log")
-        pid.write_text(str(os.getpid()))  # current process is alive
+    def test_returns_logs_with_live_daemon(self) -> None:
+        # Use the real /tmp/vaudeville-<id>.log prefix so removeprefix correctly
+        # derives session_id="abc123" and pid_file="/tmp/vaudeville-abc123.pid".
+        log_path = "/tmp/vaudeville-abc123.log"
 
-        with patch("vaudeville.__main__.glob.glob", return_value=[str(log)]):
-            from vaudeville.__main__ import _find_log_files
-
-            # Patch the pid path derivation to use tmp_path
+        with patch("vaudeville.__main__.glob.glob", return_value=[log_path]):
             with patch(
                 "vaudeville.__main__.Path.read_text",
                 return_value=str(os.getpid()),
             ):
+                from vaudeville.__main__ import _find_log_files
+
                 result = _find_log_files()
 
-        assert result == [str(log)]
+        assert result == [log_path]
 
-    def test_skips_logs_with_dead_daemon(self, tmp_path: Path) -> None:
-        log = tmp_path / "vaudeville-dead.log"
-        log.write_text("some log")
+    def test_skips_logs_with_dead_daemon(self) -> None:
+        log_path = "/tmp/vaudeville-dead.log"
 
-        with patch("vaudeville.__main__.glob.glob", return_value=[str(log)]):
-            from vaudeville.__main__ import _find_log_files
+        with patch("vaudeville.__main__.glob.glob", return_value=[log_path]):
+            with patch(
+                "vaudeville.__main__.Path.read_text",
+                side_effect=FileNotFoundError,
+            ):
+                from vaudeville.__main__ import _find_log_files
 
-            # PID file missing → FileNotFoundError → skip
-            result = _find_log_files()
+                result = _find_log_files()
 
         assert result == []
 
-    def test_skips_stale_pid(self, tmp_path: Path) -> None:
-        log = tmp_path / "vaudeville-stale.log"
-        log.write_text("some log")
+    def test_skips_stale_pid(self) -> None:
+        log_path = "/tmp/vaudeville-stale.log"
 
-        with patch("vaudeville.__main__.glob.glob", return_value=[str(log)]):
+        with patch("vaudeville.__main__.glob.glob", return_value=[log_path]):
             with patch(
                 "vaudeville.__main__.Path.read_text",
                 return_value="99999999",

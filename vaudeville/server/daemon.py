@@ -6,23 +6,29 @@ Hot-reloads rules on file change. Self-terminates after idle timeout.
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import json
 import logging
 import os
+import signal
 import socket
 import subprocess
 import threading
 import time
-from pathlib import Path
 
-from ..core.protocol import parse_verdict
+from ..core.paths import VERSION_FILE, ensure_runtime_dir
+from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from ..core.rules import Rule, load_rules_layered, rules_search_path
-from .inference import InferenceBackend
+from .inference import InferenceBackend, LogprobBackend
 
-IDLE_TIMEOUT = 30 * 60  # 30 minutes
+IDLE_TIMEOUT = 60 * 60  # 60 minutes
 RULE_POLL_INTERVAL = 30  # seconds
 RECV_CHUNK = 4096
-MAX_REQUEST_SIZE = 1024 * 1024  # 1 MB
+MAX_REQUEST_SIZE = 1 * 1024 * 1024  # 1 MB
+CLIENT_TIMEOUT = 10.0  # seconds
+THREAD_WARN = 20
+THREAD_KILL = 50
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +49,38 @@ def _find_project_root() -> str | None:
     return None
 
 
+def acquire_pid_lock(pid_file: str) -> int | None:
+    """Acquire an exclusive flock on the PID file before loading the model.
+
+    Returns the open fd on success (caller must keep it open), or None if
+    another instance already holds the lock or the PID file cannot be prepared.
+    """
+    pid_fd: int | None = None
+    try:
+        pid_fd = os.open(pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
+        fcntl.flock(pid_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.ftruncate(pid_fd, 0)
+        os.write(pid_fd, f"{os.getpid()}\n".encode())
+        return pid_fd
+    except OSError as exc:
+        if pid_fd is not None:
+            try:
+                os.close(pid_fd)
+            except OSError:
+                pass
+        if exc.errno not in (errno.EWOULDBLOCK, errno.EACCES):
+            logger.error("Failed to acquire PID lock file %r: %s", pid_file, exc)
+        return None
+
+
+def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
+    """Run inference with logprobs, falling back to plain classify."""
+    if isinstance(backend, LogprobBackend):
+        return backend.classify_with_logprobs(prompt, max_tokens=50)
+    text = backend.classify(prompt, max_tokens=50)
+    return ClassifyResult(text=text)
+
+
 def handle_request(
     data: bytes,
     rules: dict[str, Rule],
@@ -56,10 +94,7 @@ def handle_request(
 
         rule = rules.get(rule_name)
         if rule is None:
-            logger.info(
-                "CLASSIFY rule=%s verdict=clean action=block latency_ms=0 reason=unknown_rule",
-                rule_name,
-            )
+            logger.debug("unknown rule %r — clean", rule_name)
             return _response("clean", f"Unknown rule: {rule_name}")
 
         text = str(input_data.get("text", ""))
@@ -71,33 +106,54 @@ def handle_request(
         )
         context = rule.resolve_context(input_data, plugin_root)
         prompt = rule.format_prompt(text, context)
+        logger.debug(
+            "rule=%s text=%d chars prompt=%d chars", rule_name, len(text), len(prompt)
+        )
         t0 = time.monotonic()
-        raw_output = backend.classify(prompt, max_tokens=50)
-        latency_ms = (time.monotonic() - t0) * 1000
-        response = parse_verdict(raw_output, labels=rule.labels)
-        safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:200]
+        result = _run_inference(backend, prompt)
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        response = parse_verdict(result.text, labels=rule.labels)
+        confidence = compute_confidence(result.logprobs, response.verdict)
+        safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:100]
         logger.info(
-            "CLASSIFY rule=%s verdict=%s action=%s latency_ms=%.0f reason=%s",
+            "CLASSIFY rule=%s verdict=%s confidence=%.3f action=%s"
+            " latency_ms=%.0f text_chars=%d prompt_chars=%d reason=%s",
             rule_name,
             response.verdict,
+            confidence,
             rule.action,
-            latency_ms,
+            elapsed_ms,
+            len(text),
+            len(prompt),
             safe_reason,
         )
-        return _response(response.verdict, response.reason, rule.action)
+
+        verdict = response.verdict
+        if verdict == "violation" and confidence < rule.threshold:
+            logger.info(
+                "Downgrading violation (confidence=%.3f < threshold=%.3f)",
+                confidence,
+                rule.threshold,
+            )
+            verdict = "clean"
+
+        return _response(verdict, response.reason, rule.action, confidence)
 
     except Exception as exc:
-        logger.error("[vaudeville] Request error: %s", exc)
+        logger.error("Request error: %s", exc)
         return _response("clean", "Inference error — fail open")
 
 
-def _response(verdict: str, reason: str, action: str = "block") -> bytes:
+def _response(
+    verdict: str, reason: str, action: str = "block", confidence: float = 1.0
+) -> bytes:
     return (
         json.dumps(
             {
                 "verdict": verdict,
                 "reason": reason,
                 "action": action,
+                "confidence": confidence,
             }
         ).encode()
         + b"\n"
@@ -107,8 +163,10 @@ def _response(verdict: str, reason: str, action: str = "block") -> bytes:
 def _read_message(conn: socket.socket) -> bytes:
     """Read a newline-terminated message from a socket connection.
 
-    Returns bytes up to and including the first newline.
-    Returns empty bytes if the connection closes or the payload exceeds MAX_REQUEST_SIZE.
+    Returns the bytes up to (but not including) the first newline.
+    If the connection closes before a newline is received, returns all buffered
+    bytes read so far (which may be empty). Returns empty bytes if the payload
+    exceeds MAX_REQUEST_SIZE.
     """
     buf = bytearray()
     while True:
@@ -119,9 +177,7 @@ def _read_message(conn: socket.socket) -> bytes:
         if b"\n" in buf:
             return bytes(buf.split(b"\n", 1)[0])
         if len(buf) > MAX_REQUEST_SIZE:
-            logger.warning(
-                "[vaudeville] Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE
-            )
+            logger.warning("Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE)
             return b""
     return bytes(buf)
 
@@ -146,34 +202,67 @@ class VaudevilleDaemon:
         pid_file: str,
         plugin_root: str,
         backend: InferenceBackend,
+        version_file: str = VERSION_FILE,
+        pid_fd: int | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._pid_file = pid_file
         self._plugin_root = plugin_root
         self._backend = backend
+        self._version_file = version_file
         self._project_root = _find_project_root()
         self._rules: dict[str, Rule] = {}
         self._rules_lock = threading.Lock()
+        self._backend_lock = threading.Lock()
         self._last_request = time.monotonic()
         self._stop_event = threading.Event()
+        self._reload_event = threading.Event()
+        self._pid_fd: int | None = pid_fd
+
+    def _install_signal_handlers(self) -> None:
+        signal.signal(signal.SIGTERM, self._handle_signal)
+        signal.signal(signal.SIGINT, self._handle_signal)
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+        signal.signal(signal.SIGHUP, self._handle_reload)
+
+    def _handle_signal(self, _signum: int, _frame: object) -> None:
+        self._stop_event.set()
+
+    def _handle_reload(self, _signum: int, _frame: object) -> None:
+        self._reload_event.set()
 
     def serve(self) -> None:
         """Load rules, write PID, bind socket, serve until idle timeout."""
+        ensure_runtime_dir()
+        if threading.current_thread() is threading.main_thread():
+            self._install_signal_handlers()
+
         with self._rules_lock:
             self._rules = load_rules_layered(self._plugin_root, self._project_root)
-        logger.info("[vaudeville] Loaded %d rules", len(self._rules))
+        logger.info("Loaded %d rules", len(self._rules))
 
-        Path(self._pid_file).write_text(str(os.getpid()))
+        # Acquire PID lock if not pre-acquired by __main__
+        if self._pid_fd is None:
+            pid_fd = acquire_pid_lock(self._pid_file)
+            if pid_fd is None:
+                logger.info("Another instance holds PID lock — exiting")
+                return
+            self._pid_fd = pid_fd
+
+        self._write_version_stamp()
 
         server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        if os.path.exists(self._socket_path):
+        try:
             os.unlink(self._socket_path)
+        except (FileNotFoundError, PermissionError):
+            pass
         server_socket.bind(self._socket_path)
         server_socket.listen(16)
         server_socket.settimeout(1.0)
 
         threading.Thread(target=self._watch_rules, daemon=True).start()
-        logger.info("[vaudeville] Listening on %s", self._socket_path)
+        threading.Thread(target=self._watch_threads, daemon=True).start()
+        logger.info("Listening on %s", self._socket_path)
 
         try:
             self._accept_loop(server_socket)
@@ -183,9 +272,15 @@ class VaudevilleDaemon:
 
     def _accept_loop(self, server_socket: socket.socket) -> None:
         while not self._stop_event.is_set():
+            if self._reload_event.is_set():
+                self._reload_event.clear()
+                new_rules = load_rules_layered(self._plugin_root, self._project_root)
+                with self._rules_lock:
+                    self._rules = new_rules
+                logger.info("Rules reloaded via SIGHUP (%d rules)", len(new_rules))
             idle = time.monotonic() - self._last_request
             if idle > IDLE_TIMEOUT:
-                logger.info("[vaudeville] Idle timeout — shutting down")
+                logger.info("Idle timeout — shutting down")
                 break
             try:
                 conn, _ = server_socket.accept()
@@ -197,15 +292,21 @@ class VaudevilleDaemon:
 
     def _handle_client(self, conn: socket.socket) -> None:
         try:
+            conn.settimeout(CLIENT_TIMEOUT)
+            t0 = time.monotonic()
             data = _read_message(conn)
+
             with self._rules_lock:
                 current_rules = dict(self._rules)
 
-            response = handle_request(data, current_rules, self._backend)
+            with self._backend_lock:
+                response = handle_request(bytes(data), current_rules, self._backend)
             conn.sendall(response)
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            logger.info("Request handled in %.1fms", elapsed_ms)
             self._last_request = time.monotonic()
         except Exception as exc:
-            logger.error("[vaudeville] Client handler error: %s", exc)
+            logger.error("Client handler error: %s", exc)
         finally:
             conn.close()
 
@@ -222,7 +323,7 @@ class VaudevilleDaemon:
                 with self._rules_lock:
                     self._rules = new_rules
                 last_mtime = current
-                logger.info("[vaudeville] Rules reloaded (%d rules)", len(new_rules))
+                logger.info("Rules reloaded (%d rules)", len(new_rules))
 
     def _rules_mtime(self) -> float:
         return max(
@@ -236,8 +337,42 @@ class VaudevilleDaemon:
             default=0.0,
         )
 
+    def _watch_threads(self) -> None:
+        while not self._stop_event.is_set():
+            time.sleep(10)
+            count = threading.active_count()
+            if count > THREAD_KILL:
+                logger.error(
+                    "Thread count %d exceeds kill threshold — shutting down",
+                    count,
+                )
+                self._stop_event.set()
+            elif count > THREAD_WARN:
+                logger.warning("Thread count %d exceeds warning threshold", count)
+
+    def _write_version_stamp(self) -> None:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=self._plugin_root,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            stamp = result.stdout.strip() if result.returncode == 0 else "unknown"
+        except (OSError, subprocess.TimeoutExpired):
+            stamp = "unknown"
+        try:
+            with open(self._version_file, "w") as f:
+                f.write(stamp + "\n")
+        except OSError:
+            logger.warning("Could not write version stamp")
+
     def _cleanup(self) -> None:
-        for path in (self._socket_path, self._pid_file):
+        if self._pid_fd is not None:
+            os.close(self._pid_fd)
+            self._pid_fd = None
+        for path in (self._socket_path, self._pid_file, self._version_file):
             try:
                 os.unlink(path)
             except FileNotFoundError:

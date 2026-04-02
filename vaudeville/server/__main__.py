@@ -1,8 +1,8 @@
 """Entry point for the vaudeville daemon.
 
-Usage: uv run python -m vaudeville.server \\
-    --socket /tmp/vaudeville-{session_id}.sock \\
-    --pid-file /tmp/vaudeville-{session_id}.pid
+Usage: uv run python -m vaudeville.server [--socket PATH] [--pid-file PATH]
+
+Defaults to per-UID runtime directory (singleton daemon).
 """
 
 from __future__ import annotations
@@ -12,9 +12,14 @@ import logging
 import os
 import platform
 import sys
+import warnings
 from pathlib import Path
 
+from ..core.paths import PID_FILE, SOCKET_PATH
 from .inference import InferenceBackend
+
+# Suppress spurious "leaked semaphore" warnings from mlx_lm internals.
+warnings.filterwarnings("ignore", message=".*leaked semaphore.*", category=UserWarning)
 
 
 def detect_backend() -> str:
@@ -54,8 +59,8 @@ def _init_backend(backend_name: str, model: str | None) -> InferenceBackend:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Vaudeville inference daemon")
-    parser.add_argument("--socket", required=True, help="Unix socket path")
-    parser.add_argument("--pid-file", required=True, help="PID file path")
+    parser.add_argument("--socket", default=SOCKET_PATH, help="Unix socket path")
+    parser.add_argument("--pid-file", default=PID_FILE, help="PID file path")
     parser.add_argument(
         "--backend",
         default="auto",
@@ -69,8 +74,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    log_level = (
+        logging.DEBUG if os.environ.get("VAUDEVILLE_DEBUG") == "1" else logging.INFO
+    )
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format="%(asctime)s [vaudeville] %(message)s",
         stream=sys.stderr,
     )
@@ -81,6 +89,16 @@ def main() -> None:
         "CLAUDE_PLUGIN_ROOT",
         str(Path(__file__).parent.parent.parent),
     )
+
+    # Acquire PID lock BEFORE loading the model (2.4GB) to prevent
+    # multiple processes from loading the model concurrently.
+    from .daemon import acquire_pid_lock
+
+    pid_fd = acquire_pid_lock(args.pid_file)
+    if pid_fd is None:
+        logging.info("Another instance holds PID lock — exiting")
+        return
+
     logging.info("Loading backend: %s model=%s", backend_name, args.model or "default")
     backend = _init_backend(backend_name, args.model)
     logging.info("Backend ready")
@@ -92,6 +110,7 @@ def main() -> None:
         pid_file=args.pid_file,
         plugin_root=plugin_root,
         backend=backend,
+        pid_fd=pid_fd,
     )
     daemon.serve()
 

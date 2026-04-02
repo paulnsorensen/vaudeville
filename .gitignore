@@ -1,11 +1,17 @@
 __pycache__/
 *.pyc
 *.pyo
+*.egg
 *.egg-info/
 dist/
 build/
 .venv/
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.DS_Store
+.orphaned_at
 .planning/
 .claude/

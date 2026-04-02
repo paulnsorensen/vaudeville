@@ -329,8 +329,9 @@ ORDER BY day DESC, hour;
 ## Pre-built query scripts
 
 For common analytics questions, use these scripts instead of writing inline SQL
-or Python. All scripts live in `<skill-dir>/scripts/queries/` and accept
-`--days N`, `--limit N`, and `--json` flags.
+or Python. All scripts live in `<skill-dir>/scripts/queries/`. Most accept
+`--days N`, `--limit N`, and `--json` flags; `hook_stats.py` accepts `--days`
+and `--json` but uses a fixed error-pattern limit of 10.
 
 ```bash
 # Denied tool names ranked by frequency (replaces inline Python regex extraction)
@@ -352,8 +353,9 @@ python3 <skill-dir>/scripts/queries/tool_misuse.py [--days 14] [--json]
 python3 <skill-dir>/scripts/queries/hook_stats.py [--days 14] [--json]
 ```
 
-Use `--json` for structured output you can pipe to `jq`. Without it, output is
-tab-separated for human reading.
+Use `--json` for structured output you can pipe to `jq`. Without it, most
+scripts output tab-separated values; `hook_stats.py` prints a multi-line
+human-formatted summary instead.
 
 ## Query patterns
 

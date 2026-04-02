@@ -27,6 +27,9 @@ def query(sql: str) -> list[dict]:
     except FileNotFoundError:
         print("ERROR: duckdb not found on PATH", file=sys.stderr)
         sys.exit(1)
+    except subprocess.TimeoutExpired:
+        print("WARNING: query timed out after 30s", file=sys.stderr)
+        return []
     if result.returncode != 0:
         print(f"WARNING: query failed: {result.stderr.strip()[:200]}", file=sys.stderr)
         return []
@@ -44,7 +47,10 @@ def parse_days(args: list[str], default: int = 14) -> int:
     """Parse --days N from argv."""
     for i, arg in enumerate(args):
         if arg == "--days" and i + 1 < len(args):
-            return int(args[i + 1])
+            try:
+                return int(args[i + 1])
+            except ValueError:
+                raise SystemExit(f"Invalid value for --days: {args[i + 1]!r} (must be an integer)")
     return default
 
 
@@ -52,7 +58,10 @@ def parse_limit(args: list[str], default: int = 15) -> int:
     """Parse --limit N from argv."""
     for i, arg in enumerate(args):
         if arg == "--limit" and i + 1 < len(args):
-            return int(args[i + 1])
+            try:
+                return int(args[i + 1])
+            except ValueError:
+                raise SystemExit(f"Invalid value for --limit: {args[i + 1]!r} (must be an integer)")
     return default
 
 

@@ -11,7 +11,10 @@ from _db import output, parse_days, parse_limit, query
 def parse_min_uses(args: list[str], default: int = 5) -> int:
     for i, arg in enumerate(args):
         if arg == "--min-uses" and i + 1 < len(args):
-            return int(args[i + 1])
+            try:
+                return int(args[i + 1])
+            except ValueError:
+                raise SystemExit(f"Invalid value for --min-uses: {args[i + 1]!r} (must be an integer)")
     return default
 
 

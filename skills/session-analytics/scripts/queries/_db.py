@@ -50,7 +50,9 @@ def parse_days(args: list[str], default: int = 14) -> int:
             try:
                 return int(args[i + 1])
             except ValueError:
-                raise SystemExit(f"Invalid value for --days: {args[i + 1]!r} (must be an integer)")
+                raise SystemExit(
+                    f"Invalid value for --days: {args[i + 1]!r} (must be an integer)"
+                )
     return default
 
 
@@ -61,7 +63,9 @@ def parse_limit(args: list[str], default: int = 15) -> int:
             try:
                 return int(args[i + 1])
             except ValueError:
-                raise SystemExit(f"Invalid value for --limit: {args[i + 1]!r} (must be an integer)")
+                raise SystemExit(
+                    f"Invalid value for --limit: {args[i + 1]!r} (must be an integer)"
+                )
     return default
 
 

@@ -14,7 +14,9 @@ def parse_min_uses(args: list[str], default: int = 5) -> int:
             try:
                 return int(args[i + 1])
             except ValueError:
-                raise SystemExit(f"Invalid value for --min-uses: {args[i + 1]!r} (must be an integer)")
+                raise SystemExit(
+                    f"Invalid value for --min-uses: {args[i + 1]!r} (must be an integer)"
+                )
     return default
 
 

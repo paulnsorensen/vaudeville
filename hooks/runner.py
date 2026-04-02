@@ -20,6 +20,10 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vaudeville.core.rules import Rule
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
@@ -61,11 +65,11 @@ def _find_project_root() -> str | None:
     return None
 
 
-def load_rule(name: str) -> dict | None:
+def load_rule(name: str) -> Rule | None:
     """Load a rule YAML file by name, searching layered paths (project wins)."""
     import yaml  # deferred — only needed when daemon socket exists
 
-    from vaudeville.core.rules import rules_search_path  # noqa: E402
+    from vaudeville.core.rules import parse_rule, rules_search_path  # noqa: E402
 
     filename = f"{name}.yaml"
     project_root = _find_project_root()
@@ -73,7 +77,8 @@ def load_rule(name: str) -> dict | None:
         path = os.path.join(rules_dir, filename)
         if os.path.isfile(path):
             with open(path) as f:
-                return yaml.safe_load(f)
+                data = yaml.safe_load(f)
+            return parse_rule(data)
 
     print(f"[vaudeville] rule not found: {name}", file=sys.stderr)
     return None
@@ -91,9 +96,8 @@ def extract_field(data: dict, dotted_path: str) -> str:
     return "" if current is None else str(current)
 
 
-def extract_text(hook_input: dict, rule: dict) -> str:
-    """Extract classifiable text from hook input using rule's context fields."""
-    context = rule.get("context", [])
+def extract_text_from_dict(hook_input: dict, context: list) -> str:
+    """Extract classifiable text from hook input using rule context entries."""
     if not context:
         return ""
 
@@ -110,14 +114,14 @@ def extract_text(hook_input: dict, rule: dict) -> str:
     return ""
 
 
-def verdict_to_hook_response(rule: dict, reason: str, action: str) -> dict:
+def verdict_to_hook_response(
+    name: str, message_template: str, reason: str, action: str
+) -> dict:
     """Translate a daemon verdict into a Claude Code hook response."""
-    rule_name = rule.get("name", "unknown")
-    message_template = rule.get("message", "{reason}")
     message = message_template.replace("{reason}", reason)
 
     if action == "log":
-        print(f"[vaudeville] {rule_name}: {reason}", file=sys.stderr)
+        print(f"[vaudeville] {name}: {reason}", file=sys.stderr)
         return {}
     elif action == "warn":
         return {
@@ -192,7 +196,7 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
     """Evaluate all rules matching the given event."""
     rules = _load_rules_for_event(event)
     for rule in rules:
-        text = extract_text(hook_input, {"context": rule.context})
+        text = extract_text_from_dict(hook_input, rule.context)
         if not text or len(text) < MIN_TEXT_LENGTH:
             continue
 
@@ -200,11 +204,9 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
         if result is None:
             continue
 
-        if result.verdict == "violation":
+        if result.verdict == rule.labels[0]:
             response = verdict_to_hook_response(
-                {"name": rule.name, "message": rule.message},
-                result.reason,
-                result.action,
+                rule.name, rule.message, result.reason, rule.action
             )
             print(json.dumps(response))
             sys.exit(0)
@@ -218,12 +220,12 @@ def _run_named_rules(
 ) -> None:
     """Evaluate explicitly named rules (legacy mode)."""
     # Build classify tasks for all valid rules
-    tasks: list[tuple[str, dict]] = []
+    tasks: list[tuple[str, Rule]] = []
     for name in rule_names:
         rule = load_rule(name)
         if rule is None:
             continue
-        text = extract_text(hook_input, rule)
+        text = extract_text_from_dict(hook_input, rule.context)
         if not text or len(text) < MIN_TEXT_LENGTH:
             _dbg("%s: text too short (%d chars) — skip", name, len(text) if text else 0)
             continue
@@ -236,12 +238,12 @@ def _run_named_rules(
     # Single rule: no threading overhead
     if len(tasks) == 1:
         name, rule = tasks[0]
-        text = extract_text(hook_input, rule)
+        text = extract_text_from_dict(hook_input, rule.context)
         _dbg("%s: classifying %d chars...", name, len(text))
         t0 = time.monotonic()
         result = client.classify(name, {"text": text})
         elapsed_ms = (time.monotonic() - t0) * 1000
-        if result and result.verdict == "violation":
+        if result and result.verdict == rule.labels[0]:
             _dbg(
                 "%s: verdict=%s action=%s (%.0fms) reason=%r",
                 name,
@@ -251,7 +253,11 @@ def _run_named_rules(
                 result.reason,
             )
             print(
-                json.dumps(verdict_to_hook_response(rule, result.reason, result.action))
+                json.dumps(
+                    verdict_to_hook_response(
+                        rule.name, rule.message, result.reason, result.action
+                    )
+                )
             )
             sys.exit(0)
         _dbg("%s: clean (%.0fms)", name, elapsed_ms)
@@ -259,13 +265,13 @@ def _run_named_rules(
         sys.exit(0)
 
     # Multiple rules: dispatch concurrently, first violation wins
-    def _classify(name: str, rule: dict) -> tuple[dict, str, str] | None:
-        text = extract_text(hook_input, rule)
+    def _classify(name: str, rule: Rule) -> tuple[Rule, str, str] | None:
+        text = extract_text_from_dict(hook_input, rule.context)
         _dbg("%s: classifying %d chars...", name, len(text))
         t0 = time.monotonic()
         result = client.classify(name, {"text": text})
         elapsed_ms = (time.monotonic() - t0) * 1000
-        if result and result.verdict == "violation":
+        if result and result.verdict == rule.labels[0]:
             _dbg(
                 "%s: verdict=%s action=%s (%.0fms) reason=%r",
                 name,
@@ -284,7 +290,11 @@ def _run_named_rules(
         hit = future.result()
         if hit:
             rule, reason, action = hit
-            print(json.dumps(verdict_to_hook_response(rule, reason, action)))
+            print(
+                json.dumps(
+                    verdict_to_hook_response(rule.name, rule.message, reason, action)
+                )
+            )
             pool.shutdown(wait=False, cancel_futures=True)
             sys.exit(0)
     pool.shutdown(wait=False, cancel_futures=True)

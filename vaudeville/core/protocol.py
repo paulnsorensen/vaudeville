@@ -37,17 +37,27 @@ class ClassifyResponse:
     confidence: float = 1.0  # P(predicted_class), 0.0–1.0
 
 
-def parse_verdict(raw: str) -> ClassifyResponse:
+def parse_verdict(
+    raw: str,
+    labels: list[str] | None = None,
+) -> ClassifyResponse:
     """Parse VERDICT/REASON lines from SLM output.
 
     Expected format:
         VERDICT: violation
         REASON: one sentence
 
-    Falls back to keyword search if structured format is absent.
-    Unknown/malformed output defaults to clean (fail-open).
+    ``labels`` is [positive, negative] — the positive label triggers
+    the rule's action. Falls back to keyword search if structured format
+    is absent. Unknown/malformed output defaults to negative (fail-open).
     """
-    verdict = "clean"
+    # Duplicated default — must match DEFAULT_LABELS in rules.py.
+    # Cannot import from rules.py (it pulls PyYAML; protocol.py is stdlib-only).
+    if labels is None:
+        labels = ["violation", "clean"]
+    positive_re = re.compile(r"\b" + re.escape(labels[0].lower()) + r"\b")
+
+    verdict = labels[1]
     reason = ""
 
     for line in raw.splitlines():
@@ -55,7 +65,7 @@ def parse_verdict(raw: str) -> ClassifyResponse:
         upper = stripped.upper()
         if upper.startswith("VERDICT:"):
             val = stripped[8:].strip().lower()
-            verdict = "violation" if "violation" in val else "clean"
+            verdict = labels[0] if positive_re.search(val) else labels[1]
         elif upper.startswith("REASON:"):
             reason = stripped[7:].strip()
 
@@ -64,7 +74,7 @@ def parse_verdict(raw: str) -> ClassifyResponse:
         line.strip().upper().startswith("VERDICT:") for line in raw.splitlines()
     )
     if not has_verdict_line:
-        verdict = "violation" if "violation" in raw.lower() else "clean"
+        verdict = labels[0] if positive_re.search(raw.lower()) else labels[1]
         reason = raw.strip()[:200]
 
     reason = _SPECIAL_TOKEN_RE.sub("", reason).strip()

@@ -76,12 +76,16 @@ def _read_context_entry(
     return ""
 
 
+DEFAULT_LABELS: list[str] = ["violation", "clean"]
+
+
 @dataclass
 class Rule:
     name: str
     event: str
     prompt: str
     context: list[dict[str, str]]
+    labels: list[str]
     action: str
     message: str
     threshold: float = 0.0
@@ -110,7 +114,7 @@ def _load_rule_file(path: str) -> Rule:
     """Load and parse a single YAML rule file."""
     with open(path) as f:
         data = yaml.safe_load(f)
-    return _parse_rule(data)
+    return parse_rule(data)
 
 
 def load_rules(rules_dir: str) -> dict[str, Rule]:
@@ -170,12 +174,22 @@ def load_rules_layered(
     return merged
 
 
-def _parse_rule(data: dict[str, Any]) -> Rule:
+def parse_rule(data: dict[str, Any]) -> Rule:
+    """Parse a raw YAML dict into a validated Rule with label normalization."""
+    raw_labels = data.get("labels", DEFAULT_LABELS)
+    labels = (
+        [str(lb) for lb in raw_labels]
+        if isinstance(raw_labels, list)
+        else list(DEFAULT_LABELS)
+    )
+    if len(labels) != 2:
+        labels = list(DEFAULT_LABELS)
     return Rule(
         name=str(data["name"]),
         event=str(data.get("event", "")),
         prompt=str(data["prompt"]),
         context=[c for c in data.get("context", []) if isinstance(c, dict)],
+        labels=labels,
         action=str(data.get("action", "block")),
         message=str(data.get("message", "{reason}")),
         threshold=float(data.get("threshold", 0.0)),

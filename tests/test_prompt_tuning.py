@@ -440,8 +440,11 @@ class TestRunnerHelpers:
         runner = self._get_runner()
         rule = {"name": "test-rule", "message": "{reason}"}
         result = runner.verdict_to_hook_response(rule, "test reason", "warn")
-        assert result["decision"] == "warn"
-        assert "Warning" in result["systemMessage"]
+        assert result == {
+            "decision": "warn",
+            "reason": "test reason",
+            "systemMessage": "Warning — test reason",
+        }
 
     def test_verdict_to_hook_response_block(self) -> None:
         runner = self._get_runner()

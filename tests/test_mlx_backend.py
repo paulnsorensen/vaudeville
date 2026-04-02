@@ -58,7 +58,11 @@ class TestMLXBackend:
 
             backend = MLXBackend()
             backend.classify("my prompt")
-        mock_tokenizer.apply_chat_template.assert_called_once()
+        mock_tokenizer.apply_chat_template.assert_called_once_with(
+            [{"role": "user", "content": "my prompt"}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
 
     def test_apply_chat_template_fallback_when_no_method(self) -> None:
         class BareTokenizer:

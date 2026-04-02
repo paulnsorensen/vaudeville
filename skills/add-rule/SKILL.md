@@ -77,7 +77,7 @@ message: "Quality violation: {reason}"  # Template with {reason} placeholder
 | `name` | string | Unique rule name, kebab-case, matches filename without `.yaml` |
 | `prompt` | string | SLM prompt with `{text}` placeholder (and optional `{context}`) |
 | `context` | list | At least one entry with `field:` (dot-path) or `file:` (disk path) |
-| `labels` | list | Exactly 2 labels — first is the violation label, second is clean |
+| `labels` | list | Exactly 2 verdict labels — used by test harness for coverage validation, not by runtime |
 
 ### Optional Fields
 
@@ -274,9 +274,25 @@ For each rule created, deliver:
 3. Updated `hooks/hooks.json` registration
 4. Eval results showing >90% accuracy
 
+## Gotchas
+
+- `runner.py` skips input text shorter than 100 characters (`MIN_TEXT_LENGTH = 100`)
+  — test cases under 100 chars will pass in eval but never fire in production
+- The eval harness uses direct inference, not the daemon socket — a rule can
+  score 100% in eval but fail at runtime if the daemon isn't running
+- Rule names must match filenames exactly (without `.yaml`) — `my-detector.yaml`
+  must have `name: my-detector`, not `name: my_detector`
+- The `{text}` placeholder must appear exactly once in the prompt — the daemon
+  substitutes it with the extracted context text
+- If eval shows high recall but low precision, check whether the prompt has more
+  violation examples than clean — unbalanced few-shot examples can bias
+  classification toward the majority label
+- The `labels` field in rule YAML is used by the test harness for coverage
+  validation, not by the daemon or runner at runtime
+
 ## What This Skill Doesn't Do
 
 - Create JS/bash hooks (use hook-creator)
 - Query session analytics (use session-analytics)
-- Modify the daemon or runner infrastructure
-- Override existing rules without explicit user approval
+- Modify the daemon, runner.py, or eval infrastructure
+- Modify existing bundled rules without explicit user approval

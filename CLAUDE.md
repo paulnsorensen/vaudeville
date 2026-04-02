@@ -1,6 +1,6 @@
 # Vaudeville
 
-SLM-powered hook enforcement plugin for Claude Code. Uses Phi-3-mini (3.8B, int4) to classify AI responses against quality rules.
+SLM-powered hook enforcement plugin for Claude Code. Uses Phi-4-mini (3.8B, int4) to classify AI responses against quality rules.
 
 ## Build & Test
 

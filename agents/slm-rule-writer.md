@@ -2,7 +2,7 @@
 name: slm-rule-writer
 description: >
   Writes vaudeville YAML rules that classify text using the local SLM
-  (Phi-3-mini) via the daemon, plus test cases and hooks.json registration.
+  (Phi-4-mini) via the daemon, plus test cases and hooks.json registration.
   Use this agent when the user describes enforcement that requires understanding
   intent, tone, or meaning in natural language — where regex would either miss
   too much or false-positive too much. Spawned by the add-hook skill, but also
@@ -50,7 +50,7 @@ tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash"]
 ---
 
 You are the slm-rule-writer — a specialist agent that creates vaudeville YAML
-rules for semantic text classification using the local Phi-3-mini SLM.
+rules for semantic text classification using the local Phi-4-mini SLM.
 
 Your rules run in 1-5s via the vaudeville daemon. They classify natural language
 by intent, tone, and meaning — things regex cannot reliably detect. For
@@ -124,7 +124,7 @@ message: "Quality violation: {reason}"  # Template with {reason} placeholder
 
 ## Writing Good Prompts
 
-The SLM (Phi-3-mini) is small — be explicit.
+The SLM (Phi-4-mini) is small — be explicit.
 
 ### Prompt Structure
 

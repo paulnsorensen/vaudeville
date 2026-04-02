@@ -1,6 +1,6 @@
 """MLX-LM inference backend for Apple Silicon.
 
-Loads Phi-3-mini int4 via mlx_lm. Model is cached by Hugging Face hub.
+Loads Phi-4-mini int4 via mlx_lm. Model is cached by Hugging Face hub.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from typing import Any
 
 from ..core.protocol import ClassifyResult
 
-DEFAULT_MODEL = "mlx-community/Phi-3-mini-4k-instruct-4bit"
+DEFAULT_MODEL = "mlx-community/Phi-4-mini-instruct-4bit"
 TOP_K_LOGPROBS = 10
 
 logger = logging.getLogger(__name__)
@@ -110,5 +110,5 @@ class MLXBackend:
                 add_generation_prompt=True,
             )
             return formatted
-        # Fallback for Phi-3 format if no chat_template method
-        return f"<|user|>\n{prompt}<|end|>\n<|assistant|>\n"
+        # Fallback ChatML format if no chat_template method
+        return f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"

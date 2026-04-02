@@ -375,7 +375,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="mlx-community/Phi-3-mini-4k-instruct-4bit",
+        default="mlx-community/Phi-4-mini-instruct-4bit",
         help="Model path or Hugging Face ID",
     )
     args = parser.parse_args()

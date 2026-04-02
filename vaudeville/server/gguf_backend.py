@@ -1,6 +1,6 @@
 """llama-cpp-python inference backend for CPU (Linux/macOS).
 
-Loads Phi-3-mini Q4 GGUF via llama-cpp-python. No GPU required.
+Loads Phi-4-mini Q4 GGUF via llama-cpp-python. No GPU required.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from typing import Any
 
 from ..core.protocol import ClassifyResult
 
-DEFAULT_REPO = "microsoft/Phi-3-mini-4k-instruct-gguf"
-DEFAULT_FILE = "Phi-3-mini-4k-instruct-q4.gguf"
+DEFAULT_REPO = "microsoft/Phi-4-mini-instruct-gguf"
+DEFAULT_FILE = "Phi-4-mini-instruct-q4.gguf"
 TOP_LOGPROBS = 10
 
 logger = logging.getLogger(__name__)

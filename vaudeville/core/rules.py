@@ -20,7 +20,7 @@ from typing import Any
 import yaml
 
 
-MAX_INPUT_TOKENS = 1500
+MAX_INPUT_TOKENS = 3000
 CHARS_PER_TOKEN = 4  # conservative English approximation
 
 

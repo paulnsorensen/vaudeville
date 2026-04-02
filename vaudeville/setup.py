@@ -20,7 +20,7 @@ def _detect_platform() -> str:
 def _setup_mlx() -> None:
     from mlx_lm import generate, load
 
-    model_id = "mlx-community/Phi-3-mini-4k-instruct-4bit"
+    model_id = "mlx-community/Phi-4-mini-instruct-4bit"
     print(f"Downloading {model_id} (~2.4 GB, Apple Silicon int4)...")
     model_obj, tokenizer = load(model_id)
     print("Model loaded. Verifying inference...")
@@ -37,8 +37,8 @@ def _setup_mlx() -> None:
 def _setup_gguf() -> None:
     from huggingface_hub import hf_hub_download
 
-    repo_id = "microsoft/Phi-3-mini-4k-instruct-gguf"
-    filename = "Phi-3-mini-4k-instruct-q4.gguf"
+    repo_id = "microsoft/Phi-4-mini-instruct-gguf"
+    filename = "Phi-4-mini-instruct-q4.gguf"
     print(f"Downloading {repo_id}/{filename} (~2.3 GB, CPU Q4)...")
     model_path = hf_hub_download(repo_id=repo_id, filename=filename)
     print(f"Model cached at {model_path}. Verifying inference...")

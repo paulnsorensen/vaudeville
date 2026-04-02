@@ -1,6 +1,6 @@
 {
   "name": "vaudeville",
-  "description": "SLM-powered semantic hook enforcement for Claude Code — classifies assistant output against YAML rules using local Phi-3-mini inference",
+  "description": "SLM-powered semantic hook enforcement for Claude Code — classifies assistant output against YAML rules using local Phi-4-mini inference",
   "version": "0.1.0",
   "author": {
     "name": "Paul Sorensen",

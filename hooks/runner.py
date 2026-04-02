@@ -259,7 +259,7 @@ def _run_named_rules(
             print(
                 json.dumps(
                     verdict_to_hook_response(
-                        rule.name, rule.message, result.reason, rule.action
+                        rule.name, rule.message, result.reason, result.action
                     )
                 )
             )

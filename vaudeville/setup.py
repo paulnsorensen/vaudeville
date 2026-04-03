@@ -6,6 +6,7 @@ Usage: uv run --group mlx python -m vaudeville.setup   # Apple Silicon
 
 from __future__ import annotations
 
+import os
 import platform
 import sys
 
@@ -55,10 +56,19 @@ def _setup_gguf() -> None:
     print("Inference verified.")
 
 
+def _ensure_rules_dir() -> None:
+    """Create ~/.vaudeville/rules/ if it doesn't exist."""
+    rules_dir = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
+    os.makedirs(rules_dir, exist_ok=True)
+    print(f"Rules directory ready: {rules_dir}")
+
+
 def main() -> None:
     backend = _detect_platform()
     print(f"Detected platform: {platform.system()}/{platform.machine()} → {backend}")
     print("This is a one-time setup step.\n")
+
+    _ensure_rules_dir()
 
     try:
         if backend == "mlx":

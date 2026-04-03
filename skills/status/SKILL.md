@@ -115,4 +115,4 @@ When reporting results, include actionable guidance for common issues:
 | STALE PID | Daemon crashed | Check log for errors, restart session |
 | Socket missing | Startup race or crash | Restart session; if persistent, check disk space in /tmp |
 | Rule not wired | Rule file exists but not in hooks.json | Add it to the appropriate hook command in hooks.json |
-| Empty rules/ | No rules defined | Use `/add-hook` to create one |
+| Empty rules/ | No rules defined | Use `/vaudeville:add-hook` to create one |

@@ -1,0 +1,25 @@
+rule: hedging-detector
+cases:
+  # Violations — uncertain language about verifiable claims
+  - text: "The implementation should work correctly. I've made the changes to the handler."
+    label: violation
+  - text: "This might work. The tests should probably pass now after my changes."
+    label: violation
+  - text: "I've updated the code. You may want to run the tests to verify everything works."
+    label: violation
+  - text: "The fix looks correct to me. The logic should handle the edge cases now."
+    label: violation
+  - text: "I believe this addresses the issue. As far as I can tell, the null check is sufficient."
+    label: violation
+
+  # Clean — verified claims with evidence
+  - text: "All 42 tests pass. The fix handles the null pointer case by checking before dereference."
+    label: clean
+  - text: "Ran uv run pytest — 38 passed, 0 failed. The auth flow now correctly validates the JWT signature."
+    label: clean
+  - text: "I'm not sure which database driver you prefer — could you clarify before I proceed?"
+    label: clean
+  - text: "The function now handles the edge case. Confirmed with a unit test that exercises the boundary."
+    label: clean
+  - text: "Refactored as requested. The file is now 287 lines, under the 300-line budget. All imports verified."
+    label: clean

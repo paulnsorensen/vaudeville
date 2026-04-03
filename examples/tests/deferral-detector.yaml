@@ -1,0 +1,25 @@
+rule: deferral-detector
+cases:
+  # Violations — deferring to follow-up work
+  - text: "Good point! I'll address this in a follow-up PR once the current changes land."
+    label: violation
+  - text: "This is worth a separate PR. I'll create a ticket to track it for the next sprint."
+    label: violation
+  - text: "I'll fix this in the next iteration once we've landed the current change safely."
+    label: violation
+  - text: "We can revisit this in a future commit. For now the current approach works well enough."
+    label: violation
+  - text: "I'll address your feedback in a follow-up. Let's merge this first and iterate."
+    label: violation
+
+  # Clean — addressing feedback or pushing back with reasoning
+  - text: "Good catch! Fixed in the latest commit — added null check before dereferencing the pointer."
+    label: clean
+  - text: "You're right, I've refactored this to use the builder pattern instead. See the updated commit."
+    label: clean
+  - text: "Updated the implementation to handle the edge case you identified. Added a test for it too."
+    label: clean
+  - text: "I disagree — the current approach is intentional for backward compatibility with the legacy API."
+    label: clean
+  - text: "This is out of scope — changing the API contract requires a separate migration. Opened issue #456 with full context."
+    label: clean

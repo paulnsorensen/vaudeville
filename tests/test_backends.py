@@ -7,6 +7,7 @@ import socket
 import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -191,11 +192,36 @@ class TestSetupGGUF:
         mock_llm.create_chat_completion.assert_called_once()
 
 
+class TestEnsureRulesDir:
+    def test_creates_rules_directory(self, tmp_path: Path) -> None:
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        with patch("vaudeville.setup.os.path.expanduser", return_value=str(fake_home)):
+            from vaudeville.setup import _ensure_rules_dir
+
+            _ensure_rules_dir()
+        assert (fake_home / ".vaudeville" / "rules").is_dir()
+
+    def test_idempotent_when_exists(self, tmp_path: Path) -> None:
+        fake_home = tmp_path / "home"
+        rules_dir = fake_home / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
+        existing_file = rules_dir / "my-rule.yaml"
+        existing_file.write_text("name: keep-me")
+        with patch("vaudeville.setup.os.path.expanduser", return_value=str(fake_home)):
+            from vaudeville.setup import _ensure_rules_dir
+
+            _ensure_rules_dir()
+        assert rules_dir.is_dir()
+        assert existing_file.read_text() == "name: keep-me"
+
+
 class TestSetupMain:
     def test_mlx_path_runs(self, capsys: pytest.CaptureFixture[str]) -> None:
         with (
             patch("vaudeville.setup._detect_platform", return_value="mlx"),
             patch("vaudeville.setup._setup_mlx"),
+            patch("vaudeville.setup._ensure_rules_dir"),
         ):
             from vaudeville.setup import main
 
@@ -206,6 +232,7 @@ class TestSetupMain:
         with (
             patch("vaudeville.setup._detect_platform", return_value="gguf"),
             patch("vaudeville.setup._setup_gguf"),
+            patch("vaudeville.setup._ensure_rules_dir"),
         ):
             from vaudeville.setup import main
 
@@ -219,6 +246,7 @@ class TestSetupMain:
                 "vaudeville.setup._setup_mlx",
                 side_effect=ImportError("mlx_lm not found"),
             ),
+            patch("vaudeville.setup._ensure_rules_dir"),
         ):
             from vaudeville.setup import main
 

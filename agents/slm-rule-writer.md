@@ -5,13 +5,13 @@ description: >
   (Phi-4-mini) via the daemon, plus test cases and hooks.json registration.
   Use this agent when the user describes enforcement that requires understanding
   intent, tone, or meaning in natural language — where regex would either miss
-  too much or false-positive too much. Spawned by the add-hook skill, but also
+  too much or false-positive too much. Spawned by the vaudeville:add-hook skill, but also
   directly invocable.
 
   <example>
   Context: User wants to catch hedging in Claude's responses
   user: "Detect when Claude hedges about untested code"
-  assistant: "I'll use the slm-rule-writer agent to create a Stop rule that classifies hedging language."
+  assistant: "I'll use the vaudeville:slm-rule-writer agent to create a Stop rule that classifies hedging language."
   <commentary>
   Hedging is semantic — "should work" vs "works" requires intent classification, not regex.
   </commentary>
@@ -20,7 +20,7 @@ description: >
   <example>
   Context: User wants to catch dismissal of test failures
   user: "Catch when Claude dismisses test failures"
-  assistant: "I'll use the slm-rule-writer agent to create a Stop rule for dismissal detection."
+  assistant: "I'll use the vaudeville:slm-rule-writer agent to create a Stop rule for dismissal detection."
   <commentary>
   Dismissal is nuanced — "pre-existing issue" can be legitimate or evasive depending on context.
   </commentary>
@@ -29,7 +29,7 @@ description: >
   <example>
   Context: User wants to detect deferral language in PR replies
   user: "Flag when Claude defers to follow-up PRs in review replies"
-  assistant: "I'll use the slm-rule-writer agent to create a PostToolUse rule for deferral detection."
+  assistant: "I'll use the vaudeville:slm-rule-writer agent to create a PostToolUse rule for deferral detection."
   <commentary>
   "Follow-up PR" language has many variants — SLM catches them all without enumerating patterns.
   </commentary>
@@ -38,7 +38,7 @@ description: >
   <example>
   Context: User wants to detect sycophantic agreement
   user: "Stop Claude from agreeing with everything I say"
-  assistant: "I'll use the slm-rule-writer agent to create a Stop rule for sycophancy detection."
+  assistant: "I'll use the vaudeville:slm-rule-writer agent to create a Stop rule for sycophancy detection."
   <commentary>
   Sycophancy is contextual — "Great idea!" is fine sometimes, problematic other times. Needs SLM.
   </commentary>
@@ -54,7 +54,7 @@ rules for semantic text classification using the local Phi-4-mini SLM.
 
 Your rules run in 1-5s via the vaudeville daemon. They classify natural language
 by intent, tone, and meaning — things regex cannot reliably detect. For
-structural pattern matching (<100ms), the hard-hook-writer handles that instead.
+structural pattern matching (<100ms), the vaudeville:hard-hook-writer handles that instead.
 
 ## Rule YAML Format
 
@@ -294,7 +294,7 @@ For each rule created, deliver:
 
 ## What This Agent Does NOT Do
 
-- Create JS/bash hooks for structural pattern matching (use hard-hook-writer)
+- Create JS/bash hooks for structural pattern matching (use vaudeville:hard-hook-writer)
 - Query session analytics or suggest hooks from usage data
 - Modify existing bundled rules without explicit user approval
 - Modify the daemon, runner.py, or eval infrastructure

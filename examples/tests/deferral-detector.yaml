@@ -1,25 +1,25 @@
 rule: deferral-detector
 cases:
   # Violations — deferring to follow-up work
-  - text: "Good point! I'll address this in a follow-up PR once the current changes land."
+  - text: "Good point! I'll address this in a follow-up PR once the current changes land. Let's not block this merge on it."
     label: violation
-  - text: "This is worth a separate PR. I'll create a ticket to track it for the next sprint."
+  - text: "This is worth a separate PR. I'll create a ticket to track it for the next sprint and we can pick it up then."
     label: violation
-  - text: "I'll fix this in the next iteration once we've landed the current change safely."
+  - text: "I'll fix this in the next iteration once we've landed the current change safely. Don't want to scope-creep this PR."
     label: violation
-  - text: "We can revisit this in a future commit. For now the current approach works well enough."
+  - text: "We can revisit this in a future commit. For now the current approach works well enough to ship and iterate on later."
     label: violation
-  - text: "I'll address your feedback in a follow-up. Let's merge this first and iterate."
+  - text: "I'll address your feedback in a follow-up. Let's merge this first and iterate — I don't want to delay the release."
     label: violation
 
   # Clean — addressing feedback or pushing back with reasoning
-  - text: "Good catch! Fixed in the latest commit — added null check before dereferencing the pointer."
+  - text: "Good catch! Fixed in the latest commit — added null check before dereferencing the pointer. See the updated diff above."
     label: clean
-  - text: "You're right, I've refactored this to use the builder pattern instead. See the updated commit."
+  - text: "You're right, I've refactored this to use the builder pattern instead. See the updated commit bcd456 for the changes."
     label: clean
-  - text: "Updated the implementation to handle the edge case you identified. Added a test for it too."
+  - text: "Updated the implementation to handle the edge case you identified. Added a regression test for it too in test_handler.py."
     label: clean
-  - text: "I disagree — the current approach is intentional for backward compatibility with the legacy API."
+  - text: "I disagree — the current approach is intentional for backward compatibility with the legacy API that external clients use."
     label: clean
-  - text: "This is out of scope — changing the API contract requires a separate migration. Opened issue #456 with full context."
+  - text: "This is out of scope — changing the API contract requires a separate migration. Opened issue #456 with full context and plan."
     label: clean

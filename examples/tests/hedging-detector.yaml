@@ -1,25 +1,25 @@
 rule: hedging-detector
 cases:
   # Violations — uncertain language about verifiable claims
-  - text: "The implementation should work correctly. I've made the changes to the handler."
+  - text: "The implementation should work correctly. I've made the changes to the handler and updated the relevant tests."
     label: violation
-  - text: "This might work. The tests should probably pass now after my changes."
+  - text: "This might work. The tests should probably pass now after my changes to the authentication module code."
     label: violation
-  - text: "I've updated the code. You may want to run the tests to verify everything works."
+  - text: "I've updated the code. You may want to run the tests to verify everything works correctly before merging this."
     label: violation
-  - text: "The fix looks correct to me. The logic should handle the edge cases now."
+  - text: "The fix looks correct to me. The logic should handle the edge cases now based on my reading of the code."
     label: violation
-  - text: "I believe this addresses the issue. As far as I can tell, the null check is sufficient."
+  - text: "I believe this addresses the issue. As far as I can tell, the null check is sufficient to prevent the crash."
     label: violation
 
   # Clean — verified claims with evidence
-  - text: "All 42 tests pass. The fix handles the null pointer case by checking before dereference."
+  - text: "All 42 tests pass. The fix handles the null pointer case by checking before dereference on line 84 of handler.rs."
     label: clean
-  - text: "Ran uv run pytest — 38 passed, 0 failed. The auth flow now correctly validates the JWT signature."
+  - text: "Ran uv run pytest — 38 passed, 0 failed. The auth flow now correctly validates the JWT signature before decoding."
     label: clean
-  - text: "I'm not sure which database driver you prefer — could you clarify before I proceed?"
+  - text: "I'm not sure which database driver you prefer for this project — could you clarify before I proceed with the migration?"
     label: clean
-  - text: "The function now handles the edge case. Confirmed with a unit test that exercises the boundary."
+  - text: "The function now handles the edge case. Confirmed with a unit test that exercises the boundary condition at max int."
     label: clean
-  - text: "Refactored as requested. The file is now 287 lines, under the 300-line budget. All imports verified."
+  - text: "Refactored as requested. The file is now 287 lines, under the 300-line budget. All imports verified with ruff check."
     label: clean

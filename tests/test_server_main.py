@@ -65,6 +65,7 @@ class TestSetupMain:
         with (
             patch("vaudeville.setup._detect_platform", return_value="mlx"),
             patch("vaudeville.setup._setup_mlx"),
+            patch("vaudeville.setup._ensure_rules_dir"),
         ):
             from vaudeville.setup import main
 
@@ -75,6 +76,7 @@ class TestSetupMain:
         with (
             patch("vaudeville.setup._detect_platform", return_value="gguf"),
             patch("vaudeville.setup._setup_gguf"),
+            patch("vaudeville.setup._ensure_rules_dir"),
         ):
             from vaudeville.setup import main
 
@@ -88,6 +90,7 @@ class TestSetupMain:
                 "vaudeville.setup._setup_mlx",
                 side_effect=ImportError("mlx_lm not found"),
             ),
+            patch("vaudeville.setup._ensure_rules_dir"),
         ):
             from vaudeville.setup import main
 

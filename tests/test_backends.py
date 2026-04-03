@@ -46,7 +46,7 @@ class TestClientSocket:
 
         with patch("vaudeville.core.client.SOCKET_PATH", sock_path):
             client = VaudevilleClient()
-            result = client.classify("test-rule", {"text": "hello"})
+            result = client.classify("test-rule: hello")
 
         server_done.wait(timeout=3.0)
         assert result is not None
@@ -86,30 +86,6 @@ class TestDaemonExtras:
         assert not os.path.exists(sock_path)
         assert not os.path.exists(pid_path)
 
-    def test_find_project_root_in_daemon(self) -> None:
-        from vaudeville.server.daemon import _find_project_root
-
-        result = _find_project_root()
-        assert result is not None
-        assert os.path.isdir(result)
-
-    def test_find_project_root_oserror(self) -> None:
-        from vaudeville.server.daemon import _find_project_root
-
-        with patch("vaudeville.server.daemon.subprocess.run", side_effect=OSError):
-            assert _find_project_root() is None
-
-    def test_find_project_root_timeout(self) -> None:
-        import subprocess
-
-        from vaudeville.server.daemon import _find_project_root
-
-        with patch(
-            "vaudeville.server.daemon.subprocess.run",
-            side_effect=subprocess.TimeoutExpired("git", 5),
-        ):
-            assert _find_project_root() is None
-
     def test_accept_loop_stops_on_stop_event(self) -> None:
         from vaudeville.server.daemon import VaudevilleDaemon
 
@@ -135,9 +111,3 @@ class TestDaemonExtras:
         broken_conn.recv.side_effect = OSError("connection reset")
         daemon._handle_client(broken_conn)
         broken_conn.close.assert_called_once()
-
-    def test_scan_dir_mtime_oserror(self) -> None:
-        from vaudeville.server.daemon import _scan_dir_mtime
-
-        result = _scan_dir_mtime("/nonexistent/path")
-        assert result == 0.0

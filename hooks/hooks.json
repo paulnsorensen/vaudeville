@@ -7,8 +7,7 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh",
-            "timeout": 60,
-            "statusMessage": "🪝 vaudeville — starting inference daemon..."
+            "timeout": 60
           }
         ]
       }

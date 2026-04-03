@@ -124,7 +124,7 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
             continue
         path = os.path.join(rules_dir, filename)
         try:
-            rule = _load_rule_file(path)
+            rule = _load_rule_file(path)  # uses parse_rule internally
             rules[rule.name] = rule
         except Exception as exc:
             logging.warning("[vaudeville] Failed to load rule %s: %s", filename, exc)

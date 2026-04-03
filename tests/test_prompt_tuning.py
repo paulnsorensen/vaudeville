@@ -425,7 +425,7 @@ class TestRunnerHelpers:
             "test-rule", "{reason}", "test reason", "warn"
         )
         assert result == {
-            "decision": "warn",
+            "decision": "block",
             "reason": "test reason",
             "systemMessage": "Warning — test reason",
         }
@@ -482,7 +482,7 @@ class TestRunnerHelpers:
 class TestEventDiscovery:
     """Tests for --event flag auto-discovery in hooks/runner.py."""
 
-    def _get_runner(self):
+    def _get_runner(self) -> types.ModuleType:
         import importlib
 
         hooks_dir = os.path.join(

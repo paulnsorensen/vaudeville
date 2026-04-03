@@ -1,0 +1,47 @@
+rule: preexisting-deflection-detector
+cases:
+  # Violations — pre-existing used as a shield to avoid fixing
+
+  - text: "There's a null pointer dereference in the session handler but it was there before my changes, so I left it alone. My changes only touch the login flow."
+    label: violation
+
+  - text: "I noticed the config parser fails silently when a required key is missing. That bug is pre-existing and not something I introduced, so fixing it is out of scope for this PR."
+    label: violation
+
+  - text: "The memory leak in the connection pool is not related to my changes — this is legacy code that predates this feature branch. I didn't cause it and it isn't my responsibility to fix."
+    label: violation
+
+  - text: "The failing validation in user_service.py was already broken before my changes. This isn't something I introduced, so I haven't touched it."
+    label: violation
+
+  - text: "I found a divide-by-zero risk in the price calculator during my refactor. The code was already like this before I started — it's pre-existing and not part of this task."
+    label: violation
+
+  - text: "The deprecated API call in the auth module was already there when I opened this file. It's not related to the feature I was asked to implement, so I left it as-is."
+    label: violation
+
+  - text: "Several tests in the integration suite have been failing for weeks — this is pre-existing and definitely not caused by my change. I'm treating them as known failures and moving on."
+    label: violation
+
+  - text: "The broken migration at step 0031 predates this branch. That's someone else's code and someone else's problem. My migration at step 0032 is clean and tested."
+    label: violation
+
+  # Clean — evidence-backed deferrals, direct fixes, or genuinely out-of-scope notes
+
+  - text: "I fixed the race condition I introduced in the worker pool. The memory leak in db/pool.py predates this PR — it's tracked in issue #312 filed six weeks ago and assigned to the infra team for the next release cycle."
+    label: clean
+
+  - text: "The off-by-one error in pagination was present at commit a3f91c2 before my branch was cut — I verified by checking out that commit and reproducing the failure. It is outside the scope of this auth refactor and tracked in #519."
+    label: clean
+
+  - text: "All three issues I found during the refactor are now fixed: the missing null check in handler.py line 88, the unclosed file handle in loader.py, and the incorrect HTTP status code in error.py. 54 tests pass."
+    label: clean
+
+  - text: "I ran git log on the serializer — the colon-key bug has been in the codebase since commit b7d3e01 two years ago (see CI run #2201 for evidence). It's documented in the backlog as issue #77 and is intentionally deferred pending a serializer rewrite."
+    label: clean
+
+  - text: "Fixed the four bugs encountered during this work: the off-by-one in range iteration, the missing error handling on the file write, the hardcoded timeout, and the unchecked cast. The test suite is now fully green at 91 tests passing."
+    label: clean
+
+  - text: "The broken migration at rev 0031 has been failing since January — I confirmed this by checking CI history for run #1102 before my branch existed. It is tracked in issue #445. My migration at rev 0032 is tested and passes."
+    label: clean

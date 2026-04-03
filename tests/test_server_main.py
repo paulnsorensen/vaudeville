@@ -61,7 +61,7 @@ class TestSetupGGUF:
 
 
 class TestSetupMain:
-    def test_mlx_path_runs(self, capsys) -> None:
+    def test_mlx_path_runs(self, capsys: pytest.CaptureFixture[str]) -> None:
         with (
             patch("vaudeville.setup._detect_platform", return_value="mlx"),
             patch("vaudeville.setup._setup_mlx"),
@@ -71,7 +71,7 @@ class TestSetupMain:
             main()
         assert "Setup complete" in capsys.readouterr().out
 
-    def test_gguf_path_runs(self, capsys) -> None:
+    def test_gguf_path_runs(self, capsys: pytest.CaptureFixture[str]) -> None:
         with (
             patch("vaudeville.setup._detect_platform", return_value="gguf"),
             patch("vaudeville.setup._setup_gguf"),

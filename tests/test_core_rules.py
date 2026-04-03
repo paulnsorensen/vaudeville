@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import tempfile
+from typing import Any
 
 from vaudeville.core.rules import (
-    DEFAULT_LABELS,
     Rule,
     load_rules_layered,
     parse_rule,
@@ -21,7 +21,6 @@ class TestRuleContext:
             event="Stop",
             prompt="Text: {text}\nContext: {context}",
             context=[],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -35,7 +34,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "last_assistant_message"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -48,7 +46,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "content.txt"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -64,7 +61,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "nonexistent.txt"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -77,7 +73,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.body"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -90,7 +85,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.nonexistent"}],
-            labels=["violation", "clean"],
             action="block",
             message="{reason}",
         )
@@ -98,88 +92,143 @@ class TestRuleContext:
         assert ctx == ""
 
 
-class TestParseRuleLabels:
-    """Tests for label validation in parse_rule."""
+class TestParseRule:
+    """Tests for parse_rule — validates Rule construction from YAML data."""
 
-    def _minimal_data(self, **overrides) -> dict:
-        base = {"name": "test", "prompt": "{text}"}
+    def _minimal_data(self, **overrides: Any) -> dict[str, Any]:
+        base: dict[str, Any] = {"name": "test", "prompt": "{text}"}
         base.update(overrides)
         return base
 
-    def test_valid_custom_labels(self) -> None:
-        rule = parse_rule(self._minimal_data(labels=["spam", "ham"]))
-        assert rule.labels == ["spam", "ham"]
-
-    def test_default_labels_when_missing(self) -> None:
+    def test_name_and_prompt_required_fields(self) -> None:
         rule = parse_rule(self._minimal_data())
-        assert rule.labels == list(DEFAULT_LABELS)
+        assert rule.name == "test"
+        assert rule.prompt == "{text}"
 
-    def test_null_labels_fallback_to_default(self) -> None:
-        rule = parse_rule(self._minimal_data(labels=None))
-        assert rule.labels == list(DEFAULT_LABELS)
-
-    def test_scalar_labels_fallback_to_default(self) -> None:
-        rule = parse_rule(self._minimal_data(labels="violation"))
-        assert rule.labels == list(DEFAULT_LABELS)
-
-    def test_three_element_labels_fallback_to_default(self) -> None:
-        rule = parse_rule(self._minimal_data(labels=["a", "b", "c"]))
-        assert rule.labels == list(DEFAULT_LABELS)
-
-    def test_single_element_labels_fallback_to_default(self) -> None:
-        rule = parse_rule(self._minimal_data(labels=["only-one"]))
-        assert rule.labels == list(DEFAULT_LABELS)
-
-    def test_empty_list_fallback_to_default(self) -> None:
-        rule = parse_rule(self._minimal_data(labels=[]))
-        assert rule.labels == list(DEFAULT_LABELS)
-
-    def test_integer_labels_converted_to_strings(self) -> None:
-        rule = parse_rule(self._minimal_data(labels=[1, 0]))
-        assert rule.labels == ["1", "0"]
-
-    def test_labels_are_independent_of_default(self) -> None:
-        """Ensure returned labels are a new list, not a reference to DEFAULT_LABELS."""
+    def test_defaults_action_to_block(self) -> None:
         rule = parse_rule(self._minimal_data())
-        rule.labels[0] = "mutated"
-        assert DEFAULT_LABELS == ["violation", "clean"]
+        assert rule.action == "block"
+
+    def test_defaults_threshold_to_zero(self) -> None:
+        rule = parse_rule(self._minimal_data())
+        assert rule.threshold == 0.0
+
+    def test_custom_action_preserved(self) -> None:
+        rule = parse_rule(self._minimal_data(action="warn"))
+        assert rule.action == "warn"
+
+    def test_custom_threshold_preserved(self) -> None:
+        rule = parse_rule(self._minimal_data(threshold=0.75))
+        assert rule.threshold == 0.75
+
+    def test_custom_event_preserved(self) -> None:
+        rule = parse_rule(self._minimal_data(event="PreToolUse"))
+        assert rule.event == "PreToolUse"
+
+    def test_context_list_preserved(self) -> None:
+        ctx = [{"field": "last_assistant_message"}]
+        rule = parse_rule(self._minimal_data(context=ctx))
+        assert rule.context == ctx
+
+    def test_ignores_unknown_fields(self) -> None:
+        rule = parse_rule(self._minimal_data(labels=["spam", "ham"], unknown="value"))
+        assert rule.name == "test"
+        assert not hasattr(rule, "labels")
 
 
 class TestRulesSearchPath:
-    def test_bundled_rules_always_in_path(self) -> None:
-        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path = rules_search_path(plugin_root)
-        assert len(path) >= 1
-        assert path[0].endswith("/rules")
+    def test_empty_when_no_dirs_exist(self) -> None:
+        """Returns empty list when neither global nor project rules dirs exist."""
+        import unittest.mock as mock
 
-    def test_nonexistent_plugin_root_returns_empty(self) -> None:
-        path = rules_search_path("/nonexistent/plugin/root")
-        for d in path:
-            assert "/nonexistent/" not in d
+        with mock.patch("vaudeville.core.rules.os.path.isdir", return_value=False):
+            path = rules_search_path(project_root="/nonexistent/path")
+        assert path == []
 
-
-class TestLoadRulesLayered:
-    def test_loads_bundled_rules(self) -> None:
-        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        rules = load_rules_layered(plugin_root)
-        assert "violation-detector" in rules
-
-    def test_project_override_wins(self) -> None:
-        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
+    def test_project_dir_included_when_exists(self) -> None:
         with tempfile.TemporaryDirectory() as project_dir:
             rules_dir = os.path.join(project_dir, ".vaudeville", "rules")
             os.makedirs(rules_dir)
-            with open(os.path.join(rules_dir, "violation-detector.yaml"), "w") as f:
+            path = rules_search_path(project_root=project_dir)
+            assert rules_dir in path
+
+    def test_project_dir_last_in_path(self) -> None:
+        """Project dir is highest priority — must come last."""
+        with tempfile.TemporaryDirectory() as project_dir:
+            rules_dir = os.path.join(project_dir, ".vaudeville", "rules")
+            os.makedirs(rules_dir)
+            path = rules_search_path(project_root=project_dir)
+            if len(path) > 1:
+                assert path[-1] == rules_dir
+
+    def test_no_project_root_skips_project_dir(self) -> None:
+        path = rules_search_path(project_root=None)
+        for d in path:
+            assert ".vaudeville/rules" not in d or d.startswith(os.path.expanduser("~"))
+
+
+class TestLoadRulesLayered:
+    def test_returns_empty_when_no_dirs_exist(self) -> None:
+        import unittest.mock as mock
+
+        with mock.patch("vaudeville.core.rules.os.path.isdir", return_value=False):
+            rules = load_rules_layered(project_root="/nonexistent/path")
+        assert rules == {}
+
+    def test_loads_rules_from_project_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as project_dir:
+            rules_dir = os.path.join(project_dir, ".vaudeville", "rules")
+            os.makedirs(rules_dir)
+            with open(os.path.join(rules_dir, "my-rule.yaml"), "w") as f:
                 f.write(
-                    "name: violation-detector\n"
+                    "name: my-rule\n"
                     "event: Stop\n"
-                    "prompt: 'override {text}'\n"
-                    "labels: [violation, clean]\n"
-                    "action: warn\n"
+                    "prompt: 'classify {text}'\n"
+                    "action: block\n"
                     "message: '{reason}'\n"
                 )
+            rules = load_rules_layered(project_root=project_dir)
+            assert "my-rule" in rules
 
-            rules = load_rules_layered(plugin_root, project_root=project_dir)
-            assert rules["violation-detector"].action == "warn"
-            assert "override" in rules["violation-detector"].prompt
+    def test_project_dir_overrides_global_dir(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as global_dir,
+            tempfile.TemporaryDirectory() as project_dir,
+        ):
+            global_rules_dir = os.path.join(global_dir, "rules")
+            project_rules_dir = os.path.join(project_dir, ".vaudeville", "rules")
+            os.makedirs(global_rules_dir)
+            os.makedirs(project_rules_dir)
+
+            with open(os.path.join(global_rules_dir, "shared-rule.yaml"), "w") as f:
+                f.write(
+                    "name: shared-rule\nevent: Stop\nprompt: 'global {text}'\n"
+                    "action: block\nmessage: '{reason}'\n"
+                )
+            with open(os.path.join(project_rules_dir, "shared-rule.yaml"), "w") as f:
+                f.write(
+                    "name: shared-rule\nevent: Stop\nprompt: 'project {text}'\n"
+                    "action: warn\nmessage: '{reason}'\n"
+                )
+
+            import unittest.mock as mock
+
+            global_path = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
+            orig_isdir = os.path.isdir
+
+            def fake_isdir(path: str) -> bool:
+                if path == global_path:
+                    return True
+                if path == global_rules_dir:
+                    return True
+                return orig_isdir(path)
+
+            with mock.patch("vaudeville.core.rules.os.path.isdir", fake_isdir):
+                with mock.patch(
+                    "vaudeville.core.rules.os.path.expanduser",
+                    return_value=global_dir,
+                ):
+                    rules = load_rules_layered(project_root=project_dir)
+
+            assert rules["shared-rule"].action == "warn"
+            assert "project" in rules["shared-rule"].prompt

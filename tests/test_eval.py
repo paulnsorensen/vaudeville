@@ -28,7 +28,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 @pytest.fixture
-def rules() -> dict:
+def rules() -> dict[str, Rule]:
     return {
         "violation-detector": Rule(
             name="violation-detector",
@@ -83,7 +83,7 @@ class TestLoadTestCases:
             open(os.path.join(tmp, "readme.txt"), "w").close()
             assert load_test_cases(tmp) == {}
 
-    def test_warns_on_bad_yaml(self, caplog) -> None:
+    def test_warns_on_bad_yaml(self, caplog: pytest.LogCaptureFixture) -> None:
         import logging
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -113,7 +113,7 @@ class TestLoadTestCases:
 
 
 class TestClassifyCase:
-    def test_true_positive(self, rules: dict) -> None:
+    def test_true_positive(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation", reason="found issue")
         results = EvalResults(rule="violation-detector", misclassified=[])
         case = EvalCase(text="this should work", label="violation")
@@ -121,14 +121,14 @@ class TestClassifyCase:
         assert results.tp == 1
         assert results.fp == 0
 
-    def test_true_negative(self, rules: dict) -> None:
+    def test_true_negative(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="clean", reason="ok")
         results = EvalResults(rule="violation-detector", misclassified=[])
         case = EvalCase(text="all good", label="clean")
         _classify_case(case, rules["violation-detector"], backend, results)
         assert results.tn == 1
 
-    def test_false_positive(self, rules: dict) -> None:
+    def test_false_positive(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation", reason="false alarm")
         results = EvalResults(rule="violation-detector", misclassified=[])
         case = EvalCase(text="all tests pass", label="clean")
@@ -137,7 +137,7 @@ class TestClassifyCase:
         assert len(results.misclassified) == 1  # type: ignore[arg-type]
         assert results.misclassified[0]["actual"] == "clean"  # type: ignore[index]
 
-    def test_false_negative(self, rules: dict) -> None:
+    def test_false_negative(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="clean", reason="missed it")
         results = EvalResults(rule="violation-detector", misclassified=[])
         case = EvalCase(text="this might work", label="violation")
@@ -147,24 +147,29 @@ class TestClassifyCase:
 
 
 class TestEvaluateRule:
-    def test_raises_for_unknown_rule(self, rules: dict) -> None:
+    def test_raises_for_unknown_rule(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend()
         with pytest.raises(ValueError, match="Rule not found"):
             evaluate_rule("unknown-rule", [], rules, backend)
 
-    def test_aggregates_results(self, rules: dict, two_cases: list[EvalCase]) -> None:
+    def test_aggregates_results(
+        self, rules: dict[str, Rule], two_cases: list[EvalCase]
+    ) -> None:
         backend = MockBackend(verdict="violation")
         results, _ = evaluate_rule("violation-detector", two_cases, rules, backend)
         assert results.total == 2
 
 
 class TestCrossValidateRule:
-    def test_raises_for_unknown_rule(self, rules: dict) -> None:
+    def test_raises_for_unknown_rule(self, rules: dict[str, Rule]) -> None:
         with pytest.raises(ValueError, match="Rule not found"):
             cross_validate_rule("unknown", [], rules, MockBackend())
 
     def test_produces_correct_totals(
-        self, rules: dict, two_cases: list[EvalCase], capsys
+        self,
+        rules: dict[str, Rule],
+        two_cases: list[EvalCase],
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         backend = MockBackend(verdict="violation")
         results = cross_validate_rule("violation-detector", two_cases, rules, backend)
@@ -172,7 +177,7 @@ class TestCrossValidateRule:
         out = capsys.readouterr().out
         assert "Fold" in out
 
-    def test_tracks_misclassifications(self, rules: dict) -> None:
+    def test_tracks_misclassifications(self, rules: dict[str, Rule]) -> None:
         cases = [EvalCase(text="good text", label="clean")]
         backend = MockBackend(verdict="violation")  # FP
         results = cross_validate_rule("violation-detector", cases, rules, backend)
@@ -181,21 +186,27 @@ class TestCrossValidateRule:
 
 
 class TestPrintResults:
-    def test_pass_when_precision_and_recall_met(self, capsys) -> None:
+    def test_pass_when_precision_and_recall_met(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         results = EvalResults(rule="test", tp=19, fp=1, tn=0, fn=4)
         passed = print_results(results)
         assert passed is True
         out = capsys.readouterr().out
         assert "PASS" in out
 
-    def test_fail_when_below_threshold(self, capsys) -> None:
+    def test_fail_when_below_threshold(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         results = EvalResults(rule="test", tp=5, fp=5, tn=0, fn=5)
         passed = print_results(results)
         assert passed is False
         out = capsys.readouterr().out
         assert "FAIL" in out
 
-    def test_prints_misclassifications(self, capsys) -> None:
+    def test_prints_misclassifications(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         results = EvalResults(
             rule="test",
             tp=0,
@@ -228,7 +239,9 @@ class TestBuildBackend:
 
 
 class TestRunEvaluations:
-    def test_skips_rule_with_no_definition(self, rules: dict, capsys) -> None:
+    def test_skips_rule_with_no_definition(
+        self, rules: dict[str, Rule], capsys: pytest.CaptureFixture[str]
+    ) -> None:
         import argparse
 
         args = argparse.Namespace(cross_validate=False)
@@ -238,7 +251,7 @@ class TestRunEvaluations:
         out = capsys.readouterr().out
         assert "WARNING" in out
 
-    def test_fails_when_no_positive_cases(self, rules: dict) -> None:
+    def test_fails_when_no_positive_cases(self, rules: dict[str, Rule]) -> None:
         import argparse
 
         args = argparse.Namespace(cross_validate=False)
@@ -250,7 +263,9 @@ class TestRunEvaluations:
             passed is False
         )  # only TN, no TP → precision/recall = 0% → fails threshold
 
-    def test_cross_validate_flag_routes_to_cross_validate(self, rules: dict) -> None:
+    def test_cross_validate_flag_routes_to_cross_validate(
+        self, rules: dict[str, Rule]
+    ) -> None:
         import argparse
 
         args = argparse.Namespace(cross_validate=True)
@@ -264,7 +279,7 @@ class TestRunEvaluations:
 
 
 class TestMain:
-    def test_exits_0_on_all_pass(self, capsys) -> None:
+    def test_exits_0_on_all_pass(self, capsys: pytest.CaptureFixture[str]) -> None:
         mock_backend = MockBackend(verdict="clean")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
@@ -291,7 +306,9 @@ class TestMain:
                 main()
         assert exc_info.value.code == 0
 
-    def test_filters_to_single_rule_when_specified(self, capsys) -> None:
+    def test_filters_to_single_rule_when_specified(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         mock_backend = MockBackend(verdict="clean")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (

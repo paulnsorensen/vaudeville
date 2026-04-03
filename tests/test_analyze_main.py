@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import pathlib
 import sys
 from unittest.mock import patch
 
@@ -21,18 +22,20 @@ _ANALYZE_PATH = os.path.join(
 spec = importlib.util.spec_from_file_location("analyze", _ANALYZE_PATH)
 assert spec is not None and spec.loader is not None
 analyze = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(analyze)  # type: ignore[attr-defined]
+spec.loader.exec_module(analyze)
 
 
 class TestMain:
-    def test_exits_when_no_db(self, tmp_path) -> None:
+    def test_exits_when_no_db(self, tmp_path: pathlib.Path) -> None:
         nonexistent = str(tmp_path / "no.duckdb")
         with patch.object(analyze, "DB_PATH", nonexistent):
             with pytest.raises(SystemExit) as exc_info:
                 analyze.main()
             assert exc_info.value.code == 1
 
-    def test_json_output_is_valid_list(self, tmp_path, capsys) -> None:
+    def test_json_output_is_valid_list(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
         open(fake_db, "w").close()
         with (
@@ -45,7 +48,9 @@ class TestMain:
         data = json.loads(out)
         assert isinstance(data, list)
 
-    def test_text_output_shows_no_suggestions_message(self, tmp_path, capsys) -> None:
+    def test_text_output_shows_no_suggestions_message(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
         open(fake_db, "w").close()
         with (
@@ -56,7 +61,9 @@ class TestMain:
             analyze.main()
         assert "No hook suggestions" in capsys.readouterr().out
 
-    def test_days_flag_respected(self, tmp_path, capsys) -> None:
+    def test_days_flag_respected(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
         open(fake_db, "w").close()
         rows = [{"bash_cmd": "rm -rf /tmp/x", "uses": "5"}]
@@ -69,7 +76,9 @@ class TestMain:
         out = capsys.readouterr().out
         assert "7 days" in out
 
-    def test_suggestions_printed_in_text_mode(self, tmp_path, capsys) -> None:
+    def test_suggestions_printed_in_text_mode(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
         open(fake_db, "w").close()
         rows = [{"bash_cmd": "rm -rf /tmp/x", "uses": "5"}]
@@ -82,11 +91,13 @@ class TestMain:
         out = capsys.readouterr().out
         assert "HOOK SUGGESTIONS" in out
 
-    def test_analyzer_exception_is_caught(self, tmp_path, capsys) -> None:
+    def test_analyzer_exception_is_caught(
+        self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
         open(fake_db, "w").close()
 
-        def _boom(_sql):
+        def _boom(_sql: str) -> list[object]:
             raise RuntimeError("db exploded")
 
         with (

@@ -68,7 +68,7 @@ class TestEvalResults:
 
 class TestEvaluateRule:
     @pytest.fixture
-    def rules(self) -> dict:
+    def rules(self) -> dict[str, Rule]:
         return {
             "violation-detector": Rule(
                 name="violation-detector",
@@ -80,26 +80,26 @@ class TestEvaluateRule:
             ),
         }
 
-    def test_perfect_accuracy(self, rules: dict) -> None:
+    def test_perfect_accuracy(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="test", label="violation")] * 5
         results, _ = evaluate_rule("violation-detector", cases, rules, backend)
         assert results.accuracy == 1.0
         assert results.tp == 5
 
-    def test_all_false_positives(self, rules: dict) -> None:
+    def test_all_false_positives(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="test", label="clean")] * 5
         results, _ = evaluate_rule("violation-detector", cases, rules, backend)
         assert results.fp == 5
         assert results.accuracy == 0.0
 
-    def test_unknown_rule_raises(self, rules: dict) -> None:
+    def test_unknown_rule_raises(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend()
         with pytest.raises(ValueError, match="not found"):
             evaluate_rule("nonexistent", [], rules, backend)
 
-    def test_misclassifications_recorded(self, rules: dict) -> None:
+    def test_misclassifications_recorded(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="clean text", label="clean")]
         results, _ = evaluate_rule("violation-detector", cases, rules, backend)

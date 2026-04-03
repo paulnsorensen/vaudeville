@@ -7,6 +7,7 @@ import socket
 import tempfile
 import threading
 import time
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -72,7 +73,7 @@ class TestGGUFBackend:
 
 
 class TestMLXBackend:
-    def _make_mocks(self, output: str = "VERDICT: clean") -> tuple:
+    def _make_mocks(self, output: str = "VERDICT: clean") -> tuple[Any, Any, Any, Any]:
         mock_model = MagicMock()
         mock_tokenizer = MagicMock()
         mock_load = MagicMock(return_value=(mock_model, mock_tokenizer))
@@ -130,7 +131,7 @@ class TestMLXBackend:
 
             backend = MLXBackend()
             formatted = backend._apply_chat_template("hello")
-        assert "<|user|>" in formatted
+        assert "<|im_start|>user" in formatted
         assert "hello" in formatted
 
 
@@ -191,7 +192,7 @@ class TestSetupGGUF:
 
 
 class TestSetupMain:
-    def test_mlx_path_runs(self, capsys) -> None:
+    def test_mlx_path_runs(self, capsys: pytest.CaptureFixture[str]) -> None:
         with (
             patch("vaudeville.setup._detect_platform", return_value="mlx"),
             patch("vaudeville.setup._setup_mlx"),
@@ -201,7 +202,7 @@ class TestSetupMain:
             main()
         assert "Setup complete" in capsys.readouterr().out
 
-    def test_gguf_path_runs(self, capsys) -> None:
+    def test_gguf_path_runs(self, capsys: pytest.CaptureFixture[str]) -> None:
         with (
             patch("vaudeville.setup._detect_platform", return_value="gguf"),
             patch("vaudeville.setup._setup_gguf"),

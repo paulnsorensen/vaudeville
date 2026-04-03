@@ -6,7 +6,7 @@ Loads Phi-4-mini int4 via mlx_lm. Model is cached by Hugging Face hub.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from ..core.protocol import ClassifyResult
 
@@ -21,7 +21,7 @@ class MLXBackend:
         from mlx_lm import load, stream_generate
         from mlx_lm.generate import generate_step
 
-        self._model, self._tokenizer = load(model_path)
+        self._model, self._tokenizer, *_ = load(model_path)
         self._stream_generate = stream_generate
         self._generate_step = generate_step
 
@@ -61,7 +61,7 @@ class MLXBackend:
         for i, (token, logprobs_arr) in enumerate(
             self._generate_step(prompt_tokens, self._model, max_tokens=max_tokens)
         ):
-            token_id: int = token.item() if hasattr(token, "item") else int(token)
+            token_id: int = int(token.item() if hasattr(token, "item") else token)
             tokens.append(token_id)
 
             if i == 0:
@@ -91,7 +91,7 @@ class MLXBackend:
             mx.eval(top_indices)
 
             result: dict[str, float] = {}
-            for idx in top_indices.tolist():
+            for idx in cast(list[Any], top_indices.tolist()):
                 token_str: str = tokenizer.decode([idx])
                 result[token_str] = logprobs_arr[idx].item()
             return result

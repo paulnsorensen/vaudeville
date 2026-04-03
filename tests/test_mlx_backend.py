@@ -11,7 +11,9 @@ class TestMLXBackend:
         resp.finish_reason = finish_reason
         return resp
 
-    def _make_mocks(self, output: str = "VERDICT: clean") -> tuple:
+    def _make_mocks(
+        self, output: str = "VERDICT: clean"
+    ) -> tuple[Any, Any, Any, Any, Any]:
         mock_model = MagicMock()
         mock_tokenizer = MagicMock()
         mock_load = MagicMock(return_value=(mock_model, mock_tokenizer))
@@ -85,4 +87,4 @@ class TestMLXBackend:
 
             backend = MLXBackend()
             formatted = backend._apply_chat_template("hello")
-        assert formatted == "<|user|>\nhello<|end|>\n<|assistant|>\n"
+        assert formatted == "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n"

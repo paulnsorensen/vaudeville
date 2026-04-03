@@ -22,7 +22,7 @@ def _setup_mlx() -> None:
 
     model_id = "mlx-community/Phi-4-mini-instruct-4bit"
     print(f"Downloading {model_id} (~2.4 GB, Apple Silicon int4)...")
-    model_obj, tokenizer = load(model_id)
+    model_obj, tokenizer, *_ = load(model_id)
     print("Model loaded. Verifying inference...")
     _ = generate(
         model_obj,

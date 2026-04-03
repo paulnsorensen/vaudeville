@@ -117,7 +117,9 @@ class TestVerdictToHookResponse:
         assert "Warning" in resp["systemMessage"]
         assert "mild issue" in resp["systemMessage"]
 
-    def test_log_action_returns_empty_dict(self, capsys) -> None:
+    def test_log_action_returns_empty_dict(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         resp = runner.verdict_to_hook_response(
             "test-rule", "Caught: {reason}", "logged", "log"
         )
@@ -138,7 +140,9 @@ class TestVerdictToHookResponse:
 class TestRunPipeline:
     """Tests for _run() — the main execution loop."""
 
-    def _run_with_stdin(self, argv: list[str], stdin_data: dict | None = None) -> int:
+    def _run_with_stdin(
+        self, argv: list[str], stdin_data: dict[str, str] | None = None
+    ) -> int:
         """Helper: set argv, mock stdin, call _run(), catch SystemExit."""
         stdin_str = json.dumps(stdin_data) if stdin_data is not None else ""
         with (
@@ -168,7 +172,9 @@ class TestRunPipeline:
             code = self._run_with_stdin(["runner.py", "--event", "Stop"], data)
         assert code == 0
 
-    def test_main_catches_unexpected_exception(self, capsys) -> None:
+    def test_main_catches_unexpected_exception(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         with patch("runner._run", side_effect=RuntimeError("boom")):
             with pytest.raises(SystemExit) as exc_info:
                 runner.main()

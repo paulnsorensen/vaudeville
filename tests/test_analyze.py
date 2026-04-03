@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import pathlib
+from typing import Any, Callable
 from unittest.mock import patch
 
 import pytest
@@ -21,11 +23,11 @@ _ANALYZE_PATH = os.path.join(
 spec = importlib.util.spec_from_file_location("analyze", _ANALYZE_PATH)
 assert spec is not None and spec.loader is not None
 analyze = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(analyze)  # type: ignore[attr-defined]
+spec.loader.exec_module(analyze)
 
 
 class TestQuery:
-    def test_duckdb_not_found_exits(self, tmp_path) -> None:
+    def test_duckdb_not_found_exits(self, tmp_path: pathlib.Path) -> None:
         db = str(tmp_path / "test.duckdb")
         with patch.object(analyze, "DB_PATH", db):
             with patch("subprocess.run", side_effect=FileNotFoundError):
@@ -33,7 +35,9 @@ class TestQuery:
                     analyze.query("SELECT 1")
                 assert exc_info.value.code == 1
 
-    def test_nonzero_returncode_returns_empty(self, capsys, tmp_path) -> None:
+    def test_nonzero_returncode_returns_empty(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+    ) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type("R", (), {"returncode": 1, "stdout": "", "stderr": "err!"})()
         with patch.object(analyze, "DB_PATH", db):
@@ -42,7 +46,9 @@ class TestQuery:
         assert result == []
         assert "WARNING" in capsys.readouterr().err
 
-    def test_nonzero_with_stderr_prints_stderr(self, capsys, tmp_path) -> None:
+    def test_nonzero_with_stderr_prints_stderr(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+    ) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type(
             "R", (), {"returncode": 1, "stdout": "", "stderr": "SQL error"}
@@ -53,7 +59,7 @@ class TestQuery:
         err = capsys.readouterr().err
         assert "SQL error" in err
 
-    def test_empty_stdout_returns_empty(self, tmp_path) -> None:
+    def test_empty_stdout_returns_empty(self, tmp_path: pathlib.Path) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
         with patch.object(analyze, "DB_PATH", db):
@@ -61,7 +67,9 @@ class TestQuery:
                 result = analyze.query("SELECT 1")
         assert result == []
 
-    def test_duckdb_empty_json_sentinel_returns_empty(self, tmp_path) -> None:
+    def test_duckdb_empty_json_sentinel_returns_empty(
+        self, tmp_path: pathlib.Path
+    ) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type("R", (), {"returncode": 0, "stdout": "[{]", "stderr": ""})()
         with patch.object(analyze, "DB_PATH", db):
@@ -69,7 +77,9 @@ class TestQuery:
                 result = analyze.query("SELECT 1")
         assert result == []
 
-    def test_invalid_json_returns_empty(self, capsys, tmp_path) -> None:
+    def test_invalid_json_returns_empty(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
+    ) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type(
             "R", (), {"returncode": 0, "stdout": "not-json", "stderr": ""}
@@ -80,7 +90,7 @@ class TestQuery:
         assert result == []
         assert "WARNING" in capsys.readouterr().err
 
-    def test_valid_json_returned(self, tmp_path) -> None:
+    def test_valid_json_returned(self, tmp_path: pathlib.Path) -> None:
         db = str(tmp_path / "test.duckdb")
         data = [{"col": "val"}]
         mock_result = type(
@@ -158,10 +168,12 @@ class TestCheckPermissionFriction:
 
 
 class TestCheckMissingQualityHooks:
-    def _mock_counts(self, hook_count: int, stop_count: int):
+    def _mock_counts(
+        self, hook_count: int, stop_count: int
+    ) -> Callable[[str], list[dict[str, Any]]]:
         call_count = [0]
 
-        def _q(sql: str) -> list[dict]:  # noqa: ARG001
+        def _q(sql: str) -> list[dict[str, Any]]:  # noqa: ARG001
             call_count[0] += 1
             if call_count[0] == 1:
                 return [{"cnt": str(hook_count)}]

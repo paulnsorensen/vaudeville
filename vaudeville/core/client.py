@@ -24,18 +24,16 @@ class VaudevilleClient:
     def __init__(self) -> None:
         self._socket_path = SOCKET_PATH
 
-    def classify(
-        self, rule: str, input_data: dict[str, object]
-    ) -> ClassifyResponse | None:
+    def classify(self, prompt: str) -> ClassifyResponse | None:
         """Send a classify request and return the verdict.
 
         Returns None if the daemon is unavailable (fail-open semantics).
         """
-        request = ClassifyRequest(rule=rule, input=input_data)
+        request = ClassifyRequest(prompt=prompt)
         try:
             return self._send(request)
         except Exception as exc:
-            logger.warning("[vaudeville] classify failed (%s): %s", rule, exc)
+            logger.warning("[vaudeville] classify failed: %s", exc)
             return None
 
     def _send(self, request: ClassifyRequest) -> ClassifyResponse:
@@ -63,6 +61,5 @@ class VaudevilleClient:
         return ClassifyResponse(
             verdict=response.get("verdict", "clean"),
             reason=response.get("reason", ""),
-            action=response.get("action", "block"),
             confidence=float(response.get("confidence", 1.0)),
         )

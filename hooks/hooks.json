@@ -1,5 +1,5 @@
 {
-  "description": "Vaudeville semantic enforcement hooks — SLM-powered quality gates",
+  "description": "Vaudeville semantic enforcement hooks \u2014 SLM-powered quality gates",
   "hooks": {
     "SessionStart": [
       {
@@ -12,6 +12,143 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event UserPromptSubmit",
+            "timeout": 30,
+            "statusMessage": "Evaluating UserPromptSubmit rules..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PreToolUse",
+            "timeout": 30,
+            "statusMessage": "Evaluating PreToolUse rules..."
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PermissionRequest",
+            "timeout": 30,
+            "statusMessage": "Evaluating PermissionRequest rules..."
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PermissionDenied",
+            "timeout": 30,
+            "statusMessage": "Evaluating PermissionDenied rules..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostToolUse",
+            "timeout": 30,
+            "statusMessage": "Evaluating PostToolUse rules..."
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostToolUseFailure",
+            "timeout": 30,
+            "statusMessage": "Evaluating PostToolUseFailure rules..."
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Notification",
+            "timeout": 30,
+            "statusMessage": "Evaluating Notification rules..."
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SubagentStart",
+            "timeout": 30,
+            "statusMessage": "Evaluating SubagentStart rules..."
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SubagentStop",
+            "timeout": 30,
+            "statusMessage": "Evaluating SubagentStop rules..."
+          }
+        ]
+      }
+    ],
+    "TaskCreated": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TaskCreated",
+            "timeout": 30,
+            "statusMessage": "Evaluating TaskCreated rules..."
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TaskCompleted",
+            "timeout": 30,
+            "statusMessage": "Evaluating TaskCompleted rules..."
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -19,20 +156,163 @@
             "type": "command",
             "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Stop",
             "timeout": 30,
-            "statusMessage": "Evaluating response quality..."
+            "statusMessage": "Evaluating Stop rules..."
           }
         ]
       }
     ],
-    "PostToolUse": [
+    "StopFailure": [
       {
-        "matcher": "add_reply_to_pull_request_comment|pull_request_review_write|add_comment_to_pending_review|add_issue_comment",
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostToolUse",
-            "timeout": 10,
-            "statusMessage": "Checking PR reply for deferral..."
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event StopFailure",
+            "timeout": 30,
+            "statusMessage": "Evaluating StopFailure rules..."
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TeammateIdle",
+            "timeout": 30,
+            "statusMessage": "Evaluating TeammateIdle rules..."
+          }
+        ]
+      }
+    ],
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event InstructionsLoaded",
+            "timeout": 30,
+            "statusMessage": "Evaluating InstructionsLoaded rules..."
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event ConfigChange",
+            "timeout": 30,
+            "statusMessage": "Evaluating ConfigChange rules..."
+          }
+        ]
+      }
+    ],
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event CwdChanged",
+            "timeout": 30,
+            "statusMessage": "Evaluating CwdChanged rules..."
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event FileChanged",
+            "timeout": 30,
+            "statusMessage": "Evaluating FileChanged rules..."
+          }
+        ]
+      }
+    ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event WorktreeCreate",
+            "timeout": 30,
+            "statusMessage": "Evaluating WorktreeCreate rules..."
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event WorktreeRemove",
+            "timeout": 30,
+            "statusMessage": "Evaluating WorktreeRemove rules..."
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PreCompact",
+            "timeout": 30,
+            "statusMessage": "Evaluating PreCompact rules..."
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostCompact",
+            "timeout": 30,
+            "statusMessage": "Evaluating PostCompact rules..."
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Elicitation",
+            "timeout": 30,
+            "statusMessage": "Evaluating Elicitation rules..."
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event ElicitationResult",
+            "timeout": 30,
+            "statusMessage": "Evaluating ElicitationResult rules..."
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SessionEnd",
+            "timeout": 30,
+            "statusMessage": "Evaluating SessionEnd rules..."
           }
         ]
       }

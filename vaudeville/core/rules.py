@@ -3,7 +3,6 @@
 Rules are resolved from multiple directories in priority order:
   1. project/.vaudeville/rules/   (highest — project overrides)
   2. ~/.vaudeville/rules/          (user-global rules)
-  3. <plugin_root>/rules/          (bundled defaults, lowest)
 
 Higher-priority rules override lower-priority ones by name.
 
@@ -76,16 +75,12 @@ def _read_context_entry(
     return ""
 
 
-DEFAULT_LABELS: list[str] = ["violation", "clean"]
-
-
 @dataclass
 class Rule:
     name: str
     event: str
     prompt: str
     context: list[dict[str, str]]
-    labels: list[str]
     action: str
     message: str
     threshold: float = 0.0
@@ -138,18 +133,13 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
 
 
 def rules_search_path(
-    plugin_root: str,
     project_root: str | None = None,
 ) -> list[str]:
     """Build the rules directory search path (lowest → highest priority).
 
-    Returns directories that exist. Order: bundled → global → project.
+    Returns directories that exist. Order: global → project.
     """
     dirs: list[str] = []
-
-    bundled = os.path.join(plugin_root, "rules")
-    if os.path.isdir(bundled):
-        dirs.append(bundled)
 
     global_dir = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
     if os.path.isdir(global_dir):
@@ -164,32 +154,22 @@ def rules_search_path(
 
 
 def load_rules_layered(
-    plugin_root: str,
     project_root: str | None = None,
 ) -> dict[str, Rule]:
     """Load rules from all search path directories, higher priority wins."""
     merged: dict[str, Rule] = {}
-    for rules_dir in rules_search_path(plugin_root, project_root):
+    for rules_dir in rules_search_path(project_root):
         merged.update(load_rules(rules_dir))
     return merged
 
 
 def parse_rule(data: dict[str, Any]) -> Rule:
-    """Parse a raw YAML dict into a validated Rule with label normalization."""
-    raw_labels = data.get("labels", DEFAULT_LABELS)
-    labels = (
-        [str(lb) for lb in raw_labels]
-        if isinstance(raw_labels, list)
-        else list(DEFAULT_LABELS)
-    )
-    if len(labels) != 2:
-        labels = list(DEFAULT_LABELS)
+    """Parse a raw YAML dict into a validated Rule."""
     return Rule(
         name=str(data["name"]),
         event=str(data.get("event", "")),
         prompt=str(data["prompt"]),
         context=[c for c in data.get("context", []) if isinstance(c, dict)],
-        labels=labels,
         action=str(data.get("action", "block")),
         message=str(data.get("message", "{reason}")),
         threshold=float(data.get("threshold", 0.0)),

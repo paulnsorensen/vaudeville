@@ -14,11 +14,10 @@ _SPECIAL_TOKEN_RE = re.compile(r"<\|[a-z_]+\|>")
 
 @dataclass
 class ClassifyRequest:
-    rule: str
-    input: dict[str, object]
+    prompt: str
 
     def to_json_dict(self) -> dict[str, object]:
-        return {"rule": self.rule, "input": self.input}
+        return {"prompt": self.prompt}
 
 
 @dataclass
@@ -33,48 +32,37 @@ class ClassifyResult:
 class ClassifyResponse:
     verdict: str  # "violation" | "clean"
     reason: str
-    action: str = "block"  # "block" | "warn" | "log"
     confidence: float = 1.0  # P(predicted_class), 0.0–1.0
 
 
-def parse_verdict(
-    raw: str,
-    labels: list[str] | None = None,
-) -> ClassifyResponse:
+def parse_verdict(raw: str) -> ClassifyResponse:
     """Parse VERDICT/REASON lines from SLM output.
 
     Expected format:
         VERDICT: violation
         REASON: one sentence
 
-    ``labels`` is [positive, negative] — the positive label triggers
-    the rule's action. Falls back to keyword search if structured format
-    is absent. Unknown/malformed output defaults to negative (fail-open).
+    Falls back to keyword search if structured format is absent.
+    Unknown/malformed output defaults to "clean" (fail-open).
     """
-    # Duplicated default — must match DEFAULT_LABELS in rules.py.
-    # Cannot import from rules.py (it pulls PyYAML; protocol.py is stdlib-only).
-    if labels is None:
-        labels = ["violation", "clean"]
-    positive_re = re.compile(r"\b" + re.escape(labels[0].lower()) + r"\b")
+    positive_re = re.compile(r"\bviolation\b")
 
-    verdict = labels[1]
+    verdict = "clean"
     reason = ""
+    found_verdict = False
 
     for line in raw.splitlines():
         stripped = line.strip()
         upper = stripped.upper()
         if upper.startswith("VERDICT:"):
             val = stripped[8:].strip().lower()
-            verdict = labels[0] if positive_re.search(val) else labels[1]
+            verdict = "violation" if positive_re.search(val) else "clean"
+            found_verdict = True
         elif upper.startswith("REASON:"):
             reason = stripped[7:].strip()
 
-    # Fallback: no VERDICT line found — scan for keyword
-    has_verdict_line = any(
-        line.strip().upper().startswith("VERDICT:") for line in raw.splitlines()
-    )
-    if not has_verdict_line:
-        verdict = labels[0] if positive_re.search(raw.lower()) else labels[1]
+    if not found_verdict:
+        verdict = "violation" if positive_re.search(raw.lower()) else "clean"
         reason = raw.strip()[:200]
 
     reason = _SPECIAL_TOKEN_RE.sub("", reason).strip()

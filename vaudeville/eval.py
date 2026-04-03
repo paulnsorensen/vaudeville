@@ -142,10 +142,10 @@ def _classify_case(
     results: EvalResults,
 ) -> CaseResult:
     """Classify a single case and update results. Returns CaseResult."""
-    positive, negative = rule.labels[0], rule.labels[1]
+    positive, negative = "violation", "clean"
     prompt = rule.format_prompt(case.text)
     result = _run_inference(backend, prompt)
-    response = parse_verdict(result.text, labels=rule.labels)
+    response = parse_verdict(result.text)
     predicted = response.verdict
     confidence = compute_confidence(result.logprobs, predicted)
 
@@ -387,7 +387,7 @@ def main() -> None:
     tests_dir = os.path.join(plugin_root, "tests")
 
     backend = _build_backend(args)
-    rules = load_rules_layered(plugin_root, project_root=_find_project_root())
+    rules = load_rules_layered(project_root=_find_project_root())
     test_suites = load_test_cases(tests_dir)
 
     if args.test_file and args.rule:

@@ -7,7 +7,7 @@ import json
 import os
 import subprocess
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -40,18 +40,6 @@ class TestFindProjectRoot:
         with patch("runner.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 1
             assert runner._find_project_root() is None
-
-
-class TestLoadRule:
-    def test_loads_existing_rule(self) -> None:
-        rule = runner.load_rule("violation-detector")
-        assert rule is not None
-        assert rule.name == "violation-detector"
-
-    def test_returns_none_for_missing_rule(self, capsys) -> None:
-        rule = runner.load_rule("nonexistent-rule-xyz")
-        assert rule is None
-        assert "nonexistent-rule-xyz" in capsys.readouterr().err
 
 
 class TestExtractField:
@@ -161,118 +149,24 @@ class TestRunPipeline:
                 runner._run()
         return exc_info.value.code  # type: ignore[return-value]
 
-    def test_no_rules_exits_0(self) -> None:
+    def test_no_event_exits_0(self) -> None:
         code = self._run_with_stdin(["runner.py"])
         assert code == 0
 
     def test_bad_json_stdin_exits_0(self) -> None:
         with (
-            patch.object(sys, "argv", ["runner.py", "violation-detector"]),
+            patch.object(sys, "argv", ["runner.py", "--event", "Stop"]),
             patch("sys.stdin", io.StringIO("not json {")),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 runner._run()
         assert exc_info.value.code == 0
 
-    def test_no_socket_exits_0(self) -> None:
-        data = {"session_id": "no-socket-test-xyz", "last_assistant_message": "hi"}
-        code = self._run_with_stdin(["runner.py", "violation-detector"], data)
+    def test_no_matching_rules_exits_0(self) -> None:
+        data = {"session_id": "test", "last_assistant_message": "hi"}
+        with patch("runner._load_rules_for_event", return_value=[]):
+            code = self._run_with_stdin(["runner.py", "--event", "Stop"], data)
         assert code == 0
-
-    def test_clean_verdict_exits_0(self, capsys) -> None:
-        from vaudeville.core.protocol import ClassifyResponse
-
-        hook_input = {
-            "session_id": "clean-session",
-            "last_assistant_message": "A" * 200,
-        }
-        mock_client = MagicMock()
-        mock_client.classify.return_value = ClassifyResponse(
-            verdict="clean", reason="ok", action="block"
-        )
-        with (
-            patch.object(sys, "argv", ["runner.py", "violation-detector"]),
-            patch("sys.stdin", io.StringIO(json.dumps(hook_input))),
-            patch("runner.os.path.exists", return_value=True),
-            patch("runner.VaudevilleClient", return_value=mock_client),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                runner._run()
-        assert exc_info.value.code == 0
-        out = capsys.readouterr().out
-        assert json.loads(out.strip()) == {}
-
-    def test_violation_verdict_outputs_block_response(self, capsys) -> None:
-        from vaudeville.core.protocol import ClassifyResponse
-
-        hook_input = {
-            "session_id": "violation-session",
-            "last_assistant_message": "A" * 200,
-        }
-        mock_client = MagicMock()
-        mock_client.classify.return_value = ClassifyResponse(
-            verdict="violation", reason="hedging detected", action="block"
-        )
-        with (
-            patch.object(sys, "argv", ["runner.py", "violation-detector"]),
-            patch("sys.stdin", io.StringIO(json.dumps(hook_input))),
-            patch("runner.os.path.exists", return_value=True),
-            patch("runner.VaudevilleClient", return_value=mock_client),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                runner._run()
-        assert exc_info.value.code == 0
-        out = capsys.readouterr().out
-        resp = json.loads(out.strip())
-        assert resp["decision"] == "block"
-
-    def test_null_classify_result_continues_to_next_rule(self, capsys) -> None:
-        hook_input = {
-            "session_id": "null-result-session",
-            "last_assistant_message": "A" * 200,
-        }
-        mock_client = MagicMock()
-        mock_client.classify.return_value = None
-        with (
-            patch.object(sys, "argv", ["runner.py", "violation-detector"]),
-            patch("sys.stdin", io.StringIO(json.dumps(hook_input))),
-            patch("runner.os.path.exists", return_value=True),
-            patch("runner.VaudevilleClient", return_value=mock_client),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                runner._run()
-        assert exc_info.value.code == 0
-
-    def test_text_below_min_length_skips_rule(self, capsys) -> None:
-        hook_input = {
-            "session_id": "short-text-session",
-            "last_assistant_message": "short",
-        }
-        mock_client = MagicMock()
-        with (
-            patch.object(sys, "argv", ["runner.py", "violation-detector"]),
-            patch("sys.stdin", io.StringIO(json.dumps(hook_input))),
-            patch("runner.os.path.exists", return_value=True),
-            patch("runner.VaudevilleClient", return_value=mock_client),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                runner._run()
-        assert exc_info.value.code == 0
-        mock_client.classify.assert_not_called()
-
-    def test_missing_rule_skips_silently(self, capsys) -> None:
-        hook_input = {
-            "session_id": "missing-rule-session",
-            "last_assistant_message": "A" * 200,
-        }
-        with (
-            patch.object(sys, "argv", ["runner.py", "nonexistent-rule-xyz"]),
-            patch("sys.stdin", io.StringIO(json.dumps(hook_input))),
-            patch("runner.os.path.exists", return_value=True),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                runner._run()
-        assert exc_info.value.code == 0
 
     def test_main_catches_unexpected_exception(self, capsys) -> None:
         with patch("runner._run", side_effect=RuntimeError("boom")):

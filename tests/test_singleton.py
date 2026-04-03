@@ -107,7 +107,7 @@ class TestVaudevilleClientNoArgs:
         with tempfile.TemporaryDirectory() as td:
             client = VaudevilleClient()
             client._socket_path = os.path.join(td, "nonexistent.sock")
-            result = client.classify("violation-detector", {"text": "test"})
+            result = client.classify("test prompt")
             assert result is None, (
                 "classify() must return None when daemon is unavailable (fail-open)"
             )
@@ -348,7 +348,7 @@ class TestRunnerNoSessionId:
         with (
             patch("sys.stdin", io.StringIO(hook_input)),
             patch("sys.stdout", io.StringIO()),
-            patch("sys.argv", ["runner.py", "violation-detector"]),
+            patch("sys.argv", ["runner.py", "--event", "Stop"]),
             patch(
                 "vaudeville.core.client.VaudevilleClient", side_effect=fake_constructor
             ),

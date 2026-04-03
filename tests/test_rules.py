@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from vaudeville.core.rules import load_rules
+from vaudeville.core.rules import Rule
 from vaudeville.eval import (
     load_test_cases,
     EvalCase,
@@ -67,30 +67,39 @@ class TestEvalResults:
 
 
 class TestEvaluateRule:
-    def test_perfect_accuracy(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    @pytest.fixture
+    def rules(self) -> dict:
+        return {
+            "violation-detector": Rule(
+                name="violation-detector",
+                event="Stop",
+                prompt="Classify:\n{text}\nVERDICT:",
+                context=[{"field": "last_assistant_message"}],
+                action="block",
+                message="{reason}",
+            ),
+        }
+
+    def test_perfect_accuracy(self, rules: dict) -> None:
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="test", label="violation")] * 5
         results, _ = evaluate_rule("violation-detector", cases, rules, backend)
         assert results.accuracy == 1.0
         assert results.tp == 5
 
-    def test_all_false_positives(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_all_false_positives(self, rules: dict) -> None:
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="test", label="clean")] * 5
         results, _ = evaluate_rule("violation-detector", cases, rules, backend)
         assert results.fp == 5
         assert results.accuracy == 0.0
 
-    def test_unknown_rule_raises(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_unknown_rule_raises(self, rules: dict) -> None:
         backend = MockBackend()
         with pytest.raises(ValueError, match="not found"):
             evaluate_rule("nonexistent", [], rules, backend)
 
-    def test_misclassifications_recorded(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_misclassifications_recorded(self, rules: dict) -> None:
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="clean text", label="clean")]
         results, _ = evaluate_rule("violation-detector", cases, rules, backend)

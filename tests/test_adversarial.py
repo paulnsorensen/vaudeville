@@ -767,96 +767,40 @@ class TestBackendLockContention:
 class TestHandleRequestEdgeCases:
     def test_empty_bytes(self) -> None:
         """Empty payload must return clean (fail-open)."""
-        from vaudeville.core.rules import load_rules
-        import os
-
-        rules_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rules"
-        )
-        rules = load_rules(rules_dir)
         backend = MockBackend()
-        response = json.loads(handle_request(b"", rules, backend))
+        response = json.loads(handle_request(b"", backend))
         assert response["verdict"] == "clean"
 
     def test_null_bytes_in_payload(self) -> None:
         """Null bytes in payload must not crash the handler."""
-        from vaudeville.core.rules import load_rules
-
-        rules_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rules"
-        )
-        rules = load_rules(rules_dir)
         backend = MockBackend()
-        response = json.loads(handle_request(b"\x00\x01\x02\x03\n", rules, backend))
+        response = json.loads(handle_request(b"\x00\x01\x02\x03\n", backend))
         assert response["verdict"] == "clean"
 
     def test_oversized_payload(self) -> None:
         """10MB payload must not cause an unhandled exception."""
-        from vaudeville.core.rules import load_rules
-
-        rules_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rules"
-        )
-        rules = load_rules(rules_dir)
         backend = MockBackend()
         giant_text = "x" * (10 * 1024 * 1024)
-        payload = (
-            json.dumps(
-                {"rule": "violation-detector", "input": {"text": giant_text}}
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(payload, rules, backend))
-        # Must not crash — verdict is backend-dependent
+        payload = json.dumps({"prompt": giant_text}).encode() + b"\n"
+        response = json.loads(handle_request(payload, backend))
         assert "verdict" in response
 
-    def test_missing_rule_key(self) -> None:
-        """Payload without 'rule' key defaults to clean."""
-        from vaudeville.core.rules import load_rules
-
-        rules_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rules"
-        )
-        rules = load_rules(rules_dir)
+    def test_missing_prompt_key(self) -> None:
+        """Payload without 'prompt' key uses empty string."""
         backend = MockBackend()
-        payload = json.dumps({"input": {"text": "test"}}).encode() + b"\n"
-        response = json.loads(handle_request(payload, rules, backend))
-        assert response["verdict"] == "clean"
-
-    def test_rule_value_is_none(self) -> None:
-        """JSON null for 'rule' must not crash — treat as unknown rule."""
-        from vaudeville.core.rules import load_rules
-
-        rules_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rules"
-        )
-        rules = load_rules(rules_dir)
-        backend = MockBackend()
-        payload = json.dumps({"rule": None, "input": {"text": "test"}}).encode() + b"\n"
-        response = json.loads(handle_request(payload, rules, backend))
-        # None key → dict.get returns None → "Unknown rule"
-        assert response["verdict"] == "clean"
+        payload = json.dumps({"other": "data"}).encode() + b"\n"
+        response = json.loads(handle_request(payload, backend))
+        assert "verdict" in response
 
     def test_backend_exception_returns_clean(self) -> None:
         """If backend raises, response must be clean (fail-open), not an exception."""
-        from vaudeville.core.rules import load_rules
-
-        rules_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rules"
-        )
-        rules = load_rules(rules_dir)
 
         class ExplodingBackend:
             def classify(self, prompt: str, max_tokens: int = 50) -> str:
                 raise RuntimeError("GPU on fire")
 
-        payload = (
-            json.dumps(
-                {"rule": "violation-detector", "input": {"text": "test"}}
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(payload, rules, ExplodingBackend()))
+        payload = json.dumps({"prompt": "test"}).encode() + b"\n"
+        response = json.loads(handle_request(payload, ExplodingBackend()))
         assert response["verdict"] == "clean", (
             "Backend exception must return clean (fail-open)"
         )

@@ -13,7 +13,6 @@ import pytest
 
 from vaudeville.core.rules import (
     CHARS_PER_TOKEN,
-    DEFAULT_LABELS,
     MAX_INPUT_TOKENS,
     Rule,
     _sanitize_input,
@@ -102,7 +101,6 @@ class TestFormatPromptIntegration:
             event="Stop",
             prompt=prompt,
             context=[],
-            labels=DEFAULT_LABELS,
             action="block",
             message="{reason}",
         )
@@ -227,40 +225,66 @@ class TestConcurrentDispatch:
             }
         )
 
-    def test_single_rule_clean_passes(self) -> None:
+    def test_event_clean_passes(self) -> None:
         runner = self._get_runner()
         mock_client = MagicMock()
         mock_client.classify.return_value = MagicMock(
-            verdict="clean", reason="ok", action="block"
+            verdict="clean", reason="ok", confidence=0.9
         )
+
+        from vaudeville.core.rules import Rule
+
+        mock_rules = [
+            Rule(
+                name="violation-detector",
+                event="Stop",
+                prompt="{text}",
+                context=[{"field": "last_assistant_message"}],
+                action="block",
+                message="{reason}",
+            ),
+        ]
 
         stdout = io.StringIO()
         with (
             patch("sys.stdin", io.StringIO(self._make_hook_input())),
             patch("sys.stdout", stdout),
-            patch("sys.argv", ["runner.py", "violation-detector"]),
+            patch("sys.argv", ["runner.py", "--event", "Stop"]),
             patch.object(runner, "VaudevilleClient", return_value=mock_client),
-            patch("os.path.exists", return_value=True),
+            patch.object(runner, "_load_rules_for_event", return_value=mock_rules),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 runner._run()
             assert exc_info.value.code == 0
         assert json.loads(stdout.getvalue()) == {}
 
-    def test_single_rule_violation_blocks(self) -> None:
+    def test_event_violation_blocks(self) -> None:
         runner = self._get_runner()
         mock_client = MagicMock()
         mock_client.classify.return_value = MagicMock(
-            verdict="violation", reason="hedging", action="block"
+            verdict="violation", reason="hedging", confidence=0.95
         )
+
+        from vaudeville.core.rules import Rule
+
+        mock_rules = [
+            Rule(
+                name="violation-detector",
+                event="Stop",
+                prompt="{text}",
+                context=[{"field": "last_assistant_message"}],
+                action="block",
+                message="{reason}",
+            ),
+        ]
 
         stdout = io.StringIO()
         with (
             patch("sys.stdin", io.StringIO(self._make_hook_input())),
             patch("sys.stdout", stdout),
-            patch("sys.argv", ["runner.py", "violation-detector"]),
+            patch("sys.argv", ["runner.py", "--event", "Stop"]),
             patch.object(runner, "VaudevilleClient", return_value=mock_client),
-            patch("os.path.exists", return_value=True),
+            patch.object(runner, "_load_rules_for_event", return_value=mock_rules),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 runner._run()
@@ -268,72 +292,31 @@ class TestConcurrentDispatch:
         result = json.loads(stdout.getvalue())
         assert result["decision"] == "block"
 
-    def test_multi_rule_concurrent_first_violation_wins(self) -> None:
-        runner = self._get_runner()
-
-        def mock_classify(rule_name: str, _input_data: object) -> MagicMock:
-            if rule_name == "violation-detector":
-                return MagicMock(verdict="violation", reason="hedging", action="block")
-            return MagicMock(verdict="clean", reason="ok", action="block")
-
-        mock_client = MagicMock()
-        mock_client.classify.side_effect = mock_classify
-
-        stdout = io.StringIO()
-        with (
-            patch("sys.stdin", io.StringIO(self._make_hook_input())),
-            patch("sys.stdout", stdout),
-            patch(
-                "sys.argv",
-                ["runner.py", "violation-detector", "dismissal-detector"],
-            ),
-            patch.object(runner, "VaudevilleClient", return_value=mock_client),
-            patch("os.path.exists", return_value=True),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                runner._run()
-            assert exc_info.value.code == 0
-        result = json.loads(stdout.getvalue())
-        assert result["decision"] == "block"
-
-    def test_multi_rule_all_clean_passes(self) -> None:
-        runner = self._get_runner()
-        mock_client = MagicMock()
-        mock_client.classify.return_value = MagicMock(
-            verdict="clean", reason="ok", action="block"
-        )
-
-        stdout = io.StringIO()
-        with (
-            patch("sys.stdin", io.StringIO(self._make_hook_input())),
-            patch("sys.stdout", stdout),
-            patch(
-                "sys.argv",
-                ["runner.py", "violation-detector", "dismissal-detector"],
-            ),
-            patch.object(runner, "VaudevilleClient", return_value=mock_client),
-            patch("os.path.exists", return_value=True),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                runner._run()
-            assert exc_info.value.code == 0
-        assert json.loads(stdout.getvalue()) == {}
-
-    def test_multi_rule_daemon_unavailable_passes(self) -> None:
+    def test_event_daemon_unavailable_passes(self) -> None:
         runner = self._get_runner()
         mock_client = MagicMock()
         mock_client.classify.return_value = None
 
+        from vaudeville.core.rules import Rule
+
+        mock_rules = [
+            Rule(
+                name="violation-detector",
+                event="Stop",
+                prompt="{text}",
+                context=[{"field": "last_assistant_message"}],
+                action="block",
+                message="{reason}",
+            ),
+        ]
+
         stdout = io.StringIO()
         with (
             patch("sys.stdin", io.StringIO(self._make_hook_input())),
             patch("sys.stdout", stdout),
-            patch(
-                "sys.argv",
-                ["runner.py", "violation-detector", "dismissal-detector"],
-            ),
+            patch("sys.argv", ["runner.py", "--event", "Stop"]),
             patch.object(runner, "VaudevilleClient", return_value=mock_client),
-            patch("os.path.exists", return_value=True),
+            patch.object(runner, "_load_rules_for_event", return_value=mock_rules),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 runner._run()
@@ -344,13 +327,26 @@ class TestConcurrentDispatch:
         runner = self._get_runner()
         mock_client = MagicMock()
 
+        from vaudeville.core.rules import Rule
+
+        mock_rules = [
+            Rule(
+                name="violation-detector",
+                event="Stop",
+                prompt="{text}",
+                context=[{"field": "last_assistant_message"}],
+                action="block",
+                message="{reason}",
+            ),
+        ]
+
         stdout = io.StringIO()
         with (
             patch("sys.stdin", io.StringIO(self._make_hook_input("short"))),
             patch("sys.stdout", stdout),
-            patch("sys.argv", ["runner.py", "violation-detector"]),
+            patch("sys.argv", ["runner.py", "--event", "Stop"]),
             patch.object(runner, "VaudevilleClient", return_value=mock_client),
-            patch("os.path.exists", return_value=True),
+            patch.object(runner, "_load_rules_for_event", return_value=mock_rules),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 runner._run()
@@ -358,7 +354,7 @@ class TestConcurrentDispatch:
         assert json.loads(stdout.getvalue()) == {}
         mock_client.classify.assert_not_called()
 
-    def test_no_rules_passes(self) -> None:
+    def test_no_event_passes(self) -> None:
         runner = self._get_runner()
 
         stdout = io.StringIO()
@@ -366,21 +362,6 @@ class TestConcurrentDispatch:
             patch("sys.stdin", io.StringIO(self._make_hook_input())),
             patch("sys.stdout", stdout),
             patch("sys.argv", ["runner.py"]),
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                runner._run()
-            assert exc_info.value.code == 0
-        assert json.loads(stdout.getvalue()) == {}
-
-    def test_missing_socket_fast_path(self) -> None:
-        runner = self._get_runner()
-
-        stdout = io.StringIO()
-        with (
-            patch("sys.stdin", io.StringIO(self._make_hook_input())),
-            patch("sys.stdout", stdout),
-            patch("sys.argv", ["runner.py", "violation-detector"]),
-            patch("os.path.exists", return_value=False),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 runner._run()
@@ -478,11 +459,6 @@ class TestRunnerHelpers:
         with patch("subprocess.run", side_effect=sp.TimeoutExpired("git", 5)):
             assert runner._find_project_root() is None
 
-    def test_load_rule_not_found(self) -> None:
-        runner = self._get_runner()
-        result = runner.load_rule("nonexistent-rule-xyz-" + "a" * 50)
-        assert result is None
-
     def test_invalid_json_stdin(self) -> None:
         runner = self._get_runner()
         stdout = io.StringIO()
@@ -535,7 +511,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                labels=DEFAULT_LABELS,
                 action="block",
                 message="{reason}",
             ),
@@ -544,7 +519,6 @@ class TestEventDiscovery:
                 event="PostToolUse",
                 prompt="{text}",
                 context=[{"field": "tool_input.body"}],
-                labels=DEFAULT_LABELS,
                 action="block",
                 message="{reason}",
             ),
@@ -589,7 +563,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                labels=DEFAULT_LABELS,
                 action="block",
                 message="{reason}",
             ),
@@ -597,7 +570,7 @@ class TestEventDiscovery:
 
         mock_client = MagicMock()
         mock_client.classify.return_value = MagicMock(
-            verdict="violation", reason="hedging detected", action="block"
+            verdict="violation", reason="hedging detected", confidence=0.95
         )
 
         stdout = io.StringIO()
@@ -624,7 +597,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                labels=DEFAULT_LABELS,
                 action="block",
                 message="{reason}",
             ),
@@ -676,7 +648,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                labels=DEFAULT_LABELS,
                 action="block",
                 message="{reason}",
             ),
@@ -708,7 +679,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                labels=DEFAULT_LABELS,
                 action="block",
                 message="{reason}",
             ),

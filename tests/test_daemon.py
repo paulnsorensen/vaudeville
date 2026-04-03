@@ -15,93 +15,40 @@ import pytest
 
 from vaudeville.server.daemon import handle_request, VaudevilleDaemon
 from vaudeville.server.__main__ import detect_backend
-from vaudeville.core.rules import load_rules
-from conftest import MockBackend
+from conftest import MockBackend  # noqa: F401 — used in fixtures
 
 
 class TestHandleRequest:
-    def test_clean_verdict(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_clean_verdict(self) -> None:
         backend = MockBackend(verdict="clean", reason="all good")
-        data = (
-            json.dumps(
-                {
-                    "rule": "violation-detector",
-                    "input": {"text": "All tests pass."},
-                }
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(data, rules, backend))
+        data = json.dumps({"prompt": "classify this text"}).encode() + b"\n"
+        response = json.loads(handle_request(data, backend))
         assert response["verdict"] == "clean"
         assert response["reason"] == "all good"
 
-    def test_violation_verdict(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_violation_verdict(self) -> None:
         backend = MockBackend(verdict="violation", reason="premature completion")
-        data = (
-            json.dumps(
-                {
-                    "rule": "violation-detector",
-                    "input": {"text": "This should work."},
-                }
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(data, rules, backend))
+        data = json.dumps({"prompt": "classify this"}).encode() + b"\n"
+        response = json.loads(handle_request(data, backend))
         assert response["verdict"] == "violation"
 
-    def test_unknown_rule_returns_clean(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_malformed_json_returns_clean(self) -> None:
         backend = MockBackend()
-        data = (
-            json.dumps(
-                {
-                    "rule": "nonexistent-rule",
-                    "input": {"text": "test"},
-                }
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(data, rules, backend))
+        response = json.loads(handle_request(b"not-json\n", backend))
         assert response["verdict"] == "clean"
 
-    def test_malformed_json_returns_clean(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
-        backend = MockBackend()
-        response = json.loads(handle_request(b"not-json\n", rules, backend))
-        assert response["verdict"] == "clean"
-
-    def test_backend_receives_formatted_prompt(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_backend_receives_prompt(self) -> None:
         backend = MockBackend(verdict="clean")
-        text = "unique test string xyz"
-        data = (
-            json.dumps(
-                {
-                    "rule": "violation-detector",
-                    "input": {"text": text},
-                }
-            ).encode()
-            + b"\n"
-        )
-        handle_request(data, rules, backend)
+        prompt = "unique test string xyz"
+        data = json.dumps({"prompt": prompt}).encode() + b"\n"
+        handle_request(data, backend)
         assert len(backend.calls) == 1
-        assert text in backend.calls[0]
+        assert prompt in backend.calls[0]
 
-    def test_response_ends_with_newline(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_response_ends_with_newline(self) -> None:
         backend = MockBackend()
-        data = (
-            json.dumps(
-                {
-                    "rule": "violation-detector",
-                    "input": {"text": "test"},
-                }
-            ).encode()
-            + b"\n"
-        )
-        response = handle_request(data, rules, backend)
+        data = json.dumps({"prompt": "test"}).encode() + b"\n"
+        response = handle_request(data, backend)
         assert response.endswith(b"\n")
 
 
@@ -147,15 +94,7 @@ class TestDaemonSocketProtocol:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(3.0)
             sock.connect(socket_path)
-            payload = (
-                json.dumps(
-                    {
-                        "rule": "violation-detector",
-                        "input": {"text": "All good."},
-                    }
-                ).encode()
-                + b"\n"
-            )
+            payload = json.dumps({"prompt": "All good."}).encode() + b"\n"
             sock.sendall(payload)
             data = b""
             while True:
@@ -262,12 +201,7 @@ class TestBackendLockSerialization:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
                 sock.settimeout(3.0)
                 sock.connect(socket_path)
-                payload = (
-                    json.dumps(
-                        {"rule": "violation-detector", "input": {"text": "test"}}
-                    ).encode()
-                    + b"\n"
-                )
+                payload = json.dumps({"prompt": "test"}).encode() + b"\n"
                 sock.sendall(payload)
                 while True:
                     chunk = sock.recv(4096)
@@ -411,88 +345,26 @@ class TestVersionStamp:
 
 
 class TestConfidenceScoring:
-    def test_response_includes_confidence(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
+    def test_response_includes_confidence(self) -> None:
         backend = MockBackend(
             verdict="violation",
             reason="test",
             logprobs={"violation": -0.2, "clean": -2.5},
         )
-        data = (
-            json.dumps(
-                {
-                    "rule": "violation-detector",
-                    "input": {"text": "test"},
-                }
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(data, rules, backend))
+        data = json.dumps({"prompt": "test"}).encode() + b"\n"
+        response = json.loads(handle_request(data, backend))
         assert "confidence" in response
         assert 0.0 <= response["confidence"] <= 1.0
 
-    def test_threshold_downgrades_low_confidence_violation(
-        self, rules_dir: str
-    ) -> None:
-        rules = load_rules(rules_dir)
-        # Set a high threshold on the rule
-        rules["violation-detector"].threshold = 0.95
-        backend = MockBackend(
-            verdict="violation",
-            reason="low confidence",
-            logprobs={"violation": -0.8, "clean": -1.0},
-        )
-        data = (
-            json.dumps(
-                {
-                    "rule": "violation-detector",
-                    "input": {"text": "borderline"},
-                }
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(data, rules, backend))
-        # Confidence ~0.55 is below threshold 0.95 → downgraded to clean
-        assert response["verdict"] == "clean"
-
-    def test_threshold_keeps_high_confidence_violation(self, rules_dir: str) -> None:
-        rules = load_rules(rules_dir)
-        rules["violation-detector"].threshold = 0.5
-        backend = MockBackend(
-            verdict="violation",
-            reason="high confidence",
-            logprobs={"violation": -0.1, "clean": -3.0},
-        )
-        data = (
-            json.dumps(
-                {
-                    "rule": "violation-detector",
-                    "input": {"text": "clearly bad"},
-                }
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(data, rules, backend))
-        assert response["verdict"] == "violation"
-
-    def test_fallback_when_backend_lacks_logprobs(self, rules_dir: str) -> None:
+    def test_fallback_when_backend_lacks_logprobs(self) -> None:
         """Backend without classify_with_logprobs falls back gracefully."""
-        rules = load_rules(rules_dir)
 
         class PlainBackend:
             def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
                 return "VERDICT: clean\nREASON: ok"
 
-        data = (
-            json.dumps(
-                {
-                    "rule": "violation-detector",
-                    "input": {"text": "test"},
-                }
-            ).encode()
-            + b"\n"
-        )
-        response = json.loads(handle_request(data, rules, PlainBackend()))
+        data = json.dumps({"prompt": "test"}).encode() + b"\n"
+        response = json.loads(handle_request(data, PlainBackend()))
         assert response["verdict"] == "clean"
         assert response["confidence"] == 1.0
 

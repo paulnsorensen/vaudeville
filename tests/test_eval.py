@@ -22,15 +22,23 @@ from vaudeville.eval import (
     load_test_cases,
     print_results,
 )
-from vaudeville.core.rules import load_rules
+from vaudeville.core.rules import Rule
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RULES_DIR = os.path.join(PROJECT_ROOT, "rules")
 
 
 @pytest.fixture
 def rules() -> dict:
-    return load_rules(RULES_DIR)
+    return {
+        "violation-detector": Rule(
+            name="violation-detector",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[{"field": "last_assistant_message"}],
+            action="block",
+            message="{reason}",
+        ),
+    }
 
 
 @pytest.fixture
@@ -264,7 +272,16 @@ class TestMain:
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
-                return_value=load_rules(RULES_DIR),
+                return_value={
+                    "violation-detector": Rule(
+                        name="violation-detector",
+                        event="Stop",
+                        prompt="Classify:\n{text}\nVERDICT:",
+                        context=[{"field": "last_assistant_message"}],
+                        action="block",
+                        message="{reason}",
+                    ),
+                },
             ),
             patch("vaudeville.eval.load_test_cases", return_value={}),
         ):
@@ -282,7 +299,16 @@ class TestMain:
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
-                return_value=load_rules(RULES_DIR),
+                return_value={
+                    "violation-detector": Rule(
+                        name="violation-detector",
+                        event="Stop",
+                        prompt="Classify:\n{text}\nVERDICT:",
+                        context=[{"field": "last_assistant_message"}],
+                        action="block",
+                        message="{reason}",
+                    ),
+                },
             ),
             patch(
                 "vaudeville.eval.load_test_cases",
@@ -304,7 +330,16 @@ class TestMain:
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
-                return_value=load_rules(RULES_DIR),
+                return_value={
+                    "violation-detector": Rule(
+                        name="violation-detector",
+                        event="Stop",
+                        prompt="Classify:\n{text}\nVERDICT:",
+                        context=[{"field": "last_assistant_message"}],
+                        action="block",
+                        message="{reason}",
+                    ),
+                },
             ),
             patch("vaudeville.eval.load_test_cases", return_value={}),
         ):
@@ -330,7 +365,16 @@ class TestMain:
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
-                return_value=load_rules(RULES_DIR),
+                return_value={
+                    "violation-detector": Rule(
+                        name="violation-detector",
+                        event="Stop",
+                        prompt="Classify:\n{text}\nVERDICT:",
+                        context=[{"field": "last_assistant_message"}],
+                        action="block",
+                        message="{reason}",
+                    ),
+                },
             ),
             patch("vaudeville.eval.load_test_cases", return_value={}),
         ):

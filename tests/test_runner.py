@@ -47,6 +47,7 @@ class TestLoadRule:
         rule = runner.load_rule("violation-detector")
         assert rule is not None
         assert rule.name == "violation-detector"
+        assert rule.labels == ["violation", "clean"]
 
     def test_returns_none_for_missing_rule(self, capsys) -> None:
         rule = runner.load_rule("nonexistent-rule-xyz")
@@ -125,7 +126,7 @@ class TestVerdictToHookResponse:
         resp = runner.verdict_to_hook_response(
             "test-rule", "Caught: {reason}", "mild issue", "warn"
         )
-        assert resp["decision"] == "block"
+        assert resp["decision"] == "warn"
         assert "Warning" in resp["systemMessage"]
         assert "mild issue" in resp["systemMessage"]
 
@@ -226,7 +227,7 @@ class TestRunPipeline:
         resp = json.loads(out.strip())
         assert resp["decision"] == "block"
 
-    def test_null_classify_result_continues_to_next_rule(self, capsys) -> None:
+    def test_null_classify_result_continues_to_next_rule(self) -> None:
         hook_input = {
             "session_id": "null-result-session",
             "last_assistant_message": "A" * 200,
@@ -243,7 +244,7 @@ class TestRunPipeline:
                 runner._run()
         assert exc_info.value.code == 0
 
-    def test_text_below_min_length_skips_rule(self, capsys) -> None:
+    def test_text_below_min_length_skips_rule(self) -> None:
         hook_input = {
             "session_id": "short-text-session",
             "last_assistant_message": "short",
@@ -260,7 +261,7 @@ class TestRunPipeline:
         assert exc_info.value.code == 0
         mock_client.classify.assert_not_called()
 
-    def test_missing_rule_skips_silently(self, capsys) -> None:
+    def test_missing_rule_skips_silently(self) -> None:
         hook_input = {
             "session_id": "missing-rule-session",
             "last_assistant_message": "A" * 200,

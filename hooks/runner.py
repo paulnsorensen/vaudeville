@@ -125,7 +125,7 @@ def verdict_to_hook_response(
         return {}
     elif action == "warn":
         return {
-            "decision": "block",
+            "decision": "warn",
             "reason": reason,
             "systemMessage": f"Warning — {message}",
         }
@@ -227,7 +227,11 @@ def _run_named_rules(
             continue
         text = extract_text_from_dict(hook_input, rule.context)
         if not text or len(text) < MIN_TEXT_LENGTH:
-            _dbg("%s: text too short (%d chars) — skip", name, len(text) if text else 0)
+            _dbg(
+                "%s: text too short (%d chars) — skip",
+                name,
+                len(text) if text else 0,
+            )
             continue
         tasks.append((name, rule))
 
@@ -265,7 +269,7 @@ def _run_named_rules(
         sys.exit(0)
 
     # Multiple rules: dispatch concurrently, first violation wins
-    def _classify(name: str, rule: Rule) -> tuple[Rule, str, str] | None:
+    def _classify(name: str, rule: Rule) -> tuple[str, str, str, str] | None:
         text = extract_text_from_dict(hook_input, rule.context)
         _dbg("%s: classifying %d chars...", name, len(text))
         t0 = time.monotonic()
@@ -280,7 +284,7 @@ def _run_named_rules(
                 elapsed_ms,
                 result.reason,
             )
-            return (rule, result.reason, result.action)
+            return (rule.name, rule.message, result.reason, rule.action)
         _dbg("%s: clean (%.0fms)", name, elapsed_ms)
         return None
 
@@ -289,12 +293,8 @@ def _run_named_rules(
     for future in as_completed(futures):
         hit = future.result()
         if hit:
-            rule, reason, action = hit
-            print(
-                json.dumps(
-                    verdict_to_hook_response(rule.name, rule.message, reason, action)
-                )
-            )
+            name, message, reason, action = hit
+            print(json.dumps(verdict_to_hook_response(name, message, reason, action)))
             pool.shutdown(wait=False, cancel_futures=True)
             sys.exit(0)
     pool.shutdown(wait=False, cancel_futures=True)

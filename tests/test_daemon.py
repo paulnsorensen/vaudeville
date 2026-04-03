@@ -105,11 +105,27 @@ class TestHandleRequest:
         assert response.endswith(b"\n")
 
 
+def _send_request(sock_path: str, payload: dict) -> dict:
+    encoded = json.dumps(payload).encode() + b"\n"
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(3.0)
+        sock.connect(sock_path)
+        sock.sendall(encoded)
+        data = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk or b"\n" in data + chunk:
+                data += chunk
+                break
+            data += chunk
+    return json.loads(data.decode().strip())
+
+
 class TestDaemonSocketProtocol:
     def test_daemon_serves_request_via_socket(self) -> None:
+        import os
         import tempfile
 
-        # Unix sockets have a 104-char path limit on macOS — use /tmp directly
         with tempfile.NamedTemporaryFile(
             suffix=".sock", dir=tempfile.gettempdir(), delete=False
         ) as f:
@@ -118,8 +134,9 @@ class TestDaemonSocketProtocol:
             suffix=".pid", dir=tempfile.gettempdir(), delete=False
         ) as f:
             pid_file = f.name
-        os.unlink(socket_path)  # daemon will re-create it
+        os.unlink(socket_path)
         backend = MockBackend(verdict="clean", reason="socket test")
+
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with tempfile.NamedTemporaryFile(
             suffix=".version", dir=tempfile.gettempdir(), delete=True
@@ -131,8 +148,6 @@ class TestDaemonSocketProtocol:
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
-
-        # Wait for daemon socket to be ready
         for _ in range(20):
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
@@ -144,35 +159,17 @@ class TestDaemonSocketProtocol:
         else:
             raise RuntimeError("Daemon socket not ready after 1s")
 
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(3.0)
-            sock.connect(socket_path)
-            payload = (
-                json.dumps(
-                    {
-                        "rule": "violation-detector",
-                        "input": {"text": "All good."},
-                    }
-                ).encode()
-                + b"\n"
-            )
-            sock.sendall(payload)
-            data = b""
-            while True:
-                chunk = sock.recv(4096)
-                if not chunk or b"\n" in data + chunk:
-                    data += chunk
-                    break
-                data += chunk
-
-        response = json.loads(data.decode().strip())
+        response = _send_request(
+            socket_path,
+            {"rule": "violation-detector", "input": {"text": "All good."}},
+        )
         assert response["verdict"] == "clean"
         daemon._stop_event.set()
 
     def test_oversized_payload_returns_fail_open(self) -> None:
-        """Daemon drops payloads exceeding MAX_REQUEST_SIZE and fails open."""
-        import tempfile
         import os
+        import tempfile
+
         from vaudeville.server.daemon import MAX_REQUEST_SIZE
 
         with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
@@ -192,7 +189,6 @@ class TestDaemonSocketProtocol:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(3.0)
             sock.connect(socket_path)
-            # Send payload larger than MAX_REQUEST_SIZE with no newline
             sock.sendall(b"x" * (MAX_REQUEST_SIZE + 1))
             data = b""
             while True:
@@ -205,7 +201,7 @@ class TestDaemonSocketProtocol:
 
         response = json.loads(data.decode().strip())
         assert response["verdict"] == "clean"
-        assert backend.calls == []  # backend should never be called
+        assert backend.calls == []
         daemon._stop_event.set()
 
 
@@ -577,9 +573,18 @@ class TestAcquirePidLock:
         os.close(fd2)
 
 
+def _has_mlx_lm() -> bool:
+    try:
+        import mlx_lm  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 @pytest.mark.skipif(
-    platform.system() != "Darwin" or platform.machine() != "arm64",
-    reason="MLX only available on Apple Silicon",
+    not _has_mlx_lm(),
+    reason="mlx_lm not installed",
 )
 class TestMLXImportSmoke:
     """Verify real mlx_lm imports resolve — catches API drift."""

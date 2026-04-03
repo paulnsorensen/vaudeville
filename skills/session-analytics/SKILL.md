@@ -1,5 +1,5 @@
 ---
-name: session-analytics
+name: vaudeville:session-analytics
 description: >
   Query Claude Code's own JSONL session logs via DuckDB for usage analytics,
   tool patterns, error forensics, hook impact analysis, and routing decisions.

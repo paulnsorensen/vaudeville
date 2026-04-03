@@ -99,15 +99,19 @@ def verdict_to_hook_response(
         return {}
     elif action == "warn":
         return {
-            "decision": "block",
+            "decision": "warn",
             "reason": reason,
-            "systemMessage": f"Warning — {message}",
+            "systemMessage": (
+                f"\U0001fa9d vaudeville hook [{name}] warned about: {message}"
+            ),
         }
     else:  # block (default)
         return {
             "decision": "block",
             "reason": reason,
-            "systemMessage": message,
+            "systemMessage": (
+                f"\U0001fa9d vaudeville hook [{name}] prevented response: {message}"
+            ),
         }
 
 

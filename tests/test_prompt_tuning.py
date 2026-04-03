@@ -425,9 +425,9 @@ class TestRunnerHelpers:
             "test-rule", "{reason}", "test reason", "warn"
         )
         assert result == {
-            "decision": "block",
+            "decision": "warn",
             "reason": "test reason",
-            "systemMessage": "Warning — test reason",
+            "systemMessage": "\U0001fa9d vaudeville hook [test-rule] warned about: test reason",
         }
 
     def test_verdict_to_hook_response_block(self) -> None:
@@ -436,7 +436,10 @@ class TestRunnerHelpers:
             "test-rule", "Quality: {reason}", "hedging", "block"
         )
         assert result["decision"] == "block"
-        assert result["systemMessage"] == "Quality: hedging"
+        assert (
+            result["systemMessage"]
+            == "\U0001fa9d vaudeville hook [test-rule] prevented response: Quality: hedging"
+        )
 
     def test_main_crash_handler(self) -> None:
         runner = self._get_runner()

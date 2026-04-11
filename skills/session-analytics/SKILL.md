@@ -1,5 +1,5 @@
 ---
-name: session-analytics
+name: vaudeville:session-analytics
 description: >
   Query Claude Code's own JSONL session logs via DuckDB for usage analytics,
   tool patterns, error forensics, hook impact analysis, and routing decisions.
@@ -325,6 +325,37 @@ WHERE timestamp::DATE >= CURRENT_DATE - INTERVAL '14' DAY
 GROUP BY day, hour
 ORDER BY day DESC, hour;
 ```
+
+## Pre-built query scripts
+
+For common analytics questions, use these scripts instead of writing inline SQL
+or Python. All scripts live in `<skill-dir>/scripts/queries/`. Most accept
+`--days N`, `--limit N`, and `--json` flags; `hook_stats.py` accepts `--days`
+and `--json` but uses a fixed error-pattern limit of 10.
+
+```bash
+# Denied tool names ranked by frequency (replaces inline Python regex extraction)
+python3 <skill-dir>/scripts/queries/denied_tools.py [--days 14] [--json]
+
+# Top tools by usage count
+python3 <skill-dir>/scripts/queries/tool_usage.py [--days 14] [--json]
+
+# Tools ranked by error rate
+python3 <skill-dir>/scripts/queries/error_rates.py [--days 14] [--min-uses 5] [--json]
+
+# Most-repeated bash commands (add --dangerous for risky ones only)
+python3 <skill-dir>/scripts/queries/bash_patterns.py [--days 14] [--dangerous] [--json]
+
+# Bash commands that should use dedicated tools (cat→Read, grep→Grep, etc.)
+python3 <skill-dir>/scripts/queries/tool_misuse.py [--days 14] [--json]
+
+# Hook coverage ratio and error patterns
+python3 <skill-dir>/scripts/queries/hook_stats.py [--days 14] [--json]
+```
+
+Use `--json` for structured output you can pipe to `jq`. Without it, most
+scripts output tab-separated values; `hook_stats.py` prints a multi-line
+human-formatted summary instead.
 
 ## Query patterns
 

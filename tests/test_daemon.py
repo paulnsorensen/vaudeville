@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import platform
@@ -450,22 +451,30 @@ class TestAcquirePidLock:
 
 
 @pytest.mark.skipif(
-    platform.system() != "Darwin" or platform.machine() != "arm64",
-    reason="MLX only available on Apple Silicon",
+    platform.system() != "Darwin"
+    or platform.machine() != "arm64"
+    or importlib.util.find_spec("mlx_lm") is None,
+    reason="MLX only available on Apple Silicon with mlx_lm installed",
 )
 class TestMLXImportSmoke:
     """Verify real mlx_lm imports resolve — catches API drift."""
 
     def test_mlx_backend_imports_resolve(self) -> None:
         """MLXBackend.__init__ imports must not raise ImportError."""
-        from mlx_lm import stream_generate  # noqa: F401
-        from mlx_lm.generate import generate_step  # noqa: F401
+        try:
+            from mlx_lm import stream_generate  # noqa: F401
+            from mlx_lm.generate import generate_step  # noqa: F401
+        except ImportError:
+            pytest.skip("mlx-lm not installed")
 
     def test_generate_step_signature_has_sampler(self) -> None:
         """generate_step must accept sampler= (not temp=)."""
         import inspect
 
-        from mlx_lm.generate import generate_step
+        try:
+            from mlx_lm.generate import generate_step
+        except ImportError:
+            pytest.skip("mlx-lm not installed")
 
         params = inspect.signature(generate_step).parameters
         assert "sampler" in params, "generate_step lost sampler= param"

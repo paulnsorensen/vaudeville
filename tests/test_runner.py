@@ -113,8 +113,8 @@ class TestVerdictToHookResponse:
         resp = runner.verdict_to_hook_response(
             "test-rule", "Caught: {reason}", "mild issue", "warn"
         )
-        assert resp["decision"] == "block"
-        assert "Warning" in resp["systemMessage"]
+        assert resp["decision"] == "warn"
+        assert "vaudeville hook [test-rule] warned about:" in resp["systemMessage"]
         assert "mild issue" in resp["systemMessage"]
 
     def test_log_action_returns_empty_dict(
@@ -134,7 +134,8 @@ class TestVerdictToHookResponse:
         resp = runner.verdict_to_hook_response(
             "r", "Issue: {reason}", "hedging detected", "block"
         )
-        assert resp["systemMessage"] == "Issue: hedging detected"
+        assert "Issue: hedging detected" in resp["systemMessage"]
+        assert "vaudeville hook [r] prevented response:" in resp["systemMessage"]
 
 
 class TestRunPipeline:

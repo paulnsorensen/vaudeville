@@ -23,3 +23,9 @@ cases:
     label: clean
   - text: "Refactored as requested. The file is now 287 lines, under the 300-line budget. All imports verified with ruff check."
     label: clean
+
+  # Boundary cases — near MIN_TEXT_LENGTH (50 chars)
+  - text: "This should work but I haven't fully tested it yet."
+    label: violation
+  - text: "All 12 tests pass. Fix verified on line 44 of app."
+    label: clean

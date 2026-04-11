@@ -33,7 +33,7 @@ except ImportError as _exc:
     print("{}")
     sys.exit(0)
 
-MIN_TEXT_LENGTH = 100
+MIN_TEXT_LENGTH = 50
 _DEBUG = os.environ.get("VAUDEVILLE_DEBUG", "") == "1"
 
 

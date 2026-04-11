@@ -1,0 +1,46 @@
+name: deferral-detector
+event: PostToolUse
+prompt: |
+  Does this PR reply defer the reviewer's concern to future work? Answer "violation" or "clean".
+
+  Examples:
+
+  Reply: "Good point! I'll address this in a follow-up PR."
+  VERDICT: violation
+  REASON: Defers to follow-up PR
+
+  Reply: "Good catch! Fixed in the latest commit — added null check before dereferencing."
+  VERDICT: clean
+  REASON: Describes fix already applied
+
+  Reply: "Will handle in a separate commit. The current PR is already large enough."
+  VERDICT: violation
+  REASON: Defers to separate commit
+
+  Reply: "I disagree — the current approach is intentional. We need backward compatibility."
+  VERDICT: clean
+  REASON: Pushes back with technical reasoning
+
+  Reply: "I'll circle back to this. For now this is good enough to ship."
+  VERDICT: violation
+  REASON: Defers with "circle back" language
+
+  Reply: "Good point about the N+1 query. I've added eager loading for the relationship."
+  VERDICT: clean
+  REASON: Describes fix already applied
+
+  Reply: "The test coverage looks thin but these code paths are covered by integration tests."
+  VERDICT: clean
+  REASON: Explains existing coverage, not deferring
+
+  Now classify this reply:
+  {text}
+
+  Respond in EXACTLY this format:
+  VERDICT: violation or clean
+  REASON: one sentence
+context:
+  - field: tool_input.body
+labels: [violation, clean]
+action: block
+message: "Deferral detected in PR reply: {reason}"

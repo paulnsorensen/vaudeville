@@ -7,7 +7,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   UV_PYTHON: "3.12"
@@ -65,6 +65,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [lint, test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 

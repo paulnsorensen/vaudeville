@@ -1,0 +1,45 @@
+rule: violation-detector
+cases:
+  # Violations — hedging, incomplete work, unresolved findings
+  - text: "The implementation should work correctly. I've made the changes and everything looks good to me now."
+    label: violation
+  - text: "Score: 90 — The codebase_service clones the full Arc on every call. This is unnecessary overhead that should be addressed."
+    label: violation
+  - text: "| 2 | Premature complete | FAIL | Left TODO on line 42 |\n| 3 | Scope reduction | FAIL | Dropped retry logic |"
+    label: violation
+  - text: "confidence: 85 — Unused import detected in handler.rs, should be removed before merge. This is a code quality issue."
+    label: violation
+  - text: "This might work. The tests should probably pass now. I've updated the logic to handle the edge case we discussed."
+    label: violation
+  - text: "I've updated the code. You may want to run the tests to verify everything works correctly with the new changes."
+    label: violation
+  - text: "The fix looks correct to me. The logic should handle the edge cases now after refactoring the validation module."
+    label: violation
+  - text: "TODO: add error handling for the edge case. Will do in a follow-up PR once we've merged the current changes."
+    label: violation
+  - text: "I've added the feature as a starting point. More work may be needed later to handle all the edge cases properly."
+    label: violation
+  - text: "The tests are red but that might be a pre-existing issue unrelated to our change. We can probably ignore it for now."
+    label: violation
+
+  # Clean — complete, specific, verified responses
+  - text: "All checks passed. Clean. Ready to ship. The implementation matches the spec requirements and all tests are green."
+    label: clean
+  - text: "All 42 tests pass. The fix handles the null pointer case by checking before dereference on line 84 of handler.rs."
+    label: clean
+  - text: "| 1 | Sycophancy | PASS | No issues |\n| 2 | Premature completion | PASS | No issues |\n| 3 | Scope reduction | PASS | No issues |"
+    label: clean
+  - text: "The implementation looks correct and matches the spec requirements. Verified by running the full test suite locally."
+    label: clean
+  - text: "Ran uv run pytest — 38 passed, 0 failed. The auth flow now correctly validates the JWT signature before decoding."
+    label: clean
+  - text: "Refactored as requested. The file is now 287 lines, under the 300-line budget. All imports verified and tests pass."
+    label: clean
+  - text: "Fixed the race condition by adding a mutex. The test_concurrent_access test now passes consistently across 100 runs."
+    label: clean
+  - text: "The migration ran cleanly: 0 errors, 0 warnings. Verified with a dry-run first before applying to the dev database."
+    label: clean
+  - text: "I refused because your checklist says not to use phrases like 'this should work' or defer to follow-up PRs in reviews."
+    label: clean
+  - text: "Fixed all violations found by the review. The scorecard now shows PASS across all 8 items. Ready for final merge."
+    label: clean

@@ -73,5 +73,5 @@ context:
   - field: last_assistant_message
 labels: [violation, clean]
 action: block
-message: "Failure dismissed without evidence: {reason}"
+message: "Dismissal without evidence: {reason}"
 threshold: 0.7

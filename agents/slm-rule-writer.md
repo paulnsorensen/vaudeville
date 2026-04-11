@@ -58,7 +58,8 @@ structural pattern matching (<100ms), the vaudeville:hard-hook-writer handles th
 
 ## Rule YAML Format
 
-Every rule is a single YAML file in `rules/`. Complete schema:
+Every rule is a single YAML file placed in one of the resolution layer directories
+(project `.vaudeville/rules/` or `~/.vaudeville/rules/`). Complete schema:
 
 ```yaml
 name: my-detector              # Unique identifier (kebab-case, matches filename)
@@ -175,48 +176,11 @@ cases:
 - **Vary length**: Short (1-2 sentences) and long (paragraph) cases — but
   ensure ALL cases are >100 characters (runner.py skips shorter inputs)
 
-## Registration in hooks.json
+## Registration
 
-After creating rule and test file, register in `hooks/hooks.json`.
-
-### For Stop rules
-
-Add the rule name to the existing Stop runner command:
-
-```json
-"Stop": [
-  {
-    "hooks": [
-      {
-        "type": "command",
-        "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/runner.py violation-detector dismissal-detector my-detector",
-        "timeout": 30,
-        "statusMessage": "Evaluating response quality..."
-      }
-    ]
-  }
-]
-```
-
-### For PostToolUse rules
-
-Add a new matcher group or extend an existing one:
-
-```json
-"PostToolUse": [
-  {
-    "matcher": "tool_name_regex",
-    "hooks": [
-      {
-        "type": "command",
-        "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/runner.py my-detector",
-        "timeout": 10,
-        "statusMessage": "Checking output..."
-      }
-    ]
-  }
-]
-```
+The runner discovers rules automatically via `--event <EventName>`. Just ensure
+your rule YAML has the `event:` field set (e.g. `event: Stop`). No manual
+registration in hooks.json needed — hooks.json already has a runner entry per event.
 
 ## Rule Resolution Layers
 
@@ -225,7 +189,6 @@ Rules load from multiple directories (highest priority wins by name):
 ```
 1. <project>/.vaudeville/rules/    (project-specific overrides)
 2. ~/.vaudeville/rules/             (user-global rules)
-3. <plugin_root>/rules/             (bundled defaults)
 ```
 
 ## Your Workflow
@@ -236,7 +199,7 @@ Ask: "What behavior am I trying to detect?" Write it as a one-sentence task.
 
 ### 2. Write the rule YAML
 
-Create `rules/<name>.yaml`. Start with 4 examples in the prompt (2 violation, 2 clean).
+Create `<name>.yaml` in the target rules directory. Start with 4 examples in the prompt (2 violation, 2 clean).
 Always include `threshold: 0.5` — rules without a threshold default to 0.5 but being explicit is clearer.
 
 ### 3. Write test cases
@@ -261,28 +224,23 @@ Run `uv run python -m vaudeville.eval --threshold-sweep` to find the optimal
 confidence threshold for your rule. Set `threshold:` in the rule YAML to the
 best value that maintains ≥95% precision.
 
-### 6. Register in hooks.json
-
-Add the rule name to the appropriate runner command in `hooks/hooks.json`.
-
-### 7. Test end-to-end
+### 6. Test end-to-end
 
 Verify: daemon running → hook fires → rule classifies → action triggers.
 
-## Existing Rules (Reference)
+## Style Reference
 
-Read these in `rules/` for style guidance:
+Read the example rules in `examples/rules/` and their test cases in
+`examples/tests/` for style guidance. These show the expected prompt structure,
+label conventions, context field usage, and test case patterns:
 
-| Rule | Event | Detects |
-|------|-------|---------|
-| `violation-detector` | Stop | Hedging, deferrals, unresolved findings |
-| `dismissal-detector` | Stop | Dismissing test/CI failures without evidence |
-| `deferral-detector` | PreToolUse | "Follow-up PR" language in PR replies |
-
+- `hedging-detector` — Stop rule detecting uncertain language about verifiable claims
+- `dismissal-detector` — Stop rule detecting test failure dismissals without evidence
+- `deferral-detector` — PreToolUse rule detecting "follow-up PR" deferrals in reviews
 ## Gotchas
 
-- `runner.py` skips input text shorter than 100 characters (`MIN_TEXT_LENGTH = 100`)
-  — test cases under 100 chars pass in eval but never fire in production
+- `runner.py` skips input text shorter than 50 characters (`MIN_TEXT_LENGTH = 50`)
+  — test cases under 50 chars pass in eval but never fire in production
 - The eval harness uses direct inference, not the daemon socket — rules can
   score 100% in eval but fail at runtime if the daemon isn't running
 - Rule names must match filenames exactly (without `.yaml`)
@@ -296,15 +254,14 @@ Read these in `rules/` for style guidance:
 ## Deliverables
 
 For each rule created, deliver:
-1. Rule YAML in `rules/` (with explicit `threshold:` set)
-2. Test cases in `tests/` (minimum 10 cases, balanced labels)
-3. Updated `hooks/hooks.json` registration
-4. Eval results showing >90% accuracy
+1. Rule YAML in the target rules directory (with `event:` and `threshold:` fields set)
+2. Test cases YAML (minimum 10 cases, balanced labels)
+3. Eval results showing >90% accuracy
 5. Threshold sweep results justifying the chosen threshold
 
 ## What This Agent Does NOT Do
 
 - Create JS/bash hooks for structural pattern matching (use vaudeville:hard-hook-writer)
 - Query session analytics or suggest hooks from usage data
-- Modify existing bundled rules without explicit user approval
+- Modify existing user rules without explicit approval
 - Modify the daemon, runner.py, or eval infrastructure

@@ -84,3 +84,4 @@ context:
 labels: [violation, clean]
 action: block
 message: "Quality violation: {reason}"
+threshold: 0.7

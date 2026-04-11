@@ -94,6 +94,7 @@ context:                        # How to extract text from hook input
 labels: [violation, clean]      # Valid verdict labels (always exactly 2)
 action: block                   # What to do on violation: block, warn, or log
 message: "Quality violation: {reason}"  # Template with {reason} placeholder
+threshold: 0.5                  # Minimum confidence (0.0–1.0) to trigger action
 ```
 
 ### Required Fields
@@ -112,6 +113,7 @@ message: "Quality violation: {reason}"  # Template with {reason} placeholder
 | `event` | (none) | Hook event — informational, used by `hooks.json` |
 | `action` | `block` | `block` = prevent, `warn` = allow + inject warning, `log` = stderr only |
 | `message` | `{reason}` | User-facing message template, `{reason}` replaced by SLM output |
+| `threshold` | `0.5` | Minimum confidence (0.0–1.0) to trigger action. Use `just eval --threshold-sweep` to find optimal value. |
 
 ### Context Field Paths
 
@@ -235,6 +237,7 @@ Ask: "What behavior am I trying to detect?" Write it as a one-sentence task.
 ### 2. Write the rule YAML
 
 Create `rules/<name>.yaml`. Start with 4 examples in the prompt (2 violation, 2 clean).
+Always include `threshold: 0.5` — rules without a threshold default to 0.5 but being explicit is clearer.
 
 ### 3. Write test cases
 
@@ -252,11 +255,17 @@ Target: **>90% accuracy**. If low:
 - Check for ambiguous test cases
 - Ensure labels are consistent
 
-### 5. Register in hooks.json
+### 5. Tune the threshold
+
+Run `uv run python -m vaudeville.eval --threshold-sweep` to find the optimal
+confidence threshold for your rule. Set `threshold:` in the rule YAML to the
+best value that maintains ≥95% precision.
+
+### 6. Register in hooks.json
 
 Add the rule name to the appropriate runner command in `hooks/hooks.json`.
 
-### 6. Test end-to-end
+### 7. Test end-to-end
 
 Verify: daemon running → hook fires → rule classifies → action triggers.
 
@@ -268,7 +277,7 @@ Read these in `rules/` for style guidance:
 |------|-------|---------|
 | `violation-detector` | Stop | Hedging, deferrals, unresolved findings |
 | `dismissal-detector` | Stop | Dismissing test/CI failures without evidence |
-| `deferral-detector` | PostToolUse | "Follow-up PR" language in PR replies |
+| `deferral-detector` | PreToolUse | "Follow-up PR" language in PR replies |
 
 ## Gotchas
 
@@ -287,10 +296,11 @@ Read these in `rules/` for style guidance:
 ## Deliverables
 
 For each rule created, deliver:
-1. Rule YAML in `rules/`
+1. Rule YAML in `rules/` (with explicit `threshold:` set)
 2. Test cases in `tests/` (minimum 10 cases, balanced labels)
 3. Updated `hooks/hooks.json` registration
 4. Eval results showing >90% accuracy
+5. Threshold sweep results justifying the chosen threshold
 
 ## What This Agent Does NOT Do
 

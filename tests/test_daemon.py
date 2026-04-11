@@ -366,7 +366,7 @@ class TestConfidenceScoring:
         data = json.dumps({"prompt": "test"}).encode() + b"\n"
         response = json.loads(handle_request(data, PlainBackend()))
         assert response["verdict"] == "clean"
-        assert response["confidence"] == 1.0
+        assert response["confidence"] == 0.0
 
 
 class TestDetectBackend:

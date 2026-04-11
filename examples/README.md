@@ -21,7 +21,7 @@ cp examples/rules/*.yaml .vaudeville/rules/
 |------|-------|-----------------|
 | `violation-detector` | Stop | Hedging, incomplete work, unresolved review findings |
 | `dismissal-detector` | Stop | Dismissing test/CI failures without evidence |
-| `deferral-detector` | PostToolUse | Deferring reviewer concerns to follow-up PRs |
+| `deferral-detector` | PreToolUse | Deferring reviewer concerns to follow-up PRs |
 
 ## Rule Format
 
@@ -37,6 +37,7 @@ context:
 labels: [violation, clean]          # valid classification labels
 action: block                       # block, warn, or log
 message: "Reason: {reason}"         # verdict message template
+threshold: 0.5                      # minimum confidence to trigger (0.0-1.0)
 ```
 
 ### Context sources
@@ -58,4 +59,5 @@ Rules extract text to classify from hook input via `context` entries:
 2. Edit the `prompt` with your classification criteria and few-shot examples
 3. Set the `event` to the hook point you want (Stop, PostToolUse, UserPromptSubmit, etc.)
 4. Set `context` to extract the right text from the hook input
-5. Test with `just eval-rule <rule-name>` (requires test cases in `tests/<rule-name>.yaml`)
+5. Set `threshold` — start at 0.5, tune with `just eval --threshold-sweep`
+6. Test with `just eval-rule <rule-name>` (requires test cases in `tests/<rule-name>.yaml`)

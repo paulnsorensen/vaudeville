@@ -1,5 +1,5 @@
 name: deferral-detector
-event: PostToolUse
+event: PreToolUse
 prompt: |
   Does this PR reply defer the reviewer's concern to future work? Answer "violation" or "clean".
 
@@ -44,3 +44,4 @@ context:
 labels: [violation, clean]
 action: block
 message: "Deferral detected in PR reply: {reason}"
+threshold: 0.7

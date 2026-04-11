@@ -74,3 +74,4 @@ context:
 labels: [violation, clean]
 action: block
 message: "Failure dismissed without evidence: {reason}"
+threshold: 0.7

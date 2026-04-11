@@ -5,6 +5,7 @@ Stdlib-only — safe to import in hook scripts.
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from dataclasses import dataclass, field
@@ -42,8 +43,8 @@ def parse_verdict(raw: str) -> ClassifyResponse:
         VERDICT: violation
         REASON: one sentence
 
-    Falls back to keyword search if structured format is absent.
-    Unknown/malformed output defaults to "clean" (fail-open).
+    Defaults to "clean" (fail-open) if no VERDICT: header is found,
+    with a warning log for observability.
     """
     positive_re = re.compile(r"\bviolation\b")
 
@@ -62,7 +63,8 @@ def parse_verdict(raw: str) -> ClassifyResponse:
             reason = stripped[7:].strip()
 
     if not found_verdict:
-        verdict = "violation" if positive_re.search(raw.lower()) else "clean"
+        logging.warning("[vaudeville] No VERDICT: header in model output: %.100s", raw)
+        verdict = "clean"
         reason = raw.strip()[:200]
 
     reason = _SPECIAL_TOKEN_RE.sub("", reason).strip()
@@ -77,11 +79,13 @@ def compute_confidence(logprobs: dict[str, float], verdict: str) -> float:
     """Compute confidence from first-token logprobs.
 
     Finds the best logprob for violation-class and clean-class tokens,
-    applies softmax, and returns P(predicted_class). Returns 1.0 (fail-open)
-    when logprobs are empty or no matching tokens are found.
+    applies softmax, and returns P(predicted_class). Returns 0.0 (fail-open)
+    when logprobs are empty or no matching tokens are found, so the verdict
+    won't pass any threshold.
     """
     if not logprobs:
-        return 1.0
+        logging.warning("[vaudeville] Empty logprobs dict — returning 0.0 confidence")
+        return 0.0
 
     best_violation = -math.inf
     best_clean = -math.inf
@@ -94,7 +98,11 @@ def compute_confidence(logprobs: dict[str, float], verdict: str) -> float:
             best_clean = max(best_clean, lp)
 
     if best_violation == -math.inf or best_clean == -math.inf:
-        return 1.0
+        logging.warning(
+            "[vaudeville] No violation/clean tokens in logprobs (keys: %s) — returning 0.0 confidence",
+            list(logprobs.keys())[:5],
+        )
+        return 0.0
 
     # Softmax of two values: P(x) = exp(x) / (exp(x) + exp(y))
     # Use log-sum-exp trick for numerical stability

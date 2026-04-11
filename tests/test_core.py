@@ -44,11 +44,12 @@ class TestParseVerdict:
         result = parse_verdict("verdict: VIOLATION\nreason: test")
         assert result.verdict == "violation"
 
-    def test_fallback_keyword_scan(self) -> None:
+    def test_no_verdict_header_defaults_to_clean(self) -> None:
+        """Without VERDICT: header, always default to clean (fail-open)."""
         result = parse_verdict("This response contains a violation of the rules.")
-        assert result.verdict == "violation"
+        assert result.verdict == "clean"
 
-    def test_fallback_clean_on_no_keyword(self) -> None:
+    def test_no_verdict_header_clean_text(self) -> None:
         result = parse_verdict("Everything looks good here.")
         assert result.verdict == "clean"
 
@@ -82,14 +83,15 @@ class TestParseVerdict:
         rule = parse_rule({"name": "test", "prompt": "{text}"})
         assert rule.name == "test"
         assert rule.action == "block"
+        assert rule.threshold == 0.5
 
     def test_violation_keyword_word_boundary(self) -> None:
         """'violation' substring should not create false positives."""
         result = parse_verdict("VERDICT: clean\nREASON: no violations found")
         assert result.verdict == "clean"
 
-    def test_violation_plural_in_fallback_does_not_match(self) -> None:
-        """Fallback scan uses \\bviolation\\b — 'violations' (plural) does not match."""
+    def test_no_header_with_violation_word_defaults_clean(self) -> None:
+        """Without VERDICT: header, even text containing 'violations' defaults to clean."""
         result = parse_verdict("Multiple violations were detected in the response.")
         assert result.verdict == "clean"
 
@@ -408,12 +410,12 @@ class TestComputeConfidence:
         conf = compute_confidence(logprobs, "clean")
         assert conf > 0.9
 
-    def test_empty_logprobs_returns_one(self) -> None:
-        assert compute_confidence({}, "violation") == 1.0
+    def test_empty_logprobs_returns_zero(self) -> None:
+        assert compute_confidence({}, "violation") == 0.0
 
-    def test_no_matching_tokens_returns_one(self) -> None:
+    def test_no_matching_tokens_returns_zero(self) -> None:
         logprobs = {"hello": -1.0, "world": -2.0}
-        assert compute_confidence(logprobs, "violation") == 1.0
+        assert compute_confidence(logprobs, "violation") == 0.0
 
     def test_prefix_matching(self) -> None:
         logprobs = {"v": -0.5, "c": -1.5}

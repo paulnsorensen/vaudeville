@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import platform
@@ -450,8 +451,10 @@ class TestAcquirePidLock:
 
 
 @pytest.mark.skipif(
-    platform.system() != "Darwin" or platform.machine() != "arm64",
-    reason="MLX only available on Apple Silicon",
+    platform.system() != "Darwin"
+    or platform.machine() != "arm64"
+    or importlib.util.find_spec("mlx_lm") is None,
+    reason="MLX only available on Apple Silicon with mlx_lm installed",
 )
 class TestMLXImportSmoke:
     """Verify real mlx_lm imports resolve — catches API drift."""

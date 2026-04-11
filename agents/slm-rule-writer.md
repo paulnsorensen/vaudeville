@@ -172,7 +172,7 @@ cases:
 - **Include edge cases**: Boundary examples testing prompt precision
 - **Use realistic text**: Real assistant output, not toy examples
 - **Vary length**: Short (1-2 sentences) and long (paragraph) cases — but
-  ensure ALL cases are >100 characters (runner.py skips shorter inputs)
+  ensure ALL cases are >50 characters (runner.py skips shorter inputs)
 
 ## Registration
 
@@ -231,8 +231,8 @@ label conventions, context field usage, and test case patterns:
 
 ## Gotchas
 
-- `runner.py` skips input text shorter than 100 characters (`MIN_TEXT_LENGTH = 100`)
-  — test cases under 100 chars pass in eval but never fire in production
+- `runner.py` skips input text shorter than 50 characters (`MIN_TEXT_LENGTH = 50`)
+  — test cases under 50 chars pass in eval but never fire in production
 - The eval harness uses direct inference, not the daemon socket — rules can
   score 100% in eval but fail at runtime if the daemon isn't running
 - Rule names must match filenames exactly (without `.yaml`)

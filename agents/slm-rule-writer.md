@@ -257,7 +257,7 @@ For each rule created, deliver:
 1. Rule YAML in the target rules directory (with `event:` and `threshold:` fields set)
 2. Test cases YAML (minimum 10 cases, balanced labels)
 3. Eval results showing >90% accuracy
-5. Threshold sweep results justifying the chosen threshold
+4. Threshold sweep results justifying the chosen threshold
 
 ## What This Agent Does NOT Do
 

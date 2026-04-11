@@ -6,6 +6,8 @@ import importlib.util
 import json
 import os
 import sys
+from types import ModuleType
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -26,13 +28,13 @@ if _QUERIES_DIR not in sys.path:
     sys.path.insert(0, _QUERIES_DIR)
 
 
-def _load(name: str):
+def _load(name: str) -> ModuleType:
     path = os.path.join(_QUERIES_DIR, f"{name}.py")
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
-    spec.loader.exec_module(mod)  # type: ignore[attr-defined]
+    spec.loader.exec_module(mod)
     return mod
 
 
@@ -45,7 +47,7 @@ tool_misuse = _load("tool_misuse")
 hook_stats = _load("hook_stats")
 
 
-def _mock_result(stdout: str = "", returncode: int = 0, stderr: str = ""):
+def _mock_result(stdout: str = "", returncode: int = 0, stderr: str = "") -> object:
     return type(
         "R", (), {"returncode": returncode, "stdout": stdout, "stderr": stderr}
     )()
@@ -55,13 +57,13 @@ def _mock_result(stdout: str = "", returncode: int = 0, stderr: str = ""):
 
 
 class TestDbQuery:
-    def test_db_not_found_exits(self, tmp_path) -> None:
+    def test_db_not_found_exits(self, tmp_path: Any) -> None:
         with patch.object(_db, "DB_PATH", str(tmp_path / "missing.duckdb")):
             with pytest.raises(SystemExit) as exc:
                 _db.query("SELECT 1")
             assert exc.value.code == 1
 
-    def test_duckdb_binary_not_found_exits(self, tmp_path) -> None:
+    def test_duckdb_binary_not_found_exits(self, tmp_path: Any) -> None:
         db = tmp_path / "test.duckdb"
         db.touch()
         with patch.object(_db, "DB_PATH", str(db)):
@@ -70,7 +72,7 @@ class TestDbQuery:
                     _db.query("SELECT 1")
                 assert exc.value.code == 1
 
-    def test_nonzero_returncode_returns_empty(self, tmp_path) -> None:
+    def test_nonzero_returncode_returns_empty(self, tmp_path: Any) -> None:
         db = tmp_path / "test.duckdb"
         db.touch()
         with patch.object(_db, "DB_PATH", str(db)):
@@ -79,28 +81,28 @@ class TestDbQuery:
             ):
                 assert _db.query("SELECT 1") == []
 
-    def test_empty_stdout_returns_empty(self, tmp_path) -> None:
+    def test_empty_stdout_returns_empty(self, tmp_path: Any) -> None:
         db = tmp_path / "test.duckdb"
         db.touch()
         with patch.object(_db, "DB_PATH", str(db)):
             with patch("subprocess.run", return_value=_mock_result(stdout="")):
                 assert _db.query("SELECT 1") == []
 
-    def test_duckdb_empty_sentinel_returns_empty(self, tmp_path) -> None:
+    def test_duckdb_empty_sentinel_returns_empty(self, tmp_path: Any) -> None:
         db = tmp_path / "test.duckdb"
         db.touch()
         with patch.object(_db, "DB_PATH", str(db)):
             with patch("subprocess.run", return_value=_mock_result(stdout="[{]")):
                 assert _db.query("SELECT 1") == []
 
-    def test_invalid_json_returns_empty(self, tmp_path) -> None:
+    def test_invalid_json_returns_empty(self, tmp_path: Any) -> None:
         db = tmp_path / "test.duckdb"
         db.touch()
         with patch.object(_db, "DB_PATH", str(db)):
             with patch("subprocess.run", return_value=_mock_result(stdout="not-json")):
                 assert _db.query("SELECT 1") == []
 
-    def test_valid_json_returned(self, tmp_path) -> None:
+    def test_valid_json_returned(self, tmp_path: Any) -> None:
         db = tmp_path / "test.duckdb"
         db.touch()
         data = [{"tool": "Bash", "cnt": "5"}]
@@ -138,14 +140,14 @@ class TestArgParsers:
 
 
 class TestOutput:
-    def test_json_mode(self, capsys) -> None:
+    def test_json_mode(self, capsys: Any) -> None:
         rows = [{"tool": "Bash", "uses": "10"}]
         _db.output(rows, ["--json"])
         out = capsys.readouterr().out
         parsed = json.loads(out)
         assert parsed == rows
 
-    def test_tsv_mode(self, capsys) -> None:
+    def test_tsv_mode(self, capsys: Any) -> None:
         rows = [{"a": "1", "b": "2"}, {"a": "3", "b": "4"}]
         _db.output(rows, [])
         lines = capsys.readouterr().out.strip().split("\n")
@@ -153,7 +155,7 @@ class TestOutput:
         assert lines[1] == "1\t2"
         assert lines[2] == "3\t4"
 
-    def test_empty_rows_prints_no_results(self, capsys) -> None:
+    def test_empty_rows_prints_no_results(self, capsys: Any) -> None:
         _db.output([], [])
         assert "(no results)" in capsys.readouterr().out
 
@@ -179,7 +181,7 @@ class TestDeniedTools:
         assert "'7'" in sql
         assert "5" in sql
 
-    def test_output_json(self, capsys) -> None:
+    def test_output_json(self, capsys: Any) -> None:
         rows = [{"tool": "Bash", "denials": "10"}]
         with patch.object(denied_tools, "query", return_value=rows):
             with patch("sys.argv", ["denied_tools.py", "--json"]):
@@ -201,7 +203,7 @@ class TestToolUsage:
         assert "tool_uses" in sql
         assert "tool_name" in sql
 
-    def test_output_includes_sessions_column(self, capsys) -> None:
+    def test_output_includes_sessions_column(self, capsys: Any) -> None:
         rows = [{"tool_name": "Read", "uses": "50", "sessions": "10"}]
         with patch.object(tool_usage, "query", return_value=rows):
             with patch("sys.argv", ["tool_usage.py", "--json"]):
@@ -269,7 +271,7 @@ class TestToolMisuse:
         assert "find" in sql.lower()
         assert "sed" in sql.lower()
 
-    def test_output_has_misuse_type(self, capsys) -> None:
+    def test_output_has_misuse_type(self, capsys: Any) -> None:
         rows = [{"misuse_type": "grep/rg -> Grep", "uses": "100"}]
         with patch.object(tool_misuse, "query", return_value=rows):
             with patch("sys.argv", ["tool_misuse.py", "--json"]):
@@ -282,7 +284,9 @@ class TestToolMisuse:
 
 
 class TestHookStats:
-    def _mock_three_queries(self, hook_cnt, stop_cnt, errors=None):
+    def _mock_three_queries(
+        self, hook_cnt: int, stop_cnt: int, errors: list[dict[str, str]] | None = None
+    ) -> Any:
         """Return a side_effect for the 3 queries hook_stats.main() makes."""
         returns = [
             [{"cnt": str(hook_cnt)}],
@@ -291,14 +295,14 @@ class TestHookStats:
         ]
         call_idx = [0]
 
-        def _q(sql):  # noqa: ARG001
+        def _q(sql: str) -> list[dict[str, str]]:
             idx = call_idx[0]
             call_idx[0] += 1
             return returns[idx]
 
         return _q
 
-    def test_coverage_calculation(self, capsys) -> None:
+    def test_coverage_calculation(self, capsys: Any) -> None:
         with patch.object(
             hook_stats, "query", side_effect=self._mock_three_queries(50, 100)
         ):
@@ -307,7 +311,7 @@ class TestHookStats:
         out = capsys.readouterr().out
         assert "50.0%" in out
 
-    def test_zero_stops_no_crash(self, capsys) -> None:
+    def test_zero_stops_no_crash(self, capsys: Any) -> None:
         with patch.object(
             hook_stats, "query", side_effect=self._mock_three_queries(0, 0)
         ):
@@ -316,7 +320,7 @@ class TestHookStats:
         out = capsys.readouterr().out
         assert "0%" in out
 
-    def test_json_output_structure(self, capsys) -> None:
+    def test_json_output_structure(self, capsys: Any) -> None:
         errors = [{"error": "Timeout", "cnt": "3"}]
         with patch.object(
             hook_stats, "query", side_effect=self._mock_three_queries(30, 100, errors)
@@ -329,7 +333,7 @@ class TestHookStats:
         assert parsed["coverage_pct"] == 30.0
         assert parsed["errors"][0]["error"] == "Timeout"
 
-    def test_errors_shown_in_text_mode(self, capsys) -> None:
+    def test_errors_shown_in_text_mode(self, capsys: Any) -> None:
         errors = [{"error": "Script crashed", "cnt": "5"}]
         with patch.object(
             hook_stats, "query", side_effect=self._mock_three_queries(10, 50, errors)
@@ -341,10 +345,10 @@ class TestHookStats:
         assert "5x" in out
 
     def test_days_flag_passed_to_queries(self) -> None:
-        sqls = []
+        sqls: list[str] = []
         call_idx = [0]
 
-        def capture_sql(sql):
+        def capture_sql(sql: str) -> list[dict[str, str]]:
             sqls.append(sql)
             call_idx[0] += 1
             if call_idx[0] <= 2:

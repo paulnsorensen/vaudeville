@@ -23,3 +23,9 @@ cases:
     label: clean
   - text: "This is out of scope — changing the API contract requires a separate migration. Opened issue #456 with full context and plan."
     label: clean
+
+  # Boundary cases — near MIN_TEXT_LENGTH (50 chars)
+  - text: "I'll handle that in a follow-up PR right after this."
+    label: violation
+  - text: "Fixed in the latest commit. See updated diff above."
+    label: clean

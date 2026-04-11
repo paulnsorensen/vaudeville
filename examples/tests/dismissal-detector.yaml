@@ -23,3 +23,9 @@ cases:
     label: clean
   - text: "I investigated the CI failure: test_db_migration requires a live Postgres instance, skipped in CI via SKIP_INTEGRATION=1."
     label: clean
+
+  # Boundary cases — near MIN_TEXT_LENGTH (50 chars)
+  - text: "That test is flaky, it's not related to my change."
+    label: violation
+  - text: "All tests pass. Bug fixed on line 31 of the app.py."
+    label: clean

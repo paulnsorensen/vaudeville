@@ -1,46 +1,47 @@
 name: deferral-detector
-event: PostToolUse
+event: PreToolUse
 prompt: |
-  Classify whether this PR reply defers requested work to a follow-up instead
-  of addressing it now.
-
-  VIOLATION if the response:
-  - Promises a "follow-up PR" or "follow-up commit" instead of fixing now
-  - Defers to "next iteration", "future pass", or "separate PR"
-  - Says "let's merge this first" to avoid addressing feedback
-  - Uses "will handle later" or "can be improved later" language
-
-  CLEAN if the response:
-  - Addresses feedback directly with code changes
-  - Pushes back with specific technical reasoning
-  - Explains why something is out of scope with a concrete justification
-  - Acknowledges and fixes the issue in the current PR
+  Does this PR reply defer the reviewer's concern to future work? Answer "violation" or "clean".
 
   Examples:
 
-  Response: "Good point! I'll address this in a follow-up PR."
+  Reply: "Good point! I'll address this in a follow-up PR."
   VERDICT: violation
-  REASON: Defers to follow-up instead of fixing now
+  REASON: Defers to follow-up PR
 
-  Response: "Good catch! Fixed in the latest commit — added null check."
+  Reply: "Good catch! Fixed in the latest commit — added null check before dereferencing."
   VERDICT: clean
-  REASON: Addresses feedback directly with a fix
+  REASON: Describes fix already applied
 
-  Response: "Will handle in a separate commit. The current PR is large enough."
+  Reply: "Will handle in a separate commit. The current PR is already large enough."
   VERDICT: violation
-  REASON: Defers to separate work to avoid addressing now
+  REASON: Defers to separate commit
 
-  Response: "This is out of scope — it requires changing the API contract which needs a migration. Opened issue #456 with full context."
+  Reply: "I disagree — the current approach is intentional. We need backward compatibility."
   VERDICT: clean
-  REASON: Explains out-of-scope with concrete technical justification
+  REASON: Pushes back with technical reasoning
 
-  Now classify:
+  Reply: "I'll circle back to this. For now this is good enough to ship."
+  VERDICT: violation
+  REASON: Defers with "circle back" language
+
+  Reply: "Good point about the N+1 query. I've added eager loading for the relationship."
+  VERDICT: clean
+  REASON: Describes fix already applied
+
+  Reply: "The test coverage looks thin but these code paths are covered by integration tests."
+  VERDICT: clean
+  REASON: Explains existing coverage, not deferring
+
+  Now classify this reply:
   {text}
 
+  Respond in EXACTLY this format:
   VERDICT: violation or clean
   REASON: one sentence
 context:
   - field: tool_input.body
 labels: [violation, clean]
 action: block
-message: "Deferral detected: {reason}"
+message: "Deferral detected in PR reply: {reason}"
+threshold: 0.7

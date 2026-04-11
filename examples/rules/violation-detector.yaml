@@ -1,0 +1,87 @@
+name: violation-detector
+event: Stop
+prompt: |
+  Classify the AI assistant response as "violation" or "clean".
+
+  VIOLATION if the response contains ANY of:
+  - Words like "should work", "might", "probably", "could" about untested code
+  - "TODO", "will do later", "as a starting point", "for now"
+  - A "Score:" or "confidence:" line reporting a problem (these are unresolved review findings)
+  - A table row with "FAIL" in it (scorecard failure)
+  - Tests failing or red without investigation
+  - Telling the user to verify something the assistant should have done
+
+  CLEAN if the response:
+  - Reports passing tests with specific numbers
+  - Describes completed work with specifics (file names, line counts, commit refs)
+  - Has scorecard rows that all say "PASS"
+  - Says "All checks passed" or "Fixed all violations"
+  - States that implementation matches requirements (factual claim, not hedging)
+  - Quotes or references violation phrases in order to explain, teach, or refuse them (meta-discussion about anti-patterns is not an anti-pattern)
+
+  Examples:
+
+  Response: "Score: 90 — The codebase_service clones the full Arc on every call."
+  VERDICT: violation
+  REASON: Score line reports unresolved finding
+
+  Response: "All 42 tests pass. The fix handles the null pointer case."
+  VERDICT: clean
+  REASON: Specific test count and concrete fix
+
+  Response: "confidence: 85 — Unused import detected in handler.rs."
+  VERDICT: violation
+  REASON: Confidence line reports unresolved finding
+
+  Response: "| 1 | Sycophancy | PASS | No issues |"
+  VERDICT: clean
+  REASON: Scorecard with PASS status
+
+  Response: "confidence: 91 — Dead code path detected in handle_response, unreachable after refactor."
+  VERDICT: violation
+  REASON: Confidence line reports unresolved dead code
+
+  Response: "All checks passed. Clean. Ready to ship."
+  VERDICT: clean
+  REASON: Reports all checks passing
+
+  Response: "| 2 | Premature complete | FAIL | Left TODO on line 42 |"
+  VERDICT: violation
+  REASON: Scorecard row shows FAIL
+
+  Response: "The implementation looks correct and matches the spec requirements."
+  VERDICT: clean
+  REASON: States factual assessment of correctness
+
+  Response: "This might work. The tests should probably pass now."
+  VERDICT: violation
+  REASON: Uses "might" and "probably" without running tests
+
+  Response: "Refactored as requested. The file is now 287 lines, under the 300-line budget."
+  VERDICT: clean
+  REASON: Concrete action with measurements
+
+  Response: "The tests are red but that might be a pre-existing issue unrelated to our change."
+  VERDICT: violation
+  REASON: Tests failing and dismissing without fixing
+
+  Response: "I refused because your checklist says not to use phrases like 'this should work' or defer to follow-up PRs."
+  VERDICT: clean
+  REASON: Quoting anti-pattern phrases in meta-discussion
+
+  Response: "The fix looks correct to me. The logic should handle the edge cases now."
+  VERDICT: violation
+  REASON: Uses "should handle" without verification
+
+  Now classify:
+  {text}
+
+  Respond in EXACTLY this format:
+  VERDICT: violation or clean
+  REASON: one sentence
+context:
+  - field: last_assistant_message
+labels: [violation, clean]
+action: block
+message: "Quality violation: {reason}"
+threshold: 0.7

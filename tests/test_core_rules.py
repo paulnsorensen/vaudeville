@@ -109,9 +109,9 @@ class TestParseRule:
         rule = parse_rule(self._minimal_data())
         assert rule.action == "block"
 
-    def test_defaults_threshold_to_zero(self) -> None:
+    def test_defaults_threshold_to_half(self) -> None:
         rule = parse_rule(self._minimal_data())
-        assert rule.threshold == 0.0
+        assert rule.threshold == 0.5
 
     def test_custom_action_preserved(self) -> None:
         rule = parse_rule(self._minimal_data(action="warn"))

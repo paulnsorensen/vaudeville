@@ -95,6 +95,7 @@ context:                        # How to extract text from hook input
 labels: [violation, clean]      # Valid verdict labels (always exactly 2)
 action: block                   # What to do on violation: block, warn, or log
 message: "Quality violation: {reason}"  # Template with {reason} placeholder
+threshold: 0.5                  # Minimum confidence (0.0–1.0) to trigger action
 ```
 
 ### Required Fields
@@ -113,6 +114,7 @@ message: "Quality violation: {reason}"  # Template with {reason} placeholder
 | `event` | (none) | Hook event — informational, used by `hooks.json` |
 | `action` | `block` | `block` = prevent, `warn` = allow + inject warning, `log` = stderr only |
 | `message` | `{reason}` | User-facing message template, `{reason}` replaced by SLM output |
+| `threshold` | `0.5` | Minimum confidence (0.0–1.0) to trigger action. Use `just eval --threshold-sweep` to find optimal value. |
 
 ### Context Field Paths
 
@@ -198,6 +200,7 @@ Ask: "What behavior am I trying to detect?" Write it as a one-sentence task.
 ### 2. Write the rule YAML
 
 Create `<name>.yaml` in the target rules directory. Start with 4 examples in the prompt (2 violation, 2 clean).
+Always include `threshold: 0.5` — rules without a threshold default to 0.5 but being explicit is clearer.
 
 ### 3. Write test cases
 
@@ -215,7 +218,13 @@ Target: **>90% accuracy**. If low:
 - Check for ambiguous test cases
 - Ensure labels are consistent
 
-### 5. Test end-to-end
+### 5. Tune the threshold
+
+Run `uv run python -m vaudeville.eval --threshold-sweep` to find the optimal
+confidence threshold for your rule. Set `threshold:` in the rule YAML to the
+best value that maintains ≥95% precision.
+
+### 6. Test end-to-end
 
 Verify: daemon running → hook fires → rule classifies → action triggers.
 
@@ -227,8 +236,7 @@ label conventions, context field usage, and test case patterns:
 
 - `hedging-detector` — Stop rule detecting uncertain language about verifiable claims
 - `dismissal-detector` — Stop rule detecting test failure dismissals without evidence
-- `deferral-detector` — PostToolUse rule detecting "follow-up PR" deferrals in reviews
-
+- `deferral-detector` — PreToolUse rule detecting "follow-up PR" deferrals in reviews
 ## Gotchas
 
 - `runner.py` skips input text shorter than 50 characters (`MIN_TEXT_LENGTH = 50`)
@@ -246,9 +254,10 @@ label conventions, context field usage, and test case patterns:
 ## Deliverables
 
 For each rule created, deliver:
-1. Rule YAML in the target rules directory (with `event:` field set for auto-discovery)
+1. Rule YAML in the target rules directory (with `event:` and `threshold:` fields set)
 2. Test cases YAML (minimum 10 cases, balanced labels)
 3. Eval results showing >90% accuracy
+4. Threshold sweep results justifying the chosen threshold
 
 ## What This Agent Does NOT Do
 

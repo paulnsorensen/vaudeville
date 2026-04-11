@@ -49,39 +49,38 @@ class GGUFBackend:
     def classify_with_logprobs(
         self, prompt: str, max_tokens: int = 50
     ) -> ClassifyResult:
-        """Run inference and return output with first-token logprobs."""
+        """Run inference and return output with first-token logprobs.
+
+        Pre-fills "VERDICT:" via assistant message so the first generated
+        token IS the class label, matching MLX backend behavior.
+        """
         response: Any = self._llm.create_chat_completion(
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": "VERDICT:"},
+            ],
             max_tokens=max_tokens,
             temperature=0.0,
             logprobs=True,
             top_logprobs=TOP_LOGPROBS,
         )
-        text: str = response["choices"][0]["message"]["content"]
+        text: str = "VERDICT:" + response["choices"][0]["message"]["content"]
         logprobs = self._extract_first_token_logprobs(response)
         return ClassifyResult(text=text, logprobs=logprobs)
 
     def _extract_first_token_logprobs(self, response: Any) -> dict[str, float]:
-        """Extract logprobs from the label-token position in the response.
+        """Extract logprobs from the first token position.
 
-        Scans token positions until finding one whose top logprobs contain
-        violation/clean-prefixed tokens (skipping "VERDICT", ":", etc.).
+        With the "VERDICT:" assistant prefill, the first generated token
+        should be the class label ("violation"/"clean").
         """
-        from ..core.protocol import compute_confidence
-
         try:
             content = response["choices"][0]["logprobs"]["content"]
             if not content:
                 return {}
-            for position in content:
-                top = {
-                    entry["token"]: entry["logprob"]
-                    for entry in position["top_logprobs"]
-                }
-                # compute_confidence returns 1.0 when no label tokens found
-                if compute_confidence(top, "violation") != 1.0:
-                    return top
-            return {}
+            return {
+                entry["token"]: entry["logprob"] for entry in content[0]["top_logprobs"]
+            }
         except (KeyError, IndexError, TypeError) as exc:
             logger.warning("[vaudeville] Logprob extraction failed: %s", exc)
             return {}

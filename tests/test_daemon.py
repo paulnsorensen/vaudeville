@@ -367,7 +367,7 @@ class TestConfidenceScoring:
         data = json.dumps({"prompt": "test"}).encode() + b"\n"
         response = json.loads(handle_request(data, PlainBackend()))
         assert response["verdict"] == "clean"
-        assert response["confidence"] == 1.0
+        assert response["confidence"] == 0.0
 
 
 class TestDetectBackend:
@@ -503,4 +503,51 @@ class TestGGUFImportSmoke:
             pytest.skip("llama-cpp-python not installed")
         assert hasattr(Llama, "create_chat_completion"), (
             "Llama lost create_chat_completion method"
+        )
+
+    def test_classify_with_logprobs_sends_verdict_prefill(self) -> None:
+        """classify_with_logprobs must send assistant prefill and return VERDICT: prefix."""
+        from unittest.mock import MagicMock, patch
+
+        fake_response = {
+            "choices": [
+                {
+                    "message": {"content": " clean"},
+                    "logprobs": {
+                        "content": [
+                            {
+                                "top_logprobs": [
+                                    {"token": "clean", "logprob": -0.1},
+                                    {"token": "violation", "logprob": -3.0},
+                                ]
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+        mock_llm = MagicMock()
+        mock_llm.create_chat_completion.return_value = fake_response
+
+        with patch(
+            "vaudeville.server.gguf_backend.GGUFBackend.__init__", return_value=None
+        ):
+            from vaudeville.server.gguf_backend import GGUFBackend
+
+            backend = GGUFBackend.__new__(GGUFBackend)
+            backend._llm = mock_llm
+
+            result = backend.classify_with_logprobs("test prompt")
+
+        # Text must start with VERDICT: prefix
+        assert result.text.startswith("VERDICT:"), (
+            f"Expected 'VERDICT:' prefix, got: {result.text!r}"
+        )
+        # Logprobs must come from position 0 only
+        assert "clean" in result.logprobs
+        assert result.logprobs["clean"] == -0.1
+        # Request must include assistant prefill message
+        call_messages = mock_llm.create_chat_completion.call_args[1]["messages"]
+        assert call_messages[-1] == {"role": "assistant", "content": "VERDICT:"}, (
+            "Last message must be assistant prefill with 'VERDICT:'"
         )

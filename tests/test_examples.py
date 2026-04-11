@@ -15,7 +15,7 @@ EXAMPLES_RULES_DIR = os.path.join(PROJECT_ROOT, "examples", "rules")
 EXAMPLES_TESTS_DIR = os.path.join(PROJECT_ROOT, "examples", "tests")
 
 MIN_CASES_PER_RULE = 10
-MIN_TEXT_LENGTH = 100  # runner.py skips shorter inputs
+MIN_TEXT_LENGTH = 50  # runner.py skips shorter inputs
 
 
 @pytest.fixture

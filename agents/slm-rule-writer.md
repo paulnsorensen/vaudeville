@@ -174,7 +174,7 @@ cases:
 - **Include edge cases**: Boundary examples testing prompt precision
 - **Use realistic text**: Real assistant output, not toy examples
 - **Vary length**: Short (1-2 sentences) and long (paragraph) cases — but
-  ensure ALL cases are >100 characters (runner.py skips shorter inputs)
+  ensure ALL cases are >50 characters (runner.py skips shorter inputs)
 
 ## Registration
 

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from vaudeville.core.rules import Rule
+from vaudeville.core.rules import Rule, get_draft_rule_names
 from vaudeville.eval import (
-    load_test_cases,
     EvalCase,
     EvalResults,
     evaluate_rule,
-    print_results,
+    load_test_cases,
 )
+from vaudeville.eval_report import print_results
 from conftest import MockBackend
 
 
@@ -30,8 +30,12 @@ class TestLoadTestCases:
 
     def test_sufficient_cases_per_rule(self, tests_dir: str) -> None:
         suites = load_test_cases(tests_dir)
+        drafts = get_draft_rule_names("examples/rules")
         for rule_name, cases in suites.items():
-            assert len(cases) >= 10, f"{rule_name}: only {len(cases)} test cases"
+            minimum = 5 if rule_name in drafts else 10
+            assert len(cases) >= minimum, (
+                f"{rule_name}: only {len(cases)} test cases (need {minimum})"
+            )
 
     def test_both_labels_present(self, tests_dir: str) -> None:
         suites = load_test_cases(tests_dir)
@@ -103,7 +107,6 @@ class TestEvaluateRule:
         backend = MockBackend(verdict="violation")
         cases = [EvalCase(text="clean text", label="clean")]
         results, _ = evaluate_rule("violation-detector", cases, rules, backend)
-        assert results.misclassified is not None
         assert len(results.misclassified) == 1
         assert results.misclassified[0]["actual"] == "clean"
         assert results.misclassified[0]["predicted"] == "violation"

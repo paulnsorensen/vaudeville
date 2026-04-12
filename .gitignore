@@ -16,3 +16,4 @@ htmlcov/
 .planning/
 .claude/
 *.duckdb
+tests/eval-history.jsonl

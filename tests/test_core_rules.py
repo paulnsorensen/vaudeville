@@ -8,6 +8,7 @@ from typing import Any
 
 from vaudeville.core.rules import (
     Rule,
+    load_rules,
     load_rules_layered,
     parse_rule,
     rules_search_path,
@@ -232,3 +233,15 @@ class TestLoadRulesLayered:
 
             assert rules["shared-rule"].action == "warn"
             assert "project" in rules["shared-rule"].prompt
+
+
+class TestDraftRules:
+    def test_load_rules_skips_draft(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "active.yaml"), "w") as f:
+                f.write("name: active\nprompt: '{text}'\nevent: Stop\n")
+            with open(os.path.join(d, "wip.yaml"), "w") as f:
+                f.write("draft: true\nname: wip\nprompt: '{text}'\nevent: Stop\n")
+            rules = load_rules(d)
+            assert "active" in rules
+            assert "wip" not in rules

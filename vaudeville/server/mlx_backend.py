@@ -12,6 +12,10 @@ from ..core.protocol import ClassifyResult
 
 DEFAULT_MODEL = "mlx-community/Phi-4-mini-instruct-4bit"
 TOP_K_LOGPROBS = 10
+SYSTEM_PROMPT = (
+    "You are a binary classifier. Respond with exactly `VERDICT: violation` "
+    "or `VERDICT: clean` followed by `REASON: <one sentence>`. No other text."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +105,10 @@ class MLXBackend:
 
     def _apply_chat_template(self, prompt: str) -> str:
         """Format prompt using the model's chat template."""
-        messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
         tokenizer: Any = self._tokenizer
         if hasattr(tokenizer, "apply_chat_template"):
             formatted: str = tokenizer.apply_chat_template(
@@ -111,4 +118,7 @@ class MLXBackend:
             )
             return formatted
         # Fallback ChatML format if no chat_template method
-        return f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        return (
+            f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
+            f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        )

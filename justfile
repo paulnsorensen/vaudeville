@@ -84,6 +84,10 @@ eval-cv:
 eval-rule rule:
     uv run python -m vaudeville.eval --rule {{rule}}
 
+# Calibrate threshold for a rule (e.g., `just eval-calibrate violation-detector`)
+eval-calibrate rule:
+    uv run python -m vaudeville.eval --calibrate {{rule}}
+
 # Clean build and test artifacts
 clean:
     rm -rf .pytest_cache .mypy_cache .ruff_cache

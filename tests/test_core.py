@@ -18,9 +18,7 @@ from vaudeville.core.rules import (
     _sanitize_input,
     back_truncate,
     load_rules,
-    load_rules_layered,
     parse_rule,
-    rules_search_path,
 )
 
 
@@ -98,6 +96,22 @@ class TestParseVerdict:
     def test_empty_string_defaults_to_clean(self) -> None:
         result = parse_verdict("")
         assert result.verdict == "clean"
+
+    def test_negation_not_a_violation(self) -> None:
+        result = parse_verdict("VERDICT: not a violation\nREASON: all good")
+        assert result.verdict == "clean"
+
+    def test_negation_no_violation(self) -> None:
+        result = parse_verdict("VERDICT: no violation here\nREASON: looks fine")
+        assert result.verdict == "clean"
+
+    def test_positive_violation(self) -> None:
+        result = parse_verdict("VERDICT: this is a violation\nREASON: bad code")
+        assert result.verdict == "violation"
+
+    def test_violation_of_trust(self) -> None:
+        result = parse_verdict("VERDICT: violation of trust\nREASON: broke rules")
+        assert result.verdict == "violation"
 
 
 # --- ClassifyRequest ---
@@ -204,90 +218,7 @@ class TestFailOpen:
                     sys.path.remove(hooks_dir)
 
 
-# --- Rule context resolution ---
-
-
-class TestRuleContext:
-    def test_format_prompt_with_context(self) -> None:
-        rule = Rule(
-            name="test",
-            event="Stop",
-            prompt="Text: {text}\nContext: {context}",
-            context=[],
-            action="block",
-            message="{reason}",
-        )
-        result = rule.format_prompt("hello", "world")
-        assert "Text: hello" in result
-        assert "Context: world" in result
-
-    def test_resolve_context_field(self) -> None:
-        rule = Rule(
-            name="test",
-            event="Stop",
-            prompt="{text}",
-            context=[{"field": "last_assistant_message"}],
-            action="block",
-            message="{reason}",
-        )
-        ctx = rule.resolve_context({"last_assistant_message": "hello"})
-        assert ctx == "hello"
-
-    def test_resolve_context_file(self) -> None:
-        rule = Rule(
-            name="test",
-            event="Stop",
-            prompt="{text}",
-            context=[{"file": "content.txt"}],
-            action="block",
-            message="{reason}",
-        )
-        with tempfile.TemporaryDirectory() as d:
-            import os
-
-            with open(os.path.join(d, "content.txt"), "w") as f:
-                f.write("file content here")
-            ctx = rule.resolve_context({}, plugin_root=d)
-            assert ctx == "file content here"
-
-    def test_resolve_context_missing_file(self) -> None:
-        rule = Rule(
-            name="test",
-            event="Stop",
-            prompt="{text}",
-            context=[{"file": "nonexistent.txt"}],
-            action="block",
-            message="{reason}",
-        )
-        ctx = rule.resolve_context({}, plugin_root="/tmp")
-        assert ctx == ""
-
-    def test_resolve_context_dotted_field_path(self) -> None:
-        rule = Rule(
-            name="test",
-            event="Stop",
-            prompt="{text}",
-            context=[{"field": "tool_input.body"}],
-            action="block",
-            message="{reason}",
-        )
-        ctx = rule.resolve_context({"tool_input": {"body": "nested value"}})
-        assert ctx == "nested value"
-
-    def test_resolve_context_dotted_field_missing_key(self) -> None:
-        rule = Rule(
-            name="test",
-            event="Stop",
-            prompt="{text}",
-            context=[{"field": "tool_input.nonexistent"}],
-            action="block",
-            message="{reason}",
-        )
-        ctx = rule.resolve_context({"tool_input": {"body": "value"}})
-        assert ctx == ""
-
-
-# --- Layered rule resolution ---
+# --- Back-truncation and sanitization ---
 
 
 class TestBackTruncate:
@@ -361,41 +292,6 @@ class TestSanitizeInput:
         assert len(lines) == 1
 
 
-class TestRulesSearchPath:
-    def test_returns_empty_when_no_dirs_exist(self) -> None:
-        path = rules_search_path()
-        # Only dirs that actually exist will appear
-        for d in path:
-            assert os.path.isdir(d)
-
-    def test_project_dir_appears_when_exists(self) -> None:
-        with tempfile.TemporaryDirectory() as project_dir:
-            rules_dir = os.path.join(project_dir, ".vaudeville", "rules")
-            os.makedirs(rules_dir)
-            path = rules_search_path(project_root=project_dir)
-            assert any(d.startswith(project_dir) for d in path)
-
-
-class TestLoadRulesLayered:
-    def test_project_override_wins(self) -> None:
-        """A project .vaudeville/rules/ file overrides global rules."""
-        with tempfile.TemporaryDirectory() as project_dir:
-            rules_dir = os.path.join(project_dir, ".vaudeville", "rules")
-            os.makedirs(rules_dir)
-            with open(os.path.join(rules_dir, "test-rule.yaml"), "w") as f:
-                f.write(
-                    "name: test-rule\n"
-                    "event: Stop\n"
-                    "prompt: 'override {text}'\n"
-                    "action: warn\n"
-                    "message: '{reason}'\n"
-                )
-
-            rules = load_rules_layered(project_root=project_dir)
-            assert rules["test-rule"].action == "warn"
-            assert "override" in rules["test-rule"].prompt
-
-
 # --- compute_confidence ---
 
 
@@ -425,6 +321,16 @@ class TestComputeConfidence:
     def test_case_insensitive(self) -> None:
         logprobs = {"VIOLATION": -0.2, "CLEAN": -2.0}
         conf = compute_confidence(logprobs, "violation")
+        assert conf > 0.8
+
+    def test_sentencepiece_prefix_stripped(self) -> None:
+        logprobs = {"▁violation": -0.3, "▁clean": -2.5}
+        conf = compute_confidence(logprobs, "violation")
+        assert conf > 0.8
+
+    def test_sentencepiece_clean_verdict(self) -> None:
+        logprobs = {"▁violation": -2.5, "▁clean": -0.3}
+        conf = compute_confidence(logprobs, "clean")
         assert conf > 0.8
 
 

@@ -78,17 +78,12 @@ def parse_verdict(raw: str) -> ClassifyResponse:
     return ClassifyResponse(verdict=verdict, reason=reason)
 
 
-_VIOLATION_PREFIXES = ("violation", "viol", "vi", "v")
-_CLEAN_PREFIXES = ("clean", "cl", "c")
-
-
 def compute_confidence(logprobs: dict[str, float], verdict: str) -> float:
     """Compute confidence from first-token logprobs.
 
-    Finds the best logprob for violation-class and clean-class tokens,
-    applies softmax, and returns P(predicted_class). Returns 0.0 (fail-open)
-    when logprobs are empty or no matching tokens are found, so the verdict
-    won't pass any threshold.
+    Matches the exact tokens "violation" and "clean" (after stripping
+    whitespace, SentencePiece prefix, and lowercasing). Returns 0.0
+    (fail-open) when logprobs are empty or no matching tokens are found.
     """
     if not logprobs:
         logging.warning("[vaudeville] Empty logprobs dict — returning 0.0 confidence")
@@ -99,9 +94,9 @@ def compute_confidence(logprobs: dict[str, float], verdict: str) -> float:
 
     for token, lp in logprobs.items():
         normalized = token.strip().lstrip("▁").lower()
-        if any(normalized.startswith(p) for p in _VIOLATION_PREFIXES):
+        if normalized == "violation":
             best_violation = max(best_violation, lp)
-        elif any(normalized.startswith(p) for p in _CLEAN_PREFIXES):
+        elif normalized == "clean":
             best_clean = max(best_clean, lp)
 
     if best_violation == -math.inf and best_clean == -math.inf:

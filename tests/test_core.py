@@ -313,11 +313,6 @@ class TestComputeConfidence:
         logprobs = {"hello": -1.0, "world": -2.0}
         assert compute_confidence(logprobs, "violation") == 0.0
 
-    def test_prefix_matching(self) -> None:
-        logprobs = {"v": -0.5, "c": -1.5}
-        conf = compute_confidence(logprobs, "violation")
-        assert 0.5 < conf < 1.0
-
     def test_case_insensitive(self) -> None:
         logprobs = {"VIOLATION": -0.2, "CLEAN": -2.0}
         conf = compute_confidence(logprobs, "violation")
@@ -333,23 +328,28 @@ class TestComputeConfidence:
         conf = compute_confidence(logprobs, "clean")
         assert conf > 0.8
 
-    def test_only_clean_tokens_matching_verdict(self) -> None:
-        logprobs = {"cleaning": -0.3, "tidy": -1.0, "cle": -0.5}
+    def test_prefix_tokens_not_matched(self) -> None:
+        """Subword fragments like 'v', 'cle' should NOT match."""
+        logprobs = {"v": -0.5, "c": -1.5}
+        assert compute_confidence(logprobs, "violation") == 0.0
+
+    def test_only_clean_token_matching_verdict(self) -> None:
+        logprobs = {"clean": -0.1, "tidy": -1.0, "dirty": -2.0}
         conf = compute_confidence(logprobs, "clean")
         assert conf == 0.95
 
-    def test_only_clean_tokens_mismatching_verdict(self) -> None:
-        logprobs = {"cleaning": -0.3, "tidy": -1.0, "cle": -0.5}
+    def test_only_clean_token_mismatching_verdict(self) -> None:
+        logprobs = {"clean": -0.1, "tidy": -1.0, "dirty": -2.0}
         conf = compute_confidence(logprobs, "violation")
         assert conf == 0.05
 
-    def test_only_violation_tokens_matching_verdict(self) -> None:
-        logprobs = {"violation": -0.2, "viol": -0.8, "wrong": -1.5}
+    def test_only_violation_token_matching_verdict(self) -> None:
+        logprobs = {"violation": -0.2, "wrong": -1.5, "bad": -2.0}
         conf = compute_confidence(logprobs, "violation")
         assert conf == 0.95
 
-    def test_only_violation_tokens_mismatching_verdict(self) -> None:
-        logprobs = {"violation": -0.2, "viol": -0.8, "wrong": -1.5}
+    def test_only_violation_token_mismatching_verdict(self) -> None:
+        logprobs = {"violation": -0.2, "wrong": -1.5, "bad": -2.0}
         conf = compute_confidence(logprobs, "clean")
         assert conf == 0.05
 

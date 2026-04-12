@@ -142,6 +142,10 @@ def classify_case(
     predicted = response.verdict
     confidence = compute_confidence(result.logprobs, predicted)
 
+    # Apply rule threshold: low-confidence violations are downgraded to clean
+    if predicted == "violation" and rule.threshold > 0 and confidence < rule.threshold:
+        predicted = "clean"
+
     results.confidences.append(confidence)
 
     if case.label == positive and predicted == positive:

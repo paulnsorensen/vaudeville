@@ -46,6 +46,7 @@ def rules() -> dict[str, Rule]:
             context=[{"field": "last_assistant_message"}],
             action="block",
             message="{reason}",
+            threshold=0.0,
         ),
     }
 
@@ -153,6 +154,68 @@ class TestClassifyCase:
         classify_case(case, rules["violation-detector"], backend, results)
         assert results.fn == 1
         assert results.misclassified[0]["actual"] == "violation"
+
+    def test_threshold_downgrades_low_confidence_violation(self) -> None:
+        """A violation with confidence below the rule threshold becomes clean."""
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.7,
+        )
+        backend = MockBackend(
+            verdict="violation",
+            reason="found issue",
+            logprobs={"violation": -1.5, "clean": -0.5},
+        )
+        results = EvalResults(rule="test-rule")
+        case = EvalCase(text="borderline text", label="clean")
+        cr = classify_case(case, rule, backend, results)
+        assert cr.predicted == "clean"
+        assert results.tn == 1
+        assert results.fp == 0
+
+    def test_threshold_keeps_high_confidence_violation(self) -> None:
+        """A violation with confidence above the rule threshold stays violation."""
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+        )
+        backend = MockBackend(
+            verdict="violation",
+            reason="found issue",
+            logprobs={"violation": -0.05, "clean": -5.0},
+        )
+        results = EvalResults(rule="test-rule")
+        case = EvalCase(text="hedging text", label="violation")
+        cr = classify_case(case, rule, backend, results)
+        assert cr.predicted == "violation"
+        assert results.tp == 1
+
+    def test_threshold_zero_disables_downgrade(self) -> None:
+        """threshold=0.0 means no downgrading even with zero confidence."""
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.0,
+        )
+        backend = MockBackend(verdict="violation", reason="found issue")
+        results = EvalResults(rule="test-rule")
+        case = EvalCase(text="test text", label="violation")
+        classify_case(case, rule, backend, results)
+        assert results.tp == 1
 
 
 class TestEvaluateRule:
@@ -351,6 +414,7 @@ class TestMain:
                         context=[{"field": "last_assistant_message"}],
                         action="block",
                         message="{reason}",
+                        threshold=0.0,
                     ),
                 },
             ),
@@ -380,6 +444,7 @@ class TestMain:
                         context=[{"field": "last_assistant_message"}],
                         action="block",
                         message="{reason}",
+                        threshold=0.0,
                     ),
                 },
             ),
@@ -411,6 +476,7 @@ class TestMain:
                         context=[{"field": "last_assistant_message"}],
                         action="block",
                         message="{reason}",
+                        threshold=0.0,
                     ),
                 },
             ),
@@ -446,6 +512,7 @@ class TestMain:
                         context=[{"field": "last_assistant_message"}],
                         action="block",
                         message="{reason}",
+                        threshold=0.0,
                     ),
                 },
             ),

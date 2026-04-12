@@ -104,12 +104,20 @@ def compute_confidence(logprobs: dict[str, float], verdict: str) -> float:
         elif any(normalized.startswith(p) for p in _CLEAN_PREFIXES):
             best_clean = max(best_clean, lp)
 
-    if best_violation == -math.inf or best_clean == -math.inf:
+    if best_violation == -math.inf and best_clean == -math.inf:
         logging.warning(
-            "[vaudeville] No violation/clean tokens in logprobs (keys: %s) — returning 0.0 confidence",
+            "[vaudeville] No violation/clean tokens in logprobs (keys: %s)"
+            " — returning 0.0 confidence",
             list(logprobs.keys())[:5],
         )
         return 0.0
+
+    # One class missing from top-K means the model is highly confident
+    # in the other class — use 0.95 for the dominant class.
+    if best_violation == -math.inf:
+        return 0.95 if verdict == "clean" else 0.05
+    if best_clean == -math.inf:
+        return 0.95 if verdict == "violation" else 0.05
 
     # Softmax of two values: P(x) = exp(x) / (exp(x) + exp(y))
     # Use log-sum-exp trick for numerical stability

@@ -333,6 +333,26 @@ class TestComputeConfidence:
         conf = compute_confidence(logprobs, "clean")
         assert conf > 0.8
 
+    def test_only_clean_tokens_matching_verdict(self) -> None:
+        logprobs = {"cleaning": -0.3, "tidy": -1.0, "cle": -0.5}
+        conf = compute_confidence(logprobs, "clean")
+        assert conf == 0.95
+
+    def test_only_clean_tokens_mismatching_verdict(self) -> None:
+        logprobs = {"cleaning": -0.3, "tidy": -1.0, "cle": -0.5}
+        conf = compute_confidence(logprobs, "violation")
+        assert conf == 0.05
+
+    def test_only_violation_tokens_matching_verdict(self) -> None:
+        logprobs = {"violation": -0.2, "viol": -0.8, "wrong": -1.5}
+        conf = compute_confidence(logprobs, "violation")
+        assert conf == 0.95
+
+    def test_only_violation_tokens_mismatching_verdict(self) -> None:
+        logprobs = {"violation": -0.2, "viol": -0.8, "wrong": -1.5}
+        conf = compute_confidence(logprobs, "clean")
+        assert conf == 0.05
+
 
 # --- ClassifyResponse.confidence ---
 

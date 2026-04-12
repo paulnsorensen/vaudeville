@@ -1,3 +1,4 @@
+draft: true
 name: fake-green-detector
 event: Stop
 prompt: |

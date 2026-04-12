@@ -45,6 +45,8 @@ These ship with vaudeville and are ready to use out of the box:
 | `hedging-detector` | Stop | Uncertain language about code that should have been verified |
 | `deferral-detector` | PreToolUse | PR replies that defer reviewer concerns to "follow-up PRs" |
 
+`examples/rules/` also contains experimental rules marked `draft: true`. These are copied by the quick-start command but automatically skipped by the rule loader — they won't fire until you remove the `draft: true` line.
+
 ## Custom Rules
 
 Rules live in `~/.vaudeville/rules/` (global) or `.vaudeville/rules/` (per-project, higher priority). Per-project rules take priority over global ones.

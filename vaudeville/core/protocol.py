@@ -11,7 +11,9 @@ import re
 from dataclasses import dataclass, field
 
 _SPECIAL_TOKEN_RE = re.compile(r"<\|[a-z_]+\|>")
-_NEGATION_VIOLATION_RE = re.compile(r"\b(?:no|not|isn't|is\s+not)\b.*\bviolation\b")
+_NEGATION_VIOLATION_RE = re.compile(
+    r"\b(?:no\s+violation|not\s+(?:a\s+)?violation|isn't\s+(?:a\s+)?violation|is\s+not\s+(?:a\s+)?violation)\b[.!?,;:)]*"
+)
 _VIOLATION_RE = re.compile(r"\bviolation\b")
 
 

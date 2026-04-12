@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from vaudeville.core.rules import Rule, get_draft_rule_names
@@ -12,7 +14,7 @@ from vaudeville.eval import (
     load_test_cases,
 )
 from vaudeville.eval_report import print_results
-from conftest import MockBackend
+from conftest import PROJECT_ROOT, MockBackend
 
 
 class TestLoadTestCases:
@@ -30,7 +32,7 @@ class TestLoadTestCases:
 
     def test_sufficient_cases_per_rule(self, tests_dir: str) -> None:
         suites = load_test_cases(tests_dir)
-        drafts = get_draft_rule_names("examples/rules")
+        drafts = get_draft_rule_names(os.path.join(PROJECT_ROOT, "examples", "rules"))
         for rule_name, cases in suites.items():
             minimum = 5 if rule_name in drafts else 10
             assert len(cases) >= minimum, (

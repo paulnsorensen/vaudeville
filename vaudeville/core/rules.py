@@ -109,6 +109,10 @@ def _load_rule_file(path: str) -> Rule | None:
     """Load and parse a single YAML rule file. Returns None for draft rules."""
     with open(path) as f:
         data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Rule file must be a YAML mapping, got {type(data).__name__}: {path}"
+        )
     if data.get("draft"):
         return None
     return parse_rule(data)

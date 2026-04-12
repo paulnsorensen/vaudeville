@@ -105,11 +105,38 @@ class Rule:
         return "\n".join(p for p in parts if p)
 
 
-def _load_rule_file(path: str) -> Rule:
-    """Load and parse a single YAML rule file."""
+def _load_rule_file(path: str) -> Rule | None:
+    """Load and parse a single YAML rule file. Returns None for draft rules."""
     with open(path) as f:
         data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Rule file must be a YAML mapping, got {type(data).__name__}: {path}"
+        )
+    if data.get("draft"):
+        return None
     return parse_rule(data)
+
+
+def get_draft_rule_names(rules_dir: str) -> set[str]:
+    """Return the names of rules marked draft: true in a directory."""
+    names: set[str] = set()
+    try:
+        filenames = os.listdir(rules_dir)
+    except OSError:
+        return names
+    for filename in filenames:
+        if not (filename.endswith(".yaml") or filename.endswith(".yml")):
+            continue
+        path = os.path.join(rules_dir, filename)
+        try:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+            if data.get("draft") and "name" in data:
+                names.add(str(data["name"]))
+        except Exception:
+            continue
+    return names
 
 
 def load_rules(rules_dir: str) -> dict[str, Rule]:
@@ -125,6 +152,8 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
         path = os.path.join(rules_dir, filename)
         try:
             rule = _load_rule_file(path)  # uses parse_rule internally
+            if rule is None:
+                continue
             rules[rule.name] = rule
         except Exception as exc:
             logging.warning("[vaudeville] Failed to load rule %s: %s", filename, exc)

@@ -11,6 +11,10 @@ import re
 from dataclasses import dataclass, field
 
 _SPECIAL_TOKEN_RE = re.compile(r"<\|[a-z_]+\|>")
+_NEGATION_VIOLATION_RE = re.compile(
+    r"\b(?:no\s+violation|not\s+(?:a\s+)?violation|isn't\s+(?:a\s+)?violation|is\s+not\s+(?:a\s+)?violation)\b[.!?,;:)]*"
+)
+_VIOLATION_RE = re.compile(r"\bviolation\b")
 
 
 @dataclass
@@ -46,8 +50,6 @@ def parse_verdict(raw: str) -> ClassifyResponse:
     Defaults to "clean" (fail-open) if no VERDICT: header is found,
     with a warning log for observability.
     """
-    positive_re = re.compile(r"\bviolation\b")
-
     verdict = "clean"
     reason = ""
     found_verdict = False
@@ -57,7 +59,12 @@ def parse_verdict(raw: str) -> ClassifyResponse:
         upper = stripped.upper()
         if upper.startswith("VERDICT:"):
             val = stripped[8:].strip().lower()
-            verdict = "violation" if positive_re.search(val) else "clean"
+            if _NEGATION_VIOLATION_RE.search(val):
+                verdict = "clean"
+            elif _VIOLATION_RE.search(val):
+                verdict = "violation"
+            else:
+                verdict = "clean"
             found_verdict = True
         elif upper.startswith("REASON:"):
             reason = stripped[7:].strip()
@@ -71,17 +78,12 @@ def parse_verdict(raw: str) -> ClassifyResponse:
     return ClassifyResponse(verdict=verdict, reason=reason)
 
 
-_VIOLATION_PREFIXES = ("violation", "viol", "vi", "v")
-_CLEAN_PREFIXES = ("clean", "cl", "c")
-
-
 def compute_confidence(logprobs: dict[str, float], verdict: str) -> float:
     """Compute confidence from first-token logprobs.
 
-    Finds the best logprob for violation-class and clean-class tokens,
-    applies softmax, and returns P(predicted_class). Returns 0.0 (fail-open)
-    when logprobs are empty or no matching tokens are found, so the verdict
-    won't pass any threshold.
+    Matches the exact tokens "violation" and "clean" (after stripping
+    whitespace, SentencePiece prefix, and lowercasing). Returns 0.0
+    (fail-open) when logprobs are empty or no matching tokens are found.
     """
     if not logprobs:
         logging.warning("[vaudeville] Empty logprobs dict — returning 0.0 confidence")
@@ -91,18 +93,26 @@ def compute_confidence(logprobs: dict[str, float], verdict: str) -> float:
     best_clean = -math.inf
 
     for token, lp in logprobs.items():
-        normalized = token.strip().lower()
-        if any(normalized.startswith(p) for p in _VIOLATION_PREFIXES):
+        normalized = token.strip().lstrip("▁").lower()
+        if normalized == "violation":
             best_violation = max(best_violation, lp)
-        elif any(normalized.startswith(p) for p in _CLEAN_PREFIXES):
+        elif normalized == "clean":
             best_clean = max(best_clean, lp)
 
-    if best_violation == -math.inf or best_clean == -math.inf:
+    if best_violation == -math.inf and best_clean == -math.inf:
         logging.warning(
-            "[vaudeville] No violation/clean tokens in logprobs (keys: %s) — returning 0.0 confidence",
+            "[vaudeville] No violation/clean tokens in logprobs (keys: %s)"
+            " — returning 0.0 confidence",
             list(logprobs.keys())[:5],
         )
         return 0.0
+
+    # One class missing from top-K means the model is highly confident
+    # in the other class — use 0.95 for the dominant class.
+    if best_violation == -math.inf:
+        return 0.95 if verdict == "clean" else 0.05
+    if best_clean == -math.inf:
+        return 0.95 if verdict == "violation" else 0.05
 
     # Softmax of two values: P(x) = exp(x) / (exp(x) + exp(y))
     # Use log-sum-exp trick for numerical stability

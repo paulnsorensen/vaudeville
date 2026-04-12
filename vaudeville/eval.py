@@ -12,14 +12,13 @@ import argparse
 import logging
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 
 from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from .core.rules import Rule, load_rules_layered
-from .server import InferenceBackend
-from .server.inference import LogprobBackend
+from .server import InferenceBackend, LogprobBackend
 
 
 def _find_project_root() -> str | None:
@@ -61,14 +60,8 @@ class EvalResults:
     fp: int = 0
     tn: int = 0
     fn: int = 0
-    misclassified: list[dict[str, str]] | None = None
-    confidences: list[float] | None = None
-
-    def __post_init__(self) -> None:
-        if self.misclassified is None:
-            self.misclassified = []
-        if self.confidences is None:
-            self.confidences = []
+    misclassified: list[dict[str, str]] = field(default_factory=list)
+    confidences: list[float] = field(default_factory=list)
 
     @property
     def total(self) -> int:
@@ -135,7 +128,7 @@ def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
     return ClassifyResult(text=text)
 
 
-def _classify_case(
+def classify_case(
     case: EvalCase,
     rule: Rule,
     backend: InferenceBackend,
@@ -149,8 +142,6 @@ def _classify_case(
     predicted = response.verdict
     confidence = compute_confidence(result.logprobs, predicted)
 
-    assert results.misclassified is not None
-    assert results.confidences is not None
     results.confidences.append(confidence)
 
     if case.label == positive and predicted == positive:
@@ -194,88 +185,11 @@ def evaluate_rule(
     if not isinstance(rule, Rule):
         raise ValueError(f"Rule not found: {rule_name}")
 
-    results = EvalResults(rule=rule_name, misclassified=[])
+    results = EvalResults(rule=rule_name)
     case_results: list[CaseResult] = []
     for case in cases:
-        case_results.append(_classify_case(case, rule, backend, results))
+        case_results.append(classify_case(case, rule, backend, results))
     return results, case_results
-
-
-def cross_validate_rule(
-    rule_name: str,
-    cases: list[EvalCase],
-    rules: dict[str, Rule],
-    backend: InferenceBackend,
-) -> EvalResults:
-    """Leave-one-out cross-validation: evaluate each case as its own fold."""
-    rule = rules.get(rule_name)
-    if not isinstance(rule, Rule):
-        raise ValueError(f"Rule not found: {rule_name}")
-
-    n = len(cases)
-    aggregate = EvalResults(rule=rule_name, misclassified=[])
-
-    for i, case in enumerate(cases):
-        fold = EvalResults(rule=rule_name, misclassified=[])
-        case_result = _classify_case(case, rule, backend, fold)
-
-        aggregate.tp += fold.tp
-        aggregate.fp += fold.fp
-        aggregate.tn += fold.tn
-        aggregate.fn += fold.fn
-        assert aggregate.misclassified is not None
-        assert aggregate.confidences is not None
-        assert fold.misclassified is not None
-        assert fold.confidences is not None
-        aggregate.misclassified.extend(fold.misclassified)
-        aggregate.confidences.extend(fold.confidences)
-
-        status = "OK" if case_result.predicted == case.label else "FAIL"
-        acc = "100%" if case_result.predicted == case.label else "0%"
-        print(
-            f"  Fold {i + 1}/{n} [{status}] acc={acc}"
-            f" expected={case.label} got={case_result.predicted}: {case.text[:50]}"
-        )
-
-    return aggregate
-
-
-def print_results(results: EvalResults) -> bool:
-    """Print metrics, return True if precision >= 95% and recall >= 80%."""
-    prec_pct = results.precision * 100
-    rec_pct = results.recall * 100
-    prec_ok = prec_pct >= 95.0
-    rec_ok = rec_pct >= 80.0
-    passed = prec_ok and rec_ok
-    status = "PASS" if passed else "FAIL"
-
-    def _marker(ok: bool) -> str:
-        return "" if ok else " << BELOW THRESHOLD"
-
-    print(f"\n=== {results.rule} [{status}] ===")
-    print(
-        f"Accuracy:  {results.accuracy * 100:.1f}% ({results.tp + results.tn}/{results.total})"
-    )
-    print(f"Precision: {prec_pct:.1f}% (>= 95%){_marker(prec_ok)}")
-    print(f"Recall:    {rec_pct:.1f}% (>= 80%){_marker(rec_ok)}")
-    print(f"F1:        {results.f1 * 100:.1f}%")
-    print(f"Confusion: TP={results.tp} FP={results.fp} TN={results.tn} FN={results.fn}")
-
-    if results.confidences:
-        confs = results.confidences
-        print(
-            f"Confidence: mean={sum(confs) / len(confs):.3f}"
-            f" min={min(confs):.3f} max={max(confs):.3f}"
-        )
-
-    if results.misclassified:
-        print("\nMisclassifications:")
-        for m in results.misclassified:
-            print(
-                f"  actual={m['actual']} predicted={m['predicted']}: {m['text'][:80]}"
-            )
-
-    return passed
 
 
 def _build_backend(args: argparse.Namespace) -> InferenceBackend:
@@ -286,74 +200,8 @@ def _build_backend(args: argparse.Namespace) -> InferenceBackend:
     return MLXBackend(args.model)
 
 
-def _run_evaluations(
-    args: argparse.Namespace,
-    rules: dict[str, Rule],
-    test_suites: dict[str, list[EvalCase]],
-    backend: InferenceBackend,
-) -> bool:
-    """Run eval or cross-validation for each rule. Returns True if all pass."""
-    overall_pass = True
-    for rule_name, cases in sorted(test_suites.items()):
-        if rule_name not in rules:
-            print(f"\nWARNING: No rule definition found for {rule_name}")
-            continue
-        print(f"\nEvaluating {rule_name} ({len(cases)} cases)...")
-        if args.cross_validate:
-            print(f"  Leave-one-out cross-validation ({len(cases)} folds):")
-            results = cross_validate_rule(rule_name, cases, rules, backend)
-        else:
-            results, _ = evaluate_rule(rule_name, cases, rules, backend)
-        if not print_results(results):
-            overall_pass = False
-    return overall_pass
-
-
-def _threshold_sweep(
-    test_suites: dict[str, list[EvalCase]],
-    rules: dict[str, Rule],
-    backend: InferenceBackend,
-) -> None:
-    """Sweep thresholds and print confusion matrix per threshold."""
-    for rule_name, cases in sorted(test_suites.items()):
-        if rule_name not in rules:
-            continue
-        _, case_results = evaluate_rule(rule_name, cases, rules, backend)
-        print(f"\n--- Threshold sweep: {rule_name} ---")
-        print(f"{'Thresh':>7} {'Acc':>6} {'Prec':>6} {'Rec':>6} {'F1':>6}")
-        best_f1 = 0.0
-        best_thresh = 0.0
-        step = 5
-        for pct in range(30, 95, step):
-            thresh = pct / 100.0
-            r = EvalResults(rule=rule_name)
-            for cr in case_results:
-                predicted = cr.predicted
-                if predicted == "violation" and cr.confidence < thresh:
-                    predicted = "clean"
-                if cr.label == "violation" and predicted == "violation":
-                    r.tp += 1
-                elif cr.label == "clean" and predicted == "clean":
-                    r.tn += 1
-                elif cr.label == "clean" and predicted == "violation":
-                    r.fp += 1
-                else:
-                    r.fn += 1
-            marker = ""
-            if r.f1 > best_f1 and r.precision >= 0.95:
-                best_f1 = r.f1
-                best_thresh = thresh
-                marker = " <-- best"
-            print(
-                f"  {thresh:.2f}  {r.accuracy * 100:5.1f}%"
-                f" {r.precision * 100:5.1f}% {r.recall * 100:5.1f}%"
-                f" {r.f1 * 100:5.1f}%{marker}"
-            )
-        if best_thresh > 0:
-            print(f"Best threshold: {best_thresh:.2f} (F1={best_f1 * 100:.1f}%)")
-
-
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
+    """Build CLI argument parser."""
     parser = argparse.ArgumentParser(description="Vaudeville rule eval harness")
     parser.add_argument("--rule", help="Evaluate only this rule")
     parser.add_argument(
@@ -371,6 +219,15 @@ def main() -> None:
         help="Sweep thresholds 0.30-0.90 and print confusion matrix per threshold",
     )
     parser.add_argument(
+        "--calibrate",
+        metavar="RULE",
+        help="Calibrate threshold for a rule: sweep, pick F1-optimal, write to YAML",
+    )
+    parser.add_argument(
+        "--eval-log",
+        help="Path to JSONL file for regression tracking (appends one line per run)",
+    )
+    parser.add_argument(
         "--backend", default="mlx", choices=["mlx"], help="Inference backend"
     )
     parser.add_argument(
@@ -378,7 +235,46 @@ def main() -> None:
         default="mlx-community/Phi-4-mini-instruct-4bit",
         help="Model path or Hugging Face ID",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def _run_calibrate(
+    args: argparse.Namespace,
+    rules: dict[str, Rule],
+    test_suites: dict[str, list[EvalCase]],
+    backend: InferenceBackend,
+) -> None:
+    """Run --calibrate subcommand and exit."""
+    from .core.rules import rules_search_path
+    from .eval_report import calibrate_rule, find_rule_file
+
+    cal_rule = args.calibrate
+    if cal_rule not in test_suites:
+        print(f"No test suite found for rule: {cal_rule}")
+        sys.exit(1)
+    if cal_rule not in rules:
+        print(f"Rule not found: {cal_rule}")
+        sys.exit(1)
+
+    plugin_root = os.environ.get(
+        "CLAUDE_PLUGIN_ROOT",
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    search_dirs = rules_search_path(project_root=_find_project_root())
+    for subdir in ("rules", "examples/rules"):
+        d = os.path.join(plugin_root, subdir)
+        if os.path.isdir(d) and d not in search_dirs:
+            search_dirs.append(d)
+    rule_file = find_rule_file(cal_rule, search_dirs)
+    if not rule_file:
+        print(f"Cannot find YAML file for rule: {cal_rule}")
+        sys.exit(1)
+    result = calibrate_rule(cal_rule, test_suites[cal_rule], rules, backend, rule_file)
+    sys.exit(0 if result is not None else 1)
+
+
+def main() -> None:
+    args = _build_parser().parse_args()
 
     plugin_root = os.environ.get(
         "CLAUDE_PLUGIN_ROOT",
@@ -400,16 +296,25 @@ def main() -> None:
         existing = test_suites.get(args.rule, [])
         test_suites[args.rule] = existing + extra_cases
 
+    if args.calibrate:
+        _run_calibrate(args, rules, test_suites, backend)
+
     if args.rule:
         test_suites = {k: v for k, v in test_suites.items() if k == args.rule}
         if not test_suites:
             print(f"No test suite found for rule: {args.rule}")
             sys.exit(1)
 
-    passed = _run_evaluations(args, rules, test_suites, backend)
+    from .eval_report import run_evaluations, threshold_sweep, write_eval_log
+
+    passed, all_results = run_evaluations(args, rules, test_suites, backend)
+
+    if args.eval_log and all_results:
+        write_eval_log(args.eval_log, args.model, all_results)
+        print(f"\nEval log appended to {args.eval_log}")
 
     if args.threshold_sweep:
-        _threshold_sweep(test_suites, rules, backend)
+        threshold_sweep(test_suites, rules, backend)
 
     print("\n" + ("ALL RULES PASS" if passed else "SOME RULES FAILED"))
     sys.exit(0 if passed else 1)

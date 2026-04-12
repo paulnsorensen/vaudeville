@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import subprocess
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -11,18 +12,26 @@ import pytest
 import yaml
 
 from conftest import MockBackend
+from vaudeville.core.rules import Rule
 from vaudeville.eval import (
     EvalCase,
     EvalResults,
-    _classify_case,
+    classify_case,
     _find_project_root,
-    _run_evaluations,
-    cross_validate_rule,
     evaluate_rule,
     load_test_cases,
-    print_results,
 )
-from vaudeville.core.rules import Rule
+from vaudeville.eval_report import (
+    MIN_CALIBRATION_CASES,
+    _find_best_threshold,
+    _git_head,
+    calibrate_rule,
+    cross_validate_rule,
+    find_rule_file,
+    print_results,
+    run_evaluations,
+    write_eval_log,
+)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -115,35 +124,35 @@ class TestLoadTestCases:
 class TestClassifyCase:
     def test_true_positive(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation", reason="found issue")
-        results = EvalResults(rule="violation-detector", misclassified=[])
+        results = EvalResults(rule="violation-detector")
         case = EvalCase(text="this should work", label="violation")
-        _classify_case(case, rules["violation-detector"], backend, results)
+        classify_case(case, rules["violation-detector"], backend, results)
         assert results.tp == 1
         assert results.fp == 0
 
     def test_true_negative(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="clean", reason="ok")
-        results = EvalResults(rule="violation-detector", misclassified=[])
+        results = EvalResults(rule="violation-detector")
         case = EvalCase(text="all good", label="clean")
-        _classify_case(case, rules["violation-detector"], backend, results)
+        classify_case(case, rules["violation-detector"], backend, results)
         assert results.tn == 1
 
     def test_false_positive(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation", reason="false alarm")
-        results = EvalResults(rule="violation-detector", misclassified=[])
+        results = EvalResults(rule="violation-detector")
         case = EvalCase(text="all tests pass", label="clean")
-        _classify_case(case, rules["violation-detector"], backend, results)
+        classify_case(case, rules["violation-detector"], backend, results)
         assert results.fp == 1
-        assert len(results.misclassified) == 1  # type: ignore[arg-type]
-        assert results.misclassified[0]["actual"] == "clean"  # type: ignore[index]
+        assert len(results.misclassified) == 1
+        assert results.misclassified[0]["actual"] == "clean"
 
     def test_false_negative(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="clean", reason="missed it")
-        results = EvalResults(rule="violation-detector", misclassified=[])
+        results = EvalResults(rule="violation-detector")
         case = EvalCase(text="this might work", label="violation")
-        _classify_case(case, rules["violation-detector"], backend, results)
+        classify_case(case, rules["violation-detector"], backend, results)
         assert results.fn == 1
-        assert results.misclassified[0]["actual"] == "violation"  # type: ignore[index]
+        assert results.misclassified[0]["actual"] == "violation"
 
 
 class TestEvaluateRule:
@@ -182,7 +191,7 @@ class TestCrossValidateRule:
         backend = MockBackend(verdict="violation")  # FP
         results = cross_validate_rule("violation-detector", cases, rules, backend)
         assert results.fp == 1
-        assert len(results.misclassified) == 1  # type: ignore[arg-type]
+        assert len(results.misclassified) == 1
 
 
 class TestPrintResults:
@@ -223,6 +232,53 @@ class TestPrintResults:
         assert "bad text" in out
 
 
+class TestThresholdSweep:
+    def test_prints_sweep_table(
+        self,
+        rules: dict[str, Rule],
+        two_cases: list[EvalCase],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from vaudeville.eval_report import threshold_sweep
+
+        backend = MockBackend(verdict="violation", reason="found issue")
+        suites = {"violation-detector": two_cases}
+        threshold_sweep(suites, rules, backend)
+        out = capsys.readouterr().out
+        assert "Threshold sweep: violation-detector" in out
+        assert "Thresh" in out
+
+    def test_skips_unknown_rules(
+        self,
+        rules: dict[str, Rule],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from vaudeville.eval_report import threshold_sweep
+
+        suites = {"nonexistent-rule": [EvalCase("text", "clean")]}
+        threshold_sweep(suites, rules, MockBackend())
+        out = capsys.readouterr().out
+        assert "Threshold sweep" not in out
+
+    def test_sweep_all_thresholds_printed(
+        self,
+        rules: dict[str, Rule],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from vaudeville.eval_report import threshold_sweep
+
+        cases = [
+            EvalCase(text="hedging text", label="violation"),
+            EvalCase(text="clean text here", label="clean"),
+        ]
+        backend = MockBackend(verdict="violation", reason="found issue")
+        suites = {"violation-detector": cases}
+        threshold_sweep(suites, rules, backend)
+        out = capsys.readouterr().out
+        assert "0.30" in out
+        assert "0.90" in out
+
+
 class TestBuildBackend:
     def test_returns_mlx_backend(self) -> None:
         import argparse
@@ -246,8 +302,9 @@ class TestRunEvaluations:
 
         args = argparse.Namespace(cross_validate=False)
         test_suites = {"undefined-rule": [EvalCase("text", "clean")]}
-        passed = _run_evaluations(args, rules, test_suites, MockBackend())
+        passed, all_results = run_evaluations(args, rules, test_suites, MockBackend())
         assert passed is True
+        assert all_results == {}
         out = capsys.readouterr().out
         assert "WARNING" in out
 
@@ -258,10 +315,9 @@ class TestRunEvaluations:
         cases = [EvalCase("text", "clean")]
         backend = MockBackend(verdict="clean")
         test_suites = {"violation-detector": cases}
-        passed = _run_evaluations(args, rules, test_suites, backend)
-        assert (
-            passed is False
-        )  # only TN, no TP → precision/recall = 0% → fails threshold
+        passed, all_results = run_evaluations(args, rules, test_suites, backend)
+        assert passed is False
+        assert "violation-detector" in all_results
 
     def test_cross_validate_flag_routes_to_cross_validate(
         self, rules: dict[str, Rule]
@@ -272,9 +328,9 @@ class TestRunEvaluations:
         cases = [EvalCase("text", "clean")]
         backend = MockBackend(verdict="clean")
         test_suites = {"violation-detector": cases}
-        with patch("vaudeville.eval.cross_validate_rule") as mock_cv:
+        with patch("vaudeville.eval_report.cross_validate_rule") as mock_cv:
             mock_cv.return_value = EvalResults(rule="violation-detector", tp=1)
-            _run_evaluations(args, rules, test_suites, backend)
+            run_evaluations(args, rules, test_suites, backend)
         mock_cv.assert_called_once()
 
 
@@ -400,3 +456,279 @@ class TestMain:
 
                 main()
         assert exc_info.value.code == 1
+
+
+class TestGitHead:
+    def test_returns_short_hash(self) -> None:
+        result = _git_head()
+        assert result != "unknown"
+        assert len(result) >= 7
+
+    def test_returns_unknown_on_oserror(self) -> None:
+        with patch("vaudeville.eval_report.subprocess.run", side_effect=OSError):
+            assert _git_head() == "unknown"
+
+    def test_returns_unknown_on_timeout(self) -> None:
+        with patch(
+            "vaudeville.eval_report.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("git", 5),
+        ):
+            assert _git_head() == "unknown"
+
+    def test_returns_unknown_on_nonzero_returncode(self) -> None:
+        with patch("vaudeville.eval_report.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 128
+            mock_run.return_value.stdout = ""
+            assert _git_head() == "unknown"
+
+
+class TestWriteEvalLog:
+    def test_appends_jsonl_line(self) -> None:
+        import json
+
+        results = {
+            "violation-detector": EvalResults(
+                rule="violation-detector", tp=19, fp=1, tn=10, fn=2
+            ),
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            log_path = f.name
+
+        write_eval_log(log_path, "test-model", results)
+
+        with open(log_path) as f:
+            lines = f.readlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["model"] == "test-model"
+        assert "timestamp" in entry
+        assert "git_head" in entry
+        assert "violation-detector" in entry["rules"]
+        rule_data = entry["rules"]["violation-detector"]
+        assert rule_data["precision"] == round(19 / 20, 4)
+        assert rule_data["recall"] == round(19 / 21, 4)
+        assert "f1" in rule_data
+        os.unlink(log_path)
+
+    def test_appends_multiple_lines(self) -> None:
+        import json
+
+        results = {
+            "test-rule": EvalResults(rule="test-rule", tp=10, fp=0, tn=10, fn=0),
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            log_path = f.name
+
+        write_eval_log(log_path, "model-a", results)
+        write_eval_log(log_path, "model-b", results)
+
+        with open(log_path) as f:
+            lines = f.readlines()
+        assert len(lines) == 2
+        assert json.loads(lines[0])["model"] == "model-a"
+        assert json.loads(lines[1])["model"] == "model-b"
+        os.unlink(log_path)
+
+    def test_empty_results_writes_empty_rules(self) -> None:
+        import json
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            log_path = f.name
+
+        write_eval_log(log_path, "model", {})
+
+        with open(log_path) as f:
+            entry = json.loads(f.readline())
+        assert entry["rules"] == {}
+        os.unlink(log_path)
+
+
+class TestFindRuleFile:
+    def test_finds_rule_in_directory(self, tmp_path: pathlib.Path) -> None:
+        rule_yaml = {"name": "test-rule", "prompt": "test {text}"}
+        rule_file = tmp_path / "test-rule.yaml"
+        rule_file.write_text(yaml.dump(rule_yaml))
+        result = find_rule_file("test-rule", [str(tmp_path)])
+        assert result == str(rule_file)
+
+    def test_returns_none_when_not_found(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "other.yaml").write_text(yaml.dump({"name": "other"}))
+        result = find_rule_file("nonexistent", [str(tmp_path)])
+        assert result is None
+
+    def test_handles_missing_directory(self) -> None:
+        result = find_rule_file("test", ["/nonexistent/path/does/not/exist"])
+        assert result is None
+
+    def test_skips_non_yaml_files(self, tmp_path: pathlib.Path) -> None:
+        (tmp_path / "readme.txt").write_text("name: test-rule")
+        result = find_rule_file("test-rule", [str(tmp_path)])
+        assert result is None
+
+    def test_searches_multiple_dirs(self, tmp_path: pathlib.Path) -> None:
+        dir1 = tmp_path / "dir1"
+        dir2 = tmp_path / "dir2"
+        dir1.mkdir()
+        dir2.mkdir()
+        rule_file = dir2 / "my-rule.yaml"
+        rule_file.write_text(yaml.dump({"name": "my-rule", "prompt": "t"}))
+        result = find_rule_file("my-rule", [str(dir1), str(dir2)])
+        assert result == str(rule_file)
+
+
+class TestFindBestThreshold:
+    def test_finds_optimal_threshold(self) -> None:
+        from vaudeville.eval import CaseResult
+
+        case_results = (
+            [
+                CaseResult(
+                    text="v", label="violation", predicted="violation", confidence=0.9
+                )
+                for _ in range(19)
+            ]
+            + [
+                CaseResult(
+                    text="fp", label="clean", predicted="violation", confidence=0.4
+                )
+                for _ in range(2)
+            ]
+            + [
+                CaseResult(text="c", label="clean", predicted="clean", confidence=0.0)
+                for _ in range(5)
+            ]
+        )
+        thresh, f1 = _find_best_threshold("test-rule", case_results)
+        assert thresh == 0.45
+        assert f1 > 0.0
+
+    def test_returns_zero_when_no_precision_met(self) -> None:
+        from vaudeville.eval import CaseResult
+
+        case_results = [
+            CaseResult(text="fp", label="clean", predicted="violation", confidence=0.99)
+            for _ in range(20)
+        ]
+        thresh, f1 = _find_best_threshold("test-rule", case_results)
+        assert thresh == 0.0
+        assert f1 == 0.0
+
+
+class TestCalibrateRule:
+    def test_refuses_under_minimum_cases(
+        self,
+        rules: dict[str, Rule],
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: pathlib.Path,
+    ) -> None:
+        rule_file = tmp_path / "rule.yaml"
+        rule_file.write_text(
+            yaml.dump({"name": "violation-detector", "threshold": 0.5})
+        )
+        cases = [EvalCase(f"text {i}", "violation") for i in range(19)]
+        result = calibrate_rule(
+            "violation-detector", cases, rules, MockBackend(), str(rule_file)
+        )
+        assert result is None
+        out = capsys.readouterr().out
+        assert "minimum" in out
+        assert str(MIN_CALIBRATION_CASES) in out
+
+    def test_writes_threshold_to_yaml(
+        self,
+        rules: dict[str, Rule],
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: pathlib.Path,
+    ) -> None:
+        from vaudeville.eval import CaseResult
+
+        rule_yaml = {
+            "name": "violation-detector",
+            "event": "Stop",
+            "prompt": "Classify:\n{text}\nVERDICT:",
+            "action": "block",
+            "threshold": 0.5,
+            "message": "{reason}",
+        }
+        rule_file = tmp_path / "violation-detector.yaml"
+        rule_file.write_text(yaml.dump(rule_yaml, sort_keys=False))
+
+        cases = [EvalCase(f"v{i}", "violation") for i in range(15)] + [
+            EvalCase(f"c{i}", "clean") for i in range(10)
+        ]
+
+        case_results = (
+            [
+                CaseResult(
+                    text=f"v{i}",
+                    label="violation",
+                    predicted="violation",
+                    confidence=0.9,
+                )
+                for i in range(15)
+            ]
+            + [
+                CaseResult(
+                    text=f"fp{i}", label="clean", predicted="violation", confidence=0.4
+                )
+                for i in range(3)
+            ]
+            + [
+                CaseResult(
+                    text=f"tn{i}", label="clean", predicted="clean", confidence=0.0
+                )
+                for i in range(7)
+            ]
+        )
+        mock_results = EvalResults(rule="violation-detector", tp=15, fp=3, tn=7, fn=0)
+
+        with patch(
+            "vaudeville.eval.evaluate_rule",
+            return_value=(mock_results, case_results),
+        ):
+            result = calibrate_rule(
+                "violation-detector", cases, rules, MockBackend(), str(rule_file)
+            )
+
+        assert result == 0.45
+        with open(rule_file) as f:
+            updated = yaml.safe_load(f)
+        assert updated["threshold"] == 0.45
+        assert updated["name"] == "violation-detector"
+        assert updated["event"] == "Stop"
+        assert updated["action"] == "block"
+        out = capsys.readouterr().out
+        assert "Calibrated" in out
+
+    def test_returns_none_when_no_threshold_meets_precision(
+        self,
+        rules: dict[str, Rule],
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: pathlib.Path,
+    ) -> None:
+        from vaudeville.eval import CaseResult
+
+        rule_file = tmp_path / "rule.yaml"
+        rule_file.write_text(
+            yaml.dump({"name": "violation-detector", "threshold": 0.5})
+        )
+        cases = [EvalCase(f"t{i}", "clean") for i in range(25)]
+        case_results = [
+            CaseResult(
+                text=f"fp{i}", label="clean", predicted="violation", confidence=0.99
+            )
+            for i in range(25)
+        ]
+        mock_results = EvalResults(rule="violation-detector", fp=25)
+
+        with patch(
+            "vaudeville.eval.evaluate_rule",
+            return_value=(mock_results, case_results),
+        ):
+            result = calibrate_rule(
+                "violation-detector", cases, rules, MockBackend(), str(rule_file)
+            )
+
+        assert result is None
+        out = capsys.readouterr().out
+        assert "No threshold" in out

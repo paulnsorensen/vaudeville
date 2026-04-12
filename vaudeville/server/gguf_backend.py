@@ -13,6 +13,27 @@ from ..core.protocol import ClassifyResult
 DEFAULT_REPO = "microsoft/Phi-4-mini-instruct-gguf"
 DEFAULT_FILE = "Phi-4-mini-instruct-q4.gguf"
 TOP_LOGPROBS = 10
+SYSTEM_PROMPT = (
+    "You are a binary classifier. Respond with exactly `VERDICT: violation` "
+    "or `VERDICT: clean` followed by `REASON: <one sentence>`. No other text."
+)
+
+GBNF_GRAMMAR = r"""root ::= "VERDICT: " verdict "\nREASON: " reason
+verdict ::= "violation" | "clean"
+reason ::= [^\n]{1,200}"""
+
+_compiled_grammar: Any = None
+
+
+def _get_grammar() -> Any:
+    """Return the compiled GBNF grammar, caching after first call."""
+    global _compiled_grammar  # noqa: PLW0603
+    if _compiled_grammar is None:
+        from llama_cpp import LlamaGrammar
+
+        _compiled_grammar = LlamaGrammar.from_string(GBNF_GRAMMAR)
+    return _compiled_grammar
+
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +60,14 @@ class GGUFBackend:
     def classify(self, prompt: str, max_tokens: int = 50) -> str:
         """Run inference on prompt, return raw text output."""
         response = self._llm.create_chat_completion(
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
             max_tokens=max_tokens,
             temperature=0.0,
+            repeat_penalty=1.1,
+            grammar=_get_grammar(),
         )
         result: str = response["choices"][0]["message"]["content"]
         return result
@@ -56,11 +82,13 @@ class GGUFBackend:
         """
         response: Any = self._llm.create_chat_completion(
             messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
                 {"role": "assistant", "content": "VERDICT:"},
             ],
             max_tokens=max_tokens,
             temperature=0.0,
+            repeat_penalty=1.1,
             logprobs=True,
             top_logprobs=TOP_LOGPROBS,
         )

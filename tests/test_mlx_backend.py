@@ -66,16 +66,11 @@ class TestMLXBackend:
 
             backend = MLXBackend()
             backend.classify("my prompt")
+        from vaudeville.server.mlx_backend import SYSTEM_PROMPT
+
         mock_tokenizer.apply_chat_template.assert_called_once_with(
             [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a binary classifier. Respond with exactly "
-                        "`VERDICT: violation` or `VERDICT: clean` followed by "
-                        "`REASON: <one sentence>`. No other text."
-                    ),
-                },
+                {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": "my prompt"},
             ],
             tokenize=False,

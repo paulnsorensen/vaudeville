@@ -86,7 +86,7 @@ eval-rule rule:
 
 # Calibrate threshold for a rule (e.g., `just eval-calibrate violation-detector`)
 eval-calibrate rule:
-    uv run python -m vaudeville.eval --calibrate {{rule}}
+    VAUDEVILLE_SKIP=1 uv run python -m vaudeville.eval --calibrate {{rule}}
 
 # Clean build and test artifacts
 clean:

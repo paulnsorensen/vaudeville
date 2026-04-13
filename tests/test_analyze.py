@@ -271,6 +271,16 @@ class TestCheckCorrectionPatterns:
         assert result["hook_type"] == "slm-rule"
         assert len(result["examples"]) == 2
 
+    def test_total_count_sums_occurrences(self) -> None:
+        rows = [
+            {"user_msg": "no, wrong", "occurrences": "7"},
+            {"user_msg": "that's not right", "occurrences": "3"},
+        ]
+        with patch.object(analyze, "query", return_value=rows):
+            result = analyze.check_correction_patterns(14, 3)
+        assert result is not None
+        assert "10" in result["description"]
+
     def test_long_messages_truncated(self) -> None:
         long_msg = "no, " + "x" * 200
         rows = [{"user_msg": long_msg, "occurrences": "3"}]

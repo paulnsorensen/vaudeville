@@ -363,6 +363,7 @@ def check_correction_patterns(days, min_occ):
           AND userType = 'external'
           AND length(message::VARCHAR) < 200
           AND timestamp::DATE >= CURRENT_DATE - INTERVAL '{days}' DAY
+          AND typeof(message) = 'VARCHAR'
           AND (message::VARCHAR ILIKE '%no,%'
                OR message::VARCHAR ILIKE '%wrong%'
                OR message::VARCHAR ILIKE '%that''s not%'
@@ -461,9 +462,9 @@ def check_permission_tool_waste(days, min_occ):
             JOIN tool_results tr ON tu.tool_use_id = tr.tool_use_id
             WHERE tr.is_error = 'true'
               AND tu.timestamp::DATE >= CURRENT_DATE - INTERVAL '{days}' DAY
-              AND (tr.content ILIKE '%permission%'
-                   OR tr.content ILIKE '%denied%'
-                   OR tr.content ILIKE '%not allowed%')
+              AND (tr.content ILIKE '%permission denied%'
+                   OR tr.content ILIKE '%permission%' AND tr.content ILIKE '%denied%'
+                   OR tr.content ILIKE '%not allowed%' AND tr.content ILIKE '%permission%')
         )
         SELECT
             tool_name,

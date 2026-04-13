@@ -4,11 +4,13 @@ description: >
   Tune a single vaudeville SLM rule to meet precision/recall targets. Runs eval,
   analyzes misclassifications (FP/FN), edits the rule prompt, and re-evaluates
   in a loop. Use when the user says "tune rule", "fix rule accuracy", "improve
-  rule", "tune violation-detector", "why is my rule failing", or invokes /tune
-  with a rule name. Requires the vaudeville daemon to be running for inference.
+  rule precision", "reduce false positives", "recall is too low", "tune
+  violation-detector", "why is my rule failing", or wants to iterate on an SLM
+  rule prompt until it meets accuracy targets. Requires the vaudeville daemon
+  to be running for inference.
 model: sonnet
 context: fork
-allowed-tools: Bash(uv:*), Bash(bash:*), Read, Edit, Write, Glob
+allowed-tools: Bash(uv:*), Bash(ls:*), Read, Edit, Write, Glob, Grep
 ---
 
 # tune
@@ -48,13 +50,7 @@ If either is missing, report the error and stop.
 
 ### Step 2: Run baseline eval
 
-Run eval for this specific rule using the project's eval wrapper:
-
-```bash
-bash ralphs/rule-tuning-v2/run-eval.sh 2>&1 | grep -E "(Evaluating <rule-name>|=== <rule-name>|Accuracy|Precision|Recall|F1|Confusion|Confidence|Misclass|actual=)"
-```
-
-If the run-eval.sh script doesn't support single-rule filtering, use:
+Run eval for this specific rule:
 
 ```bash
 uv run python -m vaudeville.eval --rules-dir rules_dev --rule <rule-name> 2>&1 | grep -E "(^Evaluating|^===|Accuracy|Precision|Recall|F1|Confusion|Confidence|Misclass|actual=|WARNING|ALL RULES|SOME RULES)"

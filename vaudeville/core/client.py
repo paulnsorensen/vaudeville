@@ -24,12 +24,14 @@ class VaudevilleClient:
     def __init__(self) -> None:
         self._socket_path = SOCKET_PATH
 
-    def classify(self, prompt: str) -> ClassifyResponse | None:
+    def classify(
+        self, prompt: str, prefix_len: int = 0,
+    ) -> ClassifyResponse | None:
         """Send a classify request and return the verdict.
 
         Returns None if the daemon is unavailable (fail-open semantics).
         """
-        request = ClassifyRequest(prompt=prompt)
+        request = ClassifyRequest(prompt=prompt, prefix_len=prefix_len)
         try:
             return self._send(request)
         except Exception as exc:

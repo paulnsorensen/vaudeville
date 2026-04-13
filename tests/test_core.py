@@ -122,10 +122,31 @@ class TestClassifyRequest:
         req = ClassifyRequest(prompt="classify this text")
         d = req.to_json_dict()
         assert d["prompt"] == "classify this text"
+        assert "rule" not in d
+
+    def test_to_json_dict_with_rule(self) -> None:
+        req = ClassifyRequest(prompt="classify this", rule="no-hedging")
+        d = req.to_json_dict()
+        assert d["prompt"] == "classify this"
+        assert d["rule"] == "no-hedging"
+
+    def test_to_json_dict_empty_rule_omitted(self) -> None:
+        req = ClassifyRequest(prompt="test")
+        d = req.to_json_dict()
+        assert "rule" not in d
+
+    def test_rule_defaults_to_empty(self) -> None:
+        req = ClassifyRequest(prompt="test")
+        assert req.rule == ""
 
     def test_json_serializable(self) -> None:
         req = ClassifyRequest(prompt="test prompt")
         json.dumps(req.to_json_dict())  # must not raise
+
+    def test_json_serializable_with_rule(self) -> None:
+        req = ClassifyRequest(prompt="test", rule="some-rule")
+        d = json.loads(json.dumps(req.to_json_dict()))
+        assert d["rule"] == "some-rule"
 
 
 # --- load_rules ---
@@ -177,6 +198,98 @@ class TestFailOpen:
             client._socket_path = os.path.join(td, "nonexistent.sock")
             result = client.classify("test prompt")
             assert result is None
+
+    def test_client_classify_sends_rule_in_payload(self) -> None:
+        """classify(rule=...) includes the rule field in the JSON request."""
+        import socket
+        import threading
+
+        with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
+            sock_path = f.name
+        os.unlink(sock_path)
+
+        received_payload: dict[str, object] = {}
+        response = {"verdict": "clean", "reason": "ok", "confidence": 1.0}
+        server_done = threading.Event()
+
+        def _serve() -> None:
+            srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            srv.bind(sock_path)
+            srv.listen(1)
+            srv.settimeout(3.0)
+            conn, _ = srv.accept()
+            data = b""
+            while b"\n" not in data:
+                data += conn.recv(4096)
+            received_payload.update(json.loads(data.decode().strip()))
+            conn.sendall((json.dumps(response) + "\n").encode())
+            conn.close()
+            srv.close()
+            server_done.set()
+
+        t = threading.Thread(target=_serve, daemon=True)
+        t.start()
+        import time
+
+        time.sleep(0.05)
+
+        try:
+            client = VaudevilleClient()
+            client._socket_path = sock_path
+            result = client.classify("test prompt", rule="no-hedge")
+            server_done.wait(timeout=3.0)
+            assert result is not None
+            assert result.verdict == "clean"
+            assert received_payload["rule"] == "no-hedge"
+            assert received_payload["prompt"] == "test prompt"
+        finally:
+            if os.path.exists(sock_path):
+                os.unlink(sock_path)
+
+    def test_client_classify_omits_empty_rule(self) -> None:
+        """classify() without rule omits rule key from JSON (backward compat)."""
+        import socket
+        import threading
+
+        with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
+            sock_path = f.name
+        os.unlink(sock_path)
+
+        received_payload: dict[str, object] = {}
+        response = {"verdict": "clean", "reason": "ok", "confidence": 1.0}
+        server_done = threading.Event()
+
+        def _serve() -> None:
+            srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            srv.bind(sock_path)
+            srv.listen(1)
+            srv.settimeout(3.0)
+            conn, _ = srv.accept()
+            data = b""
+            while b"\n" not in data:
+                data += conn.recv(4096)
+            received_payload.update(json.loads(data.decode().strip()))
+            conn.sendall((json.dumps(response) + "\n").encode())
+            conn.close()
+            srv.close()
+            server_done.set()
+
+        t = threading.Thread(target=_serve, daemon=True)
+        t.start()
+        import time
+
+        time.sleep(0.05)
+
+        try:
+            client = VaudevilleClient()
+            client._socket_path = sock_path
+            result = client.classify("test prompt")
+            server_done.wait(timeout=3.0)
+            assert result is not None
+            assert "rule" not in received_payload
+        finally:
+            if os.path.exists(sock_path):
+                os.unlink(sock_path)
 
     def test_runner_allows_when_daemon_unavailable(self) -> None:
         """runner.main() exits 0 when client returns None for all rules."""

@@ -1,0 +1,128 @@
+"""Live TUI for watching classification events.
+
+Tails ``events.jsonl`` and renders a continuously updating table of
+the last 20 rule firings using Rich.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from typing import IO, Any
+
+from rich.live import Live
+from rich.table import Table
+from rich.text import Text
+
+_EVENTS_LOG = os.path.join(
+    os.path.expanduser("~"), ".vaudeville", "logs", "events.jsonl"
+)
+
+_MAX_ROWS = 20
+_POLL_INTERVAL = 0.2
+
+
+def _parse_ts_display(ts: str) -> str:
+    """Extract HH:MM:SS from an ISO timestamp."""
+    # ISO format: 2024-01-15T10:30:45.123456+00:00
+    try:
+        time_part = ts.split("T")[1]
+        return time_part[:8]
+    except (IndexError, TypeError):
+        return ts[:8] if ts else "??:??:??"
+
+
+def _to_float(value: object) -> float:
+    """Coerce *value* to float, returning 0.0 on failure."""
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _verdict_text(verdict: str) -> Text:
+    """Colour-code a verdict string."""
+    if verdict == "violation":
+        return Text(verdict, style="bold red")
+    return Text(verdict, style="bold green")
+
+
+def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table:
+    """Build a Rich table from the last *_MAX_ROWS* events."""
+    total_seen, violations = totals
+    table = Table(
+        title="Vaudeville \u2014 Live Rule Firings",
+        caption=f"Session: {total_seen} events, {violations} violations",
+    )
+    table.add_column("Time", style="dim", width=10)
+    table.add_column("Rule", width=30)
+    table.add_column("Verdict", width=12)
+    table.add_column("Confidence", justify="right", width=12)
+    table.add_column("Latency ms", justify="right", width=12)
+
+    for evt in events[-_MAX_ROWS:]:
+        table.add_row(
+            _parse_ts_display(evt.get("ts", "")),
+            evt.get("rule", "<unknown>"),
+            _verdict_text(evt.get("verdict", "?")),
+            f"{_to_float(evt.get('confidence', 0)):.2f}",
+            f"{_to_float(evt.get('latency_ms', 0)):.1f}",
+        )
+    return table
+
+
+def _read_new_events(
+    f: IO[str],
+    events: list[dict[str, Any]],
+    totals: tuple[int, int],
+) -> tuple[list[dict[str, Any]], tuple[int, int], bool]:
+    """Read new lines from *f*, return updated events, totals, and changed flag."""
+    total_seen, violations = totals
+    changed = False
+    for line in f.readlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            evt = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        events.append(evt)
+        total_seen += 1
+        if evt.get("verdict") == "violation":
+            violations += 1
+        changed = True
+
+    if len(events) > _MAX_ROWS:
+        events = events[-_MAX_ROWS:]
+
+    return events, (total_seen, violations), changed
+
+
+def _ensure_log_exists(log_path: str) -> None:
+    """Create the log file and parent dirs if missing."""
+    if not os.path.exists(log_path):
+        parent = os.path.dirname(log_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(log_path, "a"):
+            pass
+
+
+def watch(log_path: str = _EVENTS_LOG) -> None:
+    """Tail *log_path* and render a live table until interrupted."""
+    _ensure_log_exists(log_path)
+
+    events: list[dict[str, Any]] = []
+    totals = (0, 0)
+
+    with open(log_path) as f:
+        f.seek(0, 2)  # seek to end
+
+        with Live(_build_table(events, totals), refresh_per_second=5) as live:
+            while True:
+                events, totals, changed = _read_new_events(f, events, totals)
+                if changed:
+                    live.update(_build_table(events, totals))
+                time.sleep(_POLL_INTERVAL)

@@ -19,6 +19,7 @@ import time
 
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
+from .event_log import EventLogger
 from .inference import (
     CachedBackend,
     CachedLogprobBackend,
@@ -84,11 +85,13 @@ def _run_inference(
 def handle_request(
     data: bytes,
     backend: InferenceBackend,
+    event_logger: EventLogger | None = None,
 ) -> bytes:
     """Pure function: classify one request, return JSON response bytes."""
     try:
         request = json.loads(data.decode().strip())
         prompt = request.get("prompt", "")
+        rule = request.get("rule", "")
         prefix_len = request.get("prefix_len", 0)
 
         logger.debug("prompt=%d chars prefix_len=%d", len(prompt), prefix_len)
@@ -107,6 +110,21 @@ def handle_request(
             len(prompt),
             safe_reason,
         )
+
+        if event_logger is not None:
+            from .event_log import ClassificationEvent
+
+            event_logger.log_event(
+                ClassificationEvent(
+                    rule=rule,
+                    verdict=response.verdict,
+                    confidence=confidence,
+                    latency_ms=elapsed_ms,
+                    prompt_chars=len(prompt),
+                    reason=response.reason,
+                    input_snippet=prompt[:500],
+                )
+            )
 
         return _response(response.verdict, response.reason, confidence)
 
@@ -159,6 +177,7 @@ class VaudevilleDaemon:
         backend: InferenceBackend,
         version_file: str = VERSION_FILE,
         pid_fd: int | None = None,
+        event_logger: EventLogger | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._pid_file = pid_file
@@ -169,6 +188,7 @@ class VaudevilleDaemon:
         self._last_request = time.monotonic()
         self._stop_event = threading.Event()
         self._pid_fd: int | None = pid_fd
+        self._event_logger = event_logger
 
     def _install_signal_handlers(self) -> None:
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -233,7 +253,9 @@ class VaudevilleDaemon:
             data = _read_message(conn)
 
             with self._backend_lock:
-                response = handle_request(bytes(data), self._backend)
+                response = handle_request(
+                    bytes(data), self._backend, self._event_logger
+                )
             conn.sendall(response)
             elapsed_ms = (time.monotonic() - t0) * 1000
             logger.info("Request handled in %.1fms", elapsed_ms)
@@ -275,6 +297,8 @@ class VaudevilleDaemon:
             logger.warning("Could not write version stamp")
 
     def _cleanup(self) -> None:
+        if self._event_logger is not None:
+            self._event_logger.close()
         if self._pid_fd is not None:
             os.close(self._pid_fd)
             self._pid_fd = None

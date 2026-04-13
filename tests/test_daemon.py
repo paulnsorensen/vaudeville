@@ -16,6 +16,8 @@ import pytest
 
 from vaudeville.core.protocol import ClassifyResult
 from vaudeville.server.daemon import handle_request, VaudevilleDaemon
+from vaudeville.server.event_log import EventLogger
+from vaudeville.server.log_config import LogConfig
 from vaudeville.server.inference import LogprobBackend
 from vaudeville.server.__main__ import detect_backend
 from conftest import MockBackend  # noqa: F401 — used in fixtures
@@ -53,6 +55,165 @@ class TestHandleRequest:
         data = json.dumps({"prompt": "test"}).encode() + b"\n"
         response = handle_request(data, backend)
         assert response.endswith(b"\n")
+
+
+class TestHandleRequestEventLogging:
+    def test_event_logger_called_on_clean(self, tmp_path: str) -> None:
+        """handle_request calls event_logger.log_event for clean verdicts."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend(verdict="clean", reason="all good")
+            data = json.dumps({"prompt": "test input", "rule": "no-hedging"}).encode()
+            handle_request(data, backend, event_logger=el)
+            time.sleep(0.05)
+
+            events_path = Path(logs_dir) / "events.jsonl"
+            lines = events_path.read_text().strip().splitlines()
+            assert len(lines) == 1
+            evt = json.loads(lines[0])
+            assert evt["rule"] == "no-hedging"
+            assert evt["verdict"] == "clean"
+            assert evt["prompt_chars"] == len("test input")
+        finally:
+            el.close()
+
+    def test_event_logger_called_on_violation(self, tmp_path: str) -> None:
+        """Violations log to both events and violations files."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend(verdict="violation", reason="bad stuff")
+            data = json.dumps({"prompt": "bad input", "rule": "no-slop"}).encode()
+            handle_request(data, backend, event_logger=el)
+            time.sleep(0.05)
+
+            violations_path = Path(logs_dir) / "violations.jsonl"
+            lines = violations_path.read_text().strip().splitlines()
+            assert len(lines) == 1
+            v = json.loads(lines[0])
+            assert v["rule"] == "no-slop"
+            assert v["verdict"] == "violation"
+            assert v["reason"] == "bad stuff"
+            assert v["input_snippet"] == "bad input"
+        finally:
+            el.close()
+
+    def test_no_event_logger_still_works(self) -> None:
+        """handle_request works without event_logger (backward compat)."""
+        backend = MockBackend(verdict="clean", reason="ok")
+        data = json.dumps({"prompt": "test"}).encode()
+        response = json.loads(handle_request(data, backend))
+        assert response["verdict"] == "clean"
+
+    def test_rule_defaults_to_empty(self, tmp_path: str) -> None:
+        """Missing rule field in request defaults to empty string."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend(verdict="clean", reason="ok")
+            data = json.dumps({"prompt": "no rule"}).encode()
+            handle_request(data, backend, event_logger=el)
+            time.sleep(0.05)
+
+            events_path = Path(logs_dir) / "events.jsonl"
+            evt = json.loads(events_path.read_text().strip())
+            assert evt["rule"] == ""
+        finally:
+            el.close()
+
+    def test_latency_logged(self, tmp_path: str) -> None:
+        """Event includes positive latency_ms."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend(verdict="clean", reason="ok")
+            data = json.dumps({"prompt": "test"}).encode()
+            handle_request(data, backend, event_logger=el)
+            time.sleep(0.05)
+
+            events_path = Path(logs_dir) / "events.jsonl"
+            evt = json.loads(events_path.read_text().strip())
+            assert evt["latency_ms"] >= 0
+        finally:
+            el.close()
+
+    def test_error_path_no_event_logged(self, tmp_path: str) -> None:
+        """Malformed requests fail open and do NOT log events."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend()
+            handle_request(b"not-json\n", backend, event_logger=el)
+            time.sleep(0.05)
+
+            events_path = Path(logs_dir) / "events.jsonl"
+            assert not events_path.exists() or events_path.read_text().strip() == ""
+        finally:
+            el.close()
+
+
+class TestDaemonEventLoggerWiring:
+    def test_daemon_passes_event_logger(self, tmp_path: str) -> None:
+        """VaudevilleDaemon stores event_logger and passes it to handle_request."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        daemon = VaudevilleDaemon(
+            "/tmp/test.sock",
+            "/tmp/test.pid",
+            plugin_root,
+            MockBackend(),
+            event_logger=el,
+        )
+        assert daemon._event_logger is el
+        el.close()
+
+    def test_daemon_cleanup_closes_logger(self, tmp_path: str) -> None:
+        """_cleanup() closes the event logger sinks."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        assert el._events_id is not None
+
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sock = str(Path(tmp_path) / "test.sock")
+        pid = str(Path(tmp_path) / "test.pid")
+        Path(pid).touch()
+        daemon = VaudevilleDaemon(
+            sock,
+            pid,
+            plugin_root,
+            MockBackend(),
+            event_logger=el,
+        )
+        daemon._cleanup()
+        assert el._events_id is None
+        assert el._violations_id is None
+
+    def test_daemon_none_event_logger_default(self) -> None:
+        """Daemon defaults to None event_logger."""
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        daemon = VaudevilleDaemon(
+            "/tmp/test.sock",
+            "/tmp/test.pid",
+            plugin_root,
+            MockBackend(),
+        )
+        assert daemon._event_logger is None
 
 
 class TestDaemonSocketProtocol:

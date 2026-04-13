@@ -104,6 +104,15 @@ def main() -> None:
     logging.info("Backend ready")
 
     from .daemon import VaudevilleDaemon
+    from .event_log import EventLogger
+
+    try:
+        event_logger: EventLogger | None = EventLogger()
+    except Exception as exc:
+        logging.warning(
+            "Failed to initialize event logger; continuing without it: %s", exc
+        )
+        event_logger = None
 
     daemon = VaudevilleDaemon(
         socket_path=args.socket,
@@ -111,6 +120,7 @@ def main() -> None:
         plugin_root=plugin_root,
         backend=backend,
         pid_fd=pid_fd,
+        event_logger=event_logger,
     )
     daemon.serve()
 

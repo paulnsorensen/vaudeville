@@ -104,6 +104,9 @@ def main() -> None:
     logging.info("Backend ready")
 
     from .daemon import VaudevilleDaemon
+    from .event_log import EventLogger
+
+    event_logger = EventLogger()
 
     daemon = VaudevilleDaemon(
         socket_path=args.socket,
@@ -111,6 +114,7 @@ def main() -> None:
         plugin_root=plugin_root,
         backend=backend,
         pid_fd=pid_fd,
+        event_logger=event_logger,
     )
     daemon.serve()
 

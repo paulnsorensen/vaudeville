@@ -202,9 +202,11 @@ class TestRunPipeline:
         ):
             runner._run_event_rules("Stop", hook_input, mock_client)
 
-        mock_client.classify.assert_called_once()
-        _, kwargs = mock_client.classify.call_args
-        assert kwargs["rule"] == "test-hedging"
+        from unittest.mock import ANY
+
+        mock_client.classify.assert_called_once_with(
+            ANY, rule="test-hedging", prefix_len=ANY
+        )
 
     def test_main_catches_unexpected_exception(
         self, capsys: pytest.CaptureFixture[str]
@@ -273,7 +275,7 @@ class TestMaybeCondense:
         ):
             runner._run_event_rules("Stop", hook_input, client)
 
-        client.condense.assert_called_once()
+        client.condense.assert_called_once_with("x" * 100)
 
     def test_run_event_rules_skips_condense_for_pretooluse(self) -> None:
         """_run_event_rules does NOT condense for PreToolUse events."""

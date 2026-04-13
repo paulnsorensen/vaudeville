@@ -24,7 +24,6 @@ _POLL_INTERVAL = 0.2
 
 
 def _parse_ts_display(ts: str) -> str:
-    """Extract HH:MM:SS from an ISO timestamp."""
     # ISO format: 2024-01-15T10:30:45.123456+00:00
     try:
         time_part = ts.split("T")[1]
@@ -42,14 +41,12 @@ def _to_float(value: object) -> float:
 
 
 def _verdict_text(verdict: str) -> Text:
-    """Colour-code a verdict string."""
     if verdict == "violation":
         return Text(verdict, style="bold red")
     return Text(verdict, style="bold green")
 
 
 def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table:
-    """Build a Rich table from the last *_MAX_ROWS* events."""
     total_seen, violations = totals
     table = Table(
         title="Vaudeville \u2014 Live Rule Firings",
@@ -77,7 +74,6 @@ def _read_new_events(
     events: list[dict[str, Any]],
     totals: tuple[int, int],
 ) -> tuple[list[dict[str, Any]], tuple[int, int], bool]:
-    """Read new lines from *f*, return updated events, totals, and changed flag."""
     total_seen, violations = totals
     changed = False
     for line in f.readlines():
@@ -101,7 +97,6 @@ def _read_new_events(
 
 
 def _ensure_log_exists(log_path: str) -> None:
-    """Create the log file and parent dirs if missing."""
     if not os.path.exists(log_path):
         parent = os.path.dirname(log_path)
         if parent:
@@ -111,7 +106,6 @@ def _ensure_log_exists(log_path: str) -> None:
 
 
 def watch(log_path: str = _EVENTS_LOG) -> None:
-    """Tail *log_path* and render a live table until interrupted."""
     _ensure_log_exists(log_path)
 
     events: list[dict[str, Any]] = []

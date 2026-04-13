@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 
+from ..core.rules import _sanitize_input
 from .inference import InferenceBackend
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,7 @@ _CONDENSE_MAX_TOKENS = 2000
 
 
 def _build_condense_prompt(text: str) -> str:
-    """Format the condensing prompt with input text."""
-    return CONDENSE_PROMPT.replace("{text}", text)
+    return CONDENSE_PROMPT.replace("{text}", _sanitize_input(text))
 
 
 def condense_text(

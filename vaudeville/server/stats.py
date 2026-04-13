@@ -15,6 +15,12 @@ from typing import Any
 _HISTOGRAM_BUCKETS = [50, 100, 200, 500, 1000]
 
 
+def _empty_histogram() -> dict[str, int]:
+    h: dict[str, int] = {f"<={b}ms": 0 for b in _HISTOGRAM_BUCKETS}
+    h[f">{_HISTOGRAM_BUCKETS[-1]}ms"] = 0
+    return h
+
+
 def aggregate_events(log_path: str) -> dict[str, Any]:
     """Read *log_path* and return aggregated statistics.
 
@@ -24,11 +30,11 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
     """
     events = _parse_events(log_path)
     if not events:
-        return _empty_result()
+        return empty_result()
 
     valid = [e for e in events if "latency_ms" in e and "ts" in e]
     if not valid:
-        return _empty_result()
+        return empty_result()
 
     return {
         "total": len(valid),
@@ -44,7 +50,6 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
 def _summarize_rules(
     events: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    """Group events by rule and compute per-rule summaries."""
     rules: dict[str, dict[str, Any]] = {}
     for evt in events:
         rule = evt.get("rule", "<unknown>")
@@ -70,7 +75,6 @@ def _summarize_rules(
 
 
 def _parse_events(log_path: str) -> list[dict[str, Any]]:
-    """Parse JSONL lines, skipping malformed entries."""
     if not os.path.exists(log_path):
         return []
     events: list[dict[str, Any]] = []
@@ -87,7 +91,6 @@ def _parse_events(log_path: str) -> list[dict[str, Any]]:
 
 
 def _latency_stats(latencies: list[float]) -> dict[str, Any]:
-    """Compute percentiles, mean, and histogram buckets."""
     sorted_lat = sorted(latencies)
     n = len(sorted_lat)
 
@@ -98,10 +101,7 @@ def _latency_stats(latencies: list[float]) -> dict[str, Any]:
         p50 = quantiles[49]
         p95 = quantiles[94]
 
-    histogram: dict[str, int] = {}
-    for bucket in _HISTOGRAM_BUCKETS:
-        histogram[f"<={bucket}ms"] = 0
-    histogram[f">{_HISTOGRAM_BUCKETS[-1]}ms"] = 0
+    histogram = _empty_histogram()
 
     for lat in sorted_lat:
         placed = False
@@ -121,13 +121,7 @@ def _latency_stats(latencies: list[float]) -> dict[str, Any]:
     }
 
 
-def _empty_result() -> dict[str, Any]:
-    """Return a zero-value result for empty/missing logs."""
-    histogram: dict[str, int] = {}
-    for bucket in _HISTOGRAM_BUCKETS:
-        histogram[f"<={bucket}ms"] = 0
-    histogram[f">{_HISTOGRAM_BUCKETS[-1]}ms"] = 0
-
+def empty_result() -> dict[str, Any]:
     return {
         "total": 0,
         "rules": {},
@@ -135,7 +129,7 @@ def _empty_result() -> dict[str, Any]:
             "p50_ms": 0.0,
             "p95_ms": 0.0,
             "mean_ms": 0.0,
-            "histogram": histogram,
+            "histogram": _empty_histogram(),
         },
         "time_range": {
             "earliest": "",

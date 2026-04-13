@@ -25,7 +25,6 @@ class LogConfig:
 
 
 def _write_defaults(path: str) -> None:
-    """Write default config.yaml to *path*, creating parent dirs."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         yaml.safe_dump(

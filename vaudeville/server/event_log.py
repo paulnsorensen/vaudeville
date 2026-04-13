@@ -22,8 +22,6 @@ _LOGS_DIR = os.path.join(os.path.expanduser("~"), ".vaudeville", "logs")
 
 @dataclass(frozen=True)
 class ClassificationEvent:
-    """All fields for a single classification result."""
-
     rule: str
     verdict: str
     confidence: float
@@ -34,16 +32,7 @@ class ClassificationEvent:
 
 
 class EventLogger:
-    """Append structured JSONL events for classifications.
-
-    Parameters
-    ----------
-    config:
-        Log rotation/retention settings.  Loaded from disk when *None*.
-    logs_dir:
-        Override the default ``~/.vaudeville/logs/`` directory (useful
-        for testing).
-    """
+    """Appends JSONL classification events. Pass logs_dir to override default path (useful for tests)."""
 
     def __init__(
         self,
@@ -95,7 +84,6 @@ class EventLogger:
         )
 
     def log_event(self, event: ClassificationEvent) -> None:
-        """Record a classification event."""
         ts = datetime.now(tz=timezone.utc).isoformat()
         common: dict[str, Any] = {
             "ts": ts,

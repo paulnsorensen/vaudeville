@@ -49,9 +49,6 @@ class TestCondenseText:
         backend = MockBackend()
         backend.classify = lambda prompt, max_tokens=50: "out"  # type: ignore[method-assign]
         text = "a" * 201
-        condense_text(text, backend)
-        # MockBackend.classify was replaced, so check it was called
-        # by verifying the result came back
         assert condense_text(text, backend) == "out"
 
     def test_fail_open_on_backend_error(self) -> None:

@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from vaudeville.__main__ import _print_stats_human, cmd_stats, cmd_watch, main
-from vaudeville.server.stats import _empty_result
+from vaudeville.server import empty_result
 
 
 def _sample_result() -> dict[str, Any]:
@@ -55,7 +55,7 @@ class TestCmdStats:
     def test_json_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         args = Namespace(json=True, log_path="/fake/events.jsonl")
         with patch(
-            "vaudeville.server.stats.aggregate_events",
+            "vaudeville.server.aggregate_events",
             return_value=_sample_result(),
         ):
             cmd_stats(args)
@@ -69,7 +69,7 @@ class TestCmdStats:
     ) -> None:
         args = Namespace(json=False, log_path="/fake/events.jsonl")
         with patch(
-            "vaudeville.server.stats.aggregate_events",
+            "vaudeville.server.aggregate_events",
             return_value=_sample_result(),
         ):
             cmd_stats(args)
@@ -81,8 +81,8 @@ class TestCmdStats:
     def test_human_output_empty_log(self, capsys: pytest.CaptureFixture[str]) -> None:
         args = Namespace(json=False, log_path="/fake/events.jsonl")
         with patch(
-            "vaudeville.server.stats.aggregate_events",
-            return_value=_empty_result(),
+            "vaudeville.server.aggregate_events",
+            return_value=empty_result(),
         ):
             cmd_stats(args)
         captured = capsys.readouterr()
@@ -91,7 +91,7 @@ class TestCmdStats:
 
 class TestPrintStatsHuman:
     def test_empty_result(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_stats_human(_empty_result())
+        _print_stats_human(empty_result())
         captured = capsys.readouterr()
         assert "No events recorded yet." in captured.out
 

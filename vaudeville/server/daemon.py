@@ -19,7 +19,7 @@ import time
 
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
-from .event_log import EventLogger
+from .event_log import ClassificationEvent, EventLogger
 from .condense import condense_text
 from .inference import (
     CachedBackend,
@@ -87,7 +87,6 @@ def _handle_condense(
     request: dict[str, object],
     backend: InferenceBackend,
 ) -> bytes:
-    """Handle a condense request: strip semantic noise via SLM pre-pass."""
     text = str(request.get("text", ""))
     t0 = time.monotonic()
     condensed = condense_text(text, backend)
@@ -106,7 +105,6 @@ def _handle_classify(
     backend: InferenceBackend,
     event_logger: EventLogger | None = None,
 ) -> bytes:
-    """Handle a classify request: run inference and return verdict."""
     prompt = str(request.get("prompt", ""))
     rule = str(request.get("rule", ""))
     raw_prefix = request.get("prefix_len", 0)
@@ -130,8 +128,6 @@ def _handle_classify(
     )
 
     if event_logger is not None:
-        from .event_log import ClassificationEvent
-
         event_logger.log_event(
             ClassificationEvent(
                 rule=rule,

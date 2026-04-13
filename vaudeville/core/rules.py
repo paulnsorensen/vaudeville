@@ -51,6 +51,18 @@ def front_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
     return text[:max_chars]
 
 
+def sandwich_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
+    """Keep head + tail slices. Violations cluster at the end but beginning gives context."""
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    marker = "\n[...]\n"
+    available = max_chars - len(marker)
+    head_chars = available * 3 // 10
+    tail_chars = available - head_chars
+    return text[:head_chars] + marker + text[-tail_chars:]
+
+
 def _truncate_for_event(
     text: str,
     event: str,
@@ -58,10 +70,12 @@ def _truncate_for_event(
 ) -> str:
     """Apply event-aware truncation strategy.
 
-    Stop hooks care about the end (back-truncate).
+    Stop hooks get sandwich truncation (beginning context + end where violations cluster).
     PreToolUse hooks care about the beginning (front-truncate).
     All other events default to back-truncation.
     """
+    if event == "Stop":
+        return sandwich_truncate(text, max_tokens)
     if event == "PreToolUse":
         return front_truncate(text, max_tokens)
     return back_truncate(text, max_tokens)
@@ -74,15 +88,8 @@ _CODE_BLOCK_RE = re.compile(
 
 
 def _strip_code_blocks(text: str) -> str:
-    """Remove fenced code blocks (triple-backtick).
-
-    Code blocks consume tokens but rarely contain quality violations.
-    Fail-open: returns original text on any error.
-    """
-    try:
-        return _CODE_BLOCK_RE.sub("", text)
-    except Exception:
-        return text
+    """Remove fenced code blocks — they consume tokens but rarely contain violations."""
+    return _CODE_BLOCK_RE.sub("", text)
 
 
 def _prepare_text(text: str, event: str) -> str:

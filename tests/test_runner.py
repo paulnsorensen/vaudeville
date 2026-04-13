@@ -190,6 +190,7 @@ class TestRunPipeline:
             threshold=0.5,
         )
         mock_client = MagicMock()
+        mock_client.condense.side_effect = lambda text: text
         mock_client.classify.return_value = ClassifyResponse(
             verdict="clean", reason="", confidence=0.9
         )

@@ -9,201 +9,92 @@ from vaudeville.core.rules import (
     MAX_INPUT_TOKENS,
     Rule,
     _prepare_text,
-    _strip_blockquotes,
-    _strip_recaps,
-    _strip_self_quotes,
+    _strip_code_blocks,
     _truncate_for_event,
     front_truncate,
 )
 
 
-class TestStripBlockquotes:
-    def test_removes_single_level_blockquote(self) -> None:
-        text = "> quoted line\nnormal line\n"
-        assert _strip_blockquotes(text) == "normal line\n"
+class TestStripCodeBlocks:
+    def test_removes_fenced_block(self) -> None:
+        text = "before\n```python\nprint('hi')\n```\nafter\n"
+        result = _strip_code_blocks(text)
+        assert "print" not in result
+        assert "before" in result
+        assert "after" in result
 
-    def test_removes_nested_blockquotes(self) -> None:
-        text = ">> deeply nested\n> single nested\nplain\n"
-        assert _strip_blockquotes(text) == "plain\n"
+    def test_removes_block_without_language(self) -> None:
+        text = "before\n```\ncode here\n```\nafter\n"
+        result = _strip_code_blocks(text)
+        assert "code here" not in result
+        assert "before" in result
 
-    def test_preserves_text_without_blockquotes(self) -> None:
-        text = "no quotes here\njust text\n"
-        assert _strip_blockquotes(text) == text
+    def test_removes_multiple_blocks(self) -> None:
+        text = "a\n```\nblock1\n```\nb\n```rust\nblock2\n```\nc\n"
+        result = _strip_code_blocks(text)
+        assert "block1" not in result
+        assert "block2" not in result
+        assert "a" in result
+        assert "b" in result
+        assert "c" in result
 
-    def test_removes_multiple_blockquote_blocks(self) -> None:
-        text = "> first\ntext\n> second\nmore text\n"
-        assert _strip_blockquotes(text) == "text\nmore text\n"
-
-    def test_empty_string(self) -> None:
-        assert _strip_blockquotes("") == ""
-
-    def test_blockquote_only(self) -> None:
-        assert _strip_blockquotes("> only quote\n") == ""
-
-    def test_blockquote_without_trailing_newline(self) -> None:
-        result = _strip_blockquotes("> no newline")
-        assert result == ""
-
-
-class TestStripSelfQuotes:
-    def test_removes_i_said_pattern(self) -> None:
-        text = 'I said: "This is a quoted passage that is long enough to match"'
-        assert _strip_self_quotes(text) == ""
-
-    def test_removes_i_wrote_pattern(self) -> None:
-        text = 'I wrote: "Another long enough quoted passage here for testing"'
-        assert _strip_self_quotes(text) == ""
-
-    def test_removes_i_mentioned_pattern(self) -> None:
-        text = 'I mentioned: "A sufficiently long quoted passage for the test"'
-        assert _strip_self_quotes(text) == ""
-
-    def test_preserves_short_quotes(self) -> None:
-        text = 'I said: "short"'
-        assert _strip_self_quotes(text) == text
-
-    def test_preserves_text_without_self_quotes(self) -> None:
-        text = "Regular text without any self-quoting patterns."
-        assert _strip_self_quotes(text) == text
-
-    def test_removes_only_self_quote_preserves_surrounding(self) -> None:
-        text = (
-            'Before. I said: "This is a long enough passage to be stripped out" After.'
-        )
-        result = _strip_self_quotes(text)
-        assert "Before." in result
-        assert "After." in result
-        assert "long enough passage" not in result
+    def test_preserves_text_without_code(self) -> None:
+        text = "just prose here\nno code at all\n"
+        assert _strip_code_blocks(text) == text
 
     def test_empty_string(self) -> None:
-        assert _strip_self_quotes("") == ""
+        assert _strip_code_blocks("") == ""
 
-    def test_multiline_quoted_content(self) -> None:
-        text = 'I wrote: "This is a multi-line\nquoted passage that spans lines"'
-        result = _strip_self_quotes(text)
-        assert "multi-line" not in result
+    def test_preserves_inline_backticks(self) -> None:
+        text = "use `foo()` to call it\n"
+        assert _strip_code_blocks(text) == text
 
+    def test_removes_multiline_code(self) -> None:
+        text = "prose\n```bash\nline1\nline2\nline3\n```\nmore prose\n"
+        result = _strip_code_blocks(text)
+        assert "line1" not in result
+        assert "line2" not in result
+        assert "prose" in result
 
-class TestStripRecaps:
-    def test_removes_let_me_summarize_paragraph(self) -> None:
-        text = "Normal text.\n\nLet me summarize what we discussed.\nPoint one.\nPoint two.\n\nMore text.\n"
-        result = _strip_recaps(text)
-        assert "Normal text." in result
-        assert "More text." in result
-        assert "summarize" not in result
+    def test_code_block_only(self) -> None:
+        text = "```\nall code\n```\n"
+        result = _strip_code_blocks(text)
+        assert "all code" not in result
 
-    def test_removes_to_recap_paragraph(self) -> None:
-        text = "Before.\n\nTo recap, here's what happened.\nDetail A.\nDetail B.\n\nAfter.\n"
-        result = _strip_recaps(text)
-        assert "Before." in result
-        assert "After." in result
-        assert "recap" not in result
+    def test_fails_open(self) -> None:
+        with patch("vaudeville.core.rules.re.compile") as mock_compile:
+            mock_compile.return_value.sub.side_effect = RuntimeError("boom")
+            # Use fresh import to avoid cached compiled regex
+            assert _strip_code_blocks("keep me") == "keep me"
 
-    def test_removes_in_summary_paragraph(self) -> None:
-        text = "Start.\n\nIn summary, the key points are:\nFirst point.\nSecond point.\n\nEnd.\n"
-        result = _strip_recaps(text)
-        assert "Start." in result
-        assert "End." in result
-        assert "summary" not in result.lower()
-
-    def test_case_insensitive(self) -> None:
-        text = "Before.\n\nTO RECAP the situation.\nDetails here.\n\nAfter.\n"
-        result = _strip_recaps(text)
-        assert "RECAP" not in result
-
-    def test_preserves_text_without_recaps(self) -> None:
-        text = "Normal paragraph.\n\nAnother paragraph.\n"
-        assert _strip_recaps(text) == text
-
-    def test_empty_string(self) -> None:
-        assert _strip_recaps("") == ""
-
-    def test_recap_at_end_without_trailing_blank_line(self) -> None:
-        text = "Before.\n\nTo recap everything.\nDone."
-        result = _strip_recaps(text)
-        # No trailing paragraph break — regex won't match, text preserved (fail-open)
-        assert "Before." in result
-
-
-class TestFailOpen:
-    """All strippers must return original text on internal errors."""
-
-    def test_strip_blockquotes_fails_open(self) -> None:
-        with patch("vaudeville.core.rules.re.sub", side_effect=RuntimeError("boom")):
-            assert _strip_blockquotes("keep me") == "keep me"
-
-    def test_strip_self_quotes_fails_open(self) -> None:
+    def test_fails_open_on_regex_error(self) -> None:
         import vaudeville.core.rules as mod
 
-        original = mod._SELF_QUOTE_RE
+        original = mod._CODE_BLOCK_RE
         try:
-            mod._SELF_QUOTE_RE = type(  # type: ignore[assignment,unused-ignore]
+            mod._CODE_BLOCK_RE = type(  # type: ignore[assignment,unused-ignore]
                 "FakeRe",
                 (),
                 {"sub": lambda self, *a: (_ for _ in ()).throw(RuntimeError)},
             )()
-            assert _strip_self_quotes("keep me") == "keep me"
+            assert _strip_code_blocks("keep me") == "keep me"
         finally:
-            mod._SELF_QUOTE_RE = original
-
-    def test_strip_recaps_fails_open(self) -> None:
-        import vaudeville.core.rules as mod
-
-        original = mod._RECAP_RE
-        try:
-            mod._RECAP_RE = type(  # type: ignore[assignment,unused-ignore]
-                "FakeRe",
-                (),
-                {"sub": lambda self, *a: (_ for _ in ()).throw(RuntimeError)},
-            )()
-            assert _strip_recaps("keep me") == "keep me"
-        finally:
-            mod._RECAP_RE = original
+            mod._CODE_BLOCK_RE = original
 
 
 class TestPrepareText:
-    """Tests for _prepare_text orchestration."""
-
-    def test_stop_event_strips_blockquotes(self) -> None:
-        text = "> quoted\nreal content\n"
+    def test_stop_event_strips_code_blocks(self) -> None:
+        text = "prose\n```python\ncode()\n```\nmore prose\n"
         result = _prepare_text(text, "Stop")
-        assert "> quoted" not in result
-        assert "real content" in result
-
-    def test_stop_event_strips_self_quotes(self) -> None:
-        text = 'I said: "This is a long enough passage to be stripped out" rest'
-        result = _prepare_text(text, "Stop")
-        assert "long enough passage" not in result
-        assert "rest" in result
-
-    def test_stop_event_strips_recaps(self) -> None:
-        text = "Before.\n\nTo recap the discussion.\nDetail.\n\nAfter.\n"
-        result = _prepare_text(text, "Stop")
-        assert "recap" not in result
-        assert "Before." in result
-        assert "After." in result
-
-    def test_stop_event_chains_all_strippers(self) -> None:
-        text = (
-            "> blockquote line\n"
-            'I wrote: "A sufficiently long self-quote for testing"\n'
-            "Normal content here.\n\n"
-            "Let me summarize the key points.\nPoint one.\n\n"
-            "Final paragraph.\n"
-        )
-        result = _prepare_text(text, "Stop")
-        assert "> blockquote" not in result
-        assert "self-quote" not in result
-        assert "summarize" not in result
-        assert "Normal content here." in result
-        assert "Final paragraph." in result
+        assert "code()" not in result
+        assert "prose" in result
 
     def test_non_stop_event_passes_through(self) -> None:
-        text = '> blockquote\nI said: "long enough quote to be stripped normally"\n'
+        text = "prose\n```python\ncode()\n```\nmore\n"
         assert _prepare_text(text, "PreToolUse") == text
 
     def test_empty_event_passes_through(self) -> None:
-        text = "> keep this\n"
+        text = "```\ncode\n```\n"
         assert _prepare_text(text, "") == text
 
     def test_empty_text_stop_event(self) -> None:
@@ -215,7 +106,7 @@ class TestPrepareText:
 
     def test_fails_open_on_stripper_error(self) -> None:
         with patch(
-            "vaudeville.core.rules._strip_blockquotes",
+            "vaudeville.core.rules._strip_code_blocks",
             side_effect=RuntimeError("boom"),
         ):
             assert _prepare_text("keep me", "Stop") == "keep me"
@@ -234,35 +125,30 @@ class TestFormatPromptIntegration:
             message="{reason}",
         )
 
-    def test_format_prompt_strips_blockquotes_for_stop(self) -> None:
+    def test_format_prompt_strips_code_for_stop(self) -> None:
         rule = self._make_rule("Stop")
-        result = rule.format_prompt("> quoted\nreal content\n")
-        assert "> quoted" not in result
-        assert "real content" in result
+        result = rule.format_prompt("prose\n```\ncode\n```\nmore\n")
+        assert "code" not in result or "Classify" in result
+        assert "prose" in result
 
-    def test_format_prompt_preserves_blockquotes_for_pretooluse(self) -> None:
+    def test_format_prompt_preserves_code_for_pretooluse(self) -> None:
         rule = self._make_rule("PreToolUse")
-        result = rule.format_prompt("> quoted\nreal content\n")
-        assert "> quoted" in result
+        result = rule.format_prompt("prose\n```\ncode\n```\nmore\n")
+        assert "code" in result
 
-    def test_split_prompt_strips_blockquotes_for_stop(self) -> None:
+    def test_split_prompt_strips_code_for_stop(self) -> None:
         rule = self._make_rule("Stop")
-        full_prompt, prefix_len = rule.split_prompt("> quoted\nreal content\n")
-        assert "> quoted" not in full_prompt
-        assert "real content" in full_prompt
+        full_prompt, prefix_len = rule.split_prompt(
+            "prose\n```\ncode_here\n```\nmore\n"
+        )
+        assert "code_here" not in full_prompt
+        assert "prose" in full_prompt
         assert prefix_len == len("Classify: ")
 
-    def test_split_prompt_preserves_blockquotes_for_pretooluse(self) -> None:
+    def test_split_prompt_preserves_code_for_pretooluse(self) -> None:
         rule = self._make_rule("PreToolUse")
-        full_prompt, _ = rule.split_prompt("> quoted\nreal content\n")
-        assert "> quoted" in full_prompt
-
-    def test_format_prompt_strips_self_quotes_for_stop(self) -> None:
-        rule = self._make_rule("Stop")
-        text = 'I said: "This is a long enough passage to be stripped out" rest'
-        result = rule.format_prompt(text)
-        assert "long enough passage" not in result
-        assert "rest" in result
+        full_prompt, _ = rule.split_prompt("prose\n```\ncode\n```\nmore\n")
+        assert "code" in full_prompt
 
     def test_sanitize_still_applied_after_prepare(self) -> None:
         rule = self._make_rule("Stop")
@@ -297,14 +183,12 @@ class TestTruncateForEvent:
     def test_stop_uses_back_truncation(self) -> None:
         text = "START" + "x" * 100 + "END"
         result = _truncate_for_event(text, "Stop", max_tokens=5)
-        # Back-truncate keeps the end
         assert result.endswith("END")
         assert "START" not in result
 
     def test_pretooluse_uses_front_truncation(self) -> None:
         text = "START" + "x" * 100 + "END"
         result = _truncate_for_event(text, "PreToolUse", max_tokens=5)
-        # Front-truncate keeps the beginning
         assert result.startswith("START")
         assert "END" not in result
 

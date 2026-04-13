@@ -228,6 +228,7 @@ class TestConcurrentDispatch:
     def test_event_clean_passes(self) -> None:
         runner = self._get_runner()
         mock_client = MagicMock()
+        mock_client.condense.side_effect = lambda text: text
         mock_client.classify.return_value = MagicMock(
             verdict="clean", reason="ok", confidence=0.9
         )
@@ -261,6 +262,7 @@ class TestConcurrentDispatch:
     def test_event_violation_blocks(self) -> None:
         runner = self._get_runner()
         mock_client = MagicMock()
+        mock_client.condense.side_effect = lambda text: text
         mock_client.classify.return_value = MagicMock(
             verdict="violation", reason="hedging", confidence=0.95
         )
@@ -295,6 +297,7 @@ class TestConcurrentDispatch:
     def test_event_daemon_unavailable_passes(self) -> None:
         runner = self._get_runner()
         mock_client = MagicMock()
+        mock_client.condense.side_effect = lambda text: text
         mock_client.classify.return_value = None
 
         from vaudeville.core.rules import Rule
@@ -575,6 +578,7 @@ class TestEventDiscovery:
         ]
 
         mock_client = MagicMock()
+        mock_client.condense.side_effect = lambda text: text
         mock_client.classify.return_value = MagicMock(
             verdict="violation", reason="hedging detected", confidence=0.95
         )
@@ -609,6 +613,7 @@ class TestEventDiscovery:
         ]
 
         mock_client = MagicMock()
+        mock_client.condense.side_effect = lambda text: text
         mock_client.classify.return_value = MagicMock(
             verdict="clean", reason="ok", action="block"
         )
@@ -660,6 +665,7 @@ class TestEventDiscovery:
         ]
 
         mock_client = MagicMock()
+        mock_client.condense.side_effect = lambda text: text
         mock_client.classify.return_value = None
 
         stdout = io.StringIO()

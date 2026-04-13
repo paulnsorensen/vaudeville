@@ -41,6 +41,41 @@ class VaudevilleClient:
             logger.warning("[vaudeville] classify failed: %s", exc)
             return None
 
+    def condense(self, text: str) -> str:
+        """Send a condense request and return the condensed text.
+
+        Returns the original text if the daemon is unavailable (fail-open).
+        """
+        try:
+            return self._send_condense(text)
+        except Exception as exc:
+            logger.warning("[vaudeville] condense failed: %s", exc)
+            return text
+
+    def _send_condense(self, text: str) -> str:
+        if not os.path.exists(self._socket_path):
+            raise FileNotFoundError(self._socket_path)
+
+        payload = json.dumps({"op": "condense", "text": text}).encode() + b"\n"
+
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(CONNECT_TIMEOUT)
+            sock.connect(self._socket_path)
+            sock.settimeout(READ_TIMEOUT)
+            sock.sendall(payload)
+
+            data = b""
+            while True:
+                chunk = sock.recv(RECV_CHUNK)
+                if not chunk:
+                    break
+                data += chunk
+                if b"\n" in data:
+                    break
+
+        response = json.loads(data.decode().strip())
+        return str(response.get("text", text))
+
     def _send(self, request: ClassifyRequest) -> ClassifyResponse:
         if not os.path.exists(self._socket_path):
             raise FileNotFoundError(self._socket_path)

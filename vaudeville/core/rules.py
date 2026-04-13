@@ -67,64 +67,35 @@ def _truncate_for_event(
     return back_truncate(text, max_tokens)
 
 
-_SELF_QUOTE_RE = re.compile(
-    r"I\s+(?:said|wrote|mentioned)\s*:\s*\"(.{20,}?)\"",
-    re.DOTALL,
-)
-
-_RECAP_RE = re.compile(
-    r"(?i)(?:let me summarize|to recap|in summary)[^\n]*\n(?:.*?\n)*?\n",
+_CODE_BLOCK_RE = re.compile(
+    r"^```[^\n]*\n.*?^```\s*$",
+    re.MULTILINE | re.DOTALL,
 )
 
 
-def _strip_blockquotes(text: str) -> str:
-    """Remove markdown blockquote lines (including nested ``>>``).
+def _strip_code_blocks(text: str) -> str:
+    """Remove fenced code blocks (triple-backtick).
 
+    Code blocks consume tokens but rarely contain quality violations.
     Fail-open: returns original text on any error.
     """
     try:
-        return re.sub(r"^>+[^\n]*\n?", "", text, flags=re.MULTILINE)
-    except Exception:
-        return text
-
-
-def _strip_self_quotes(text: str) -> str:
-    """Remove ``I said/wrote/mentioned: "..."`` patterns (20+ char quotes).
-
-    Fail-open: returns original text on any error.
-    """
-    try:
-        return _SELF_QUOTE_RE.sub("", text)
-    except Exception:
-        return text
-
-
-def _strip_recaps(text: str) -> str:
-    """Remove recap paragraphs starting with trigger phrases.
-
-    Matches from the trigger through the next blank line (paragraph break).
-    Fail-open: returns original text on any error.
-    """
-    try:
-        return _RECAP_RE.sub("", text)
+        return _CODE_BLOCK_RE.sub("", text)
     except Exception:
         return text
 
 
 def _prepare_text(text: str, event: str) -> str:
-    """Chain content strippers for hook-aware text preparation.
+    """Strip structural noise before truncation.
 
-    Only applies stripping for Stop hooks (assistant response quality).
+    Only applies to Stop hooks (assistant response quality).
     Other event types pass through unmodified.
     Fail-open: returns original text on any error.
     """
     if event != "Stop":
         return text
     try:
-        result = _strip_blockquotes(text)
-        result = _strip_self_quotes(result)
-        result = _strip_recaps(result)
-        return result
+        return _strip_code_blocks(text)
     except Exception:
         return text
 

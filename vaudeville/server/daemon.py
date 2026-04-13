@@ -20,6 +20,7 @@ import time
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from .event_log import EventLogger
+from .condense import condense_text
 from .inference import (
     CachedBackend,
     CachedLogprobBackend,
@@ -82,52 +83,82 @@ def _run_inference(
     return ClassifyResult(text=text)
 
 
+def _handle_condense(
+    request: dict[str, object],
+    backend: InferenceBackend,
+) -> bytes:
+    """Handle a condense request: strip semantic noise via SLM pre-pass."""
+    text = str(request.get("text", ""))
+    t0 = time.monotonic()
+    condensed = condense_text(text, backend)
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    logger.info(
+        "CONDENSE latency_ms=%.0f in_chars=%d out_chars=%d",
+        elapsed_ms,
+        len(text),
+        len(condensed),
+    )
+    return json.dumps({"text": condensed}).encode() + b"\n"
+
+
+def _handle_classify(
+    request: dict[str, object],
+    backend: InferenceBackend,
+    event_logger: EventLogger | None = None,
+) -> bytes:
+    """Handle a classify request: run inference and return verdict."""
+    prompt = str(request.get("prompt", ""))
+    rule = str(request.get("rule", ""))
+    raw_prefix = request.get("prefix_len", 0)
+    prefix_len = int(str(raw_prefix)) if raw_prefix else 0
+
+    logger.debug("prompt=%d chars prefix_len=%d", len(prompt), prefix_len)
+    t0 = time.monotonic()
+    result = _run_inference(backend, prompt, prefix_len)
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    response = parse_verdict(result.text)
+    confidence = compute_confidence(result.logprobs, response.verdict)
+    safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:100]
+    logger.info(
+        "CLASSIFY verdict=%s confidence=%.3f "
+        " latency_ms=%.0f prompt_chars=%d reason=%s",
+        response.verdict,
+        confidence,
+        elapsed_ms,
+        len(prompt),
+        safe_reason,
+    )
+
+    if event_logger is not None:
+        from .event_log import ClassificationEvent
+
+        event_logger.log_event(
+            ClassificationEvent(
+                rule=rule,
+                verdict=response.verdict,
+                confidence=confidence,
+                latency_ms=elapsed_ms,
+                prompt_chars=len(prompt),
+                reason=response.reason,
+                input_snippet=prompt[:500],
+            )
+        )
+
+    return _response(response.verdict, response.reason, confidence)
+
+
 def handle_request(
     data: bytes,
     backend: InferenceBackend,
     event_logger: EventLogger | None = None,
 ) -> bytes:
-    """Pure function: classify one request, return JSON response bytes."""
+    """Route a request by op field: 'classify' (default) or 'condense'."""
     try:
         request = json.loads(data.decode().strip())
-        prompt = request.get("prompt", "")
-        rule = request.get("rule", "")
-        prefix_len = request.get("prefix_len", 0)
-
-        logger.debug("prompt=%d chars prefix_len=%d", len(prompt), prefix_len)
-        t0 = time.monotonic()
-        result = _run_inference(backend, prompt, prefix_len)
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        response = parse_verdict(result.text)
-        confidence = compute_confidence(result.logprobs, response.verdict)
-        safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:100]
-        logger.info(
-            "CLASSIFY verdict=%s confidence=%.3f "
-            " latency_ms=%.0f prompt_chars=%d reason=%s",
-            response.verdict,
-            confidence,
-            elapsed_ms,
-            len(prompt),
-            safe_reason,
-        )
-
-        if event_logger is not None:
-            from .event_log import ClassificationEvent
-
-            event_logger.log_event(
-                ClassificationEvent(
-                    rule=rule,
-                    verdict=response.verdict,
-                    confidence=confidence,
-                    latency_ms=elapsed_ms,
-                    prompt_chars=len(prompt),
-                    reason=response.reason,
-                    input_snippet=prompt[:500],
-                )
-            )
-
-        return _response(response.verdict, response.reason, confidence)
-
+        op = str(request.get("op", "classify"))
+        if op == "condense":
+            return _handle_condense(request, backend)
+        return _handle_classify(request, backend, event_logger)
     except Exception as exc:
         logger.error("Request error: %s", exc)
         return _response("clean", "Inference error — fail open")

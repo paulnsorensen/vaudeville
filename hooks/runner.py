@@ -163,6 +163,14 @@ def _run() -> None:
     _run_event_rules(event, hook_input, client)
 
 
+def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
+    """Condense text via SLM pre-pass for Stop events. Fail-open."""
+    if event != "Stop":
+        return text
+    _dbg("condensing %d chars for Stop event", len(text))
+    return client.condense(text)
+
+
 def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> None:
     """Evaluate all rules matching the given event."""
     rules = _load_rules_for_event(event)
@@ -171,6 +179,7 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
         if not text or len(text) < MIN_TEXT_LENGTH:
             continue
 
+        text = _maybe_condense(text, event, client)
         context_str = rule.resolve_context(hook_input, PLUGIN_ROOT)
         prompt, prefix_len = rule.split_prompt(text, context_str)
 

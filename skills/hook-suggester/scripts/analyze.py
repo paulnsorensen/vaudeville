@@ -352,6 +352,148 @@ def check_repeated_bash_patterns(days, min_occ):
     }
 
 
+def check_correction_patterns(days, min_occ):
+    """Mine user messages that correct Claude's behavior — SLM rule candidates."""
+    rows = query(f"""
+        SELECT
+            substr(message::VARCHAR, 1, 150) AS user_msg,
+            count(*) AS occurrences
+        FROM raw_entries
+        WHERE type = 'user'
+          AND userType = 'external'
+          AND length(message::VARCHAR) < 200
+          AND timestamp::DATE >= CURRENT_DATE - INTERVAL '{days}' DAY
+          AND (message::VARCHAR ILIKE '%no,%'
+               OR message::VARCHAR ILIKE '%wrong%'
+               OR message::VARCHAR ILIKE '%that''s not%'
+               OR message::VARCHAR ILIKE '%stop %doing%'
+               OR message::VARCHAR ILIKE '%I said%'
+               OR message::VARCHAR ILIKE '%not what I%')
+        GROUP BY user_msg
+        HAVING count(*) >= {min_occ}
+        ORDER BY occurrences DESC
+        LIMIT 10;
+    """)
+    if not rows:
+        return None
+    total = sum(int(r["occurrences"]) for r in rows)
+    examples = [r["user_msg"][:100] for r in rows]
+    return {
+        "id": "correction-patterns",
+        "event": "Stop",
+        "priority": "medium",
+        "title": "User correction patterns — SLM rule candidates",
+        "description": (
+            f"Found {total} user corrections across {len(rows)} patterns "
+            f"in the last {days} days. Each repeated correction is a "
+            f"candidate SLM rule."
+        ),
+        "examples": examples,
+        "hook_type": "slm-rule",
+        "suggested_action": "warn",
+    }
+
+
+def check_retry_loops(days, min_occ):
+    """Find tools called repeatedly on the same file with errors between."""
+    rows = query(f"""
+        WITH sequenced AS (
+            SELECT
+                tu.sessionId,
+                tu.tool_name,
+                tu.file_path,
+                tu.timestamp,
+                tr.is_error,
+                LAG(tr.is_error) OVER (
+                    PARTITION BY tu.sessionId, tu.file_path
+                    ORDER BY tu.timestamp
+                ) AS prev_error,
+                LAG(tu.tool_name) OVER (
+                    PARTITION BY tu.sessionId, tu.file_path
+                    ORDER BY tu.timestamp
+                ) AS prev_tool
+            FROM tool_uses tu
+            JOIN tool_results tr ON tu.tool_use_id = tr.tool_use_id
+            WHERE tu.file_path IS NOT NULL
+              AND tu.timestamp::DATE >= CURRENT_DATE - INTERVAL '{days}' DAY
+        )
+        SELECT
+            tool_name,
+            count(*) AS retry_count
+        FROM sequenced
+        WHERE prev_error = 'true'
+          AND tool_name = prev_tool
+        GROUP BY tool_name
+        HAVING count(*) >= {min_occ}
+        ORDER BY retry_count DESC
+        LIMIT 10;
+    """)
+    if not rows:
+        return None
+    total = sum(int(r["retry_count"]) for r in rows)
+    examples = [f"{r['tool_name']} ({r['retry_count']} retries)" for r in rows]
+    return {
+        "id": "retry-loops",
+        "event": "PostToolUse",
+        "priority": "medium",
+        "title": "Error-retry loops — guessing instead of reading errors",
+        "description": (
+            f"Found {total} error→retry chains across {len(rows)} tools "
+            f"in the last {days} days. A PostToolUse rule can catch "
+            f"repeated failures on the same file."
+        ),
+        "examples": examples,
+        "hook_type": "slm-rule",
+        "suggested_action": "warn",
+    }
+
+
+def check_permission_tool_waste(days, min_occ):
+    """Find tools that fail on permissions and get retried."""
+    rows = query(f"""
+        WITH perm_failures AS (
+            SELECT
+                tu.tool_name,
+                tu.sessionId,
+                tu.timestamp,
+                tu.tool_use_id
+            FROM tool_uses tu
+            JOIN tool_results tr ON tu.tool_use_id = tr.tool_use_id
+            WHERE tr.is_error = 'true'
+              AND tu.timestamp::DATE >= CURRENT_DATE - INTERVAL '{days}' DAY
+              AND (tr.content ILIKE '%permission%'
+                   OR tr.content ILIKE '%denied%'
+                   OR tr.content ILIKE '%not allowed%')
+        )
+        SELECT
+            tool_name,
+            count(*) AS failures
+        FROM perm_failures
+        GROUP BY tool_name
+        HAVING count(*) >= {min_occ}
+        ORDER BY failures DESC
+        LIMIT 10;
+    """)
+    if not rows:
+        return None
+    total = sum(int(r["failures"]) for r in rows)
+    examples = [f"{r['tool_name']} ({r['failures']} permission failures)" for r in rows]
+    return {
+        "id": "permission-tool-waste",
+        "event": "PreToolUse",
+        "priority": "low",
+        "title": "Tools wasting turns on permission walls",
+        "description": (
+            f"Found {total} permission-related failures across "
+            f"{len(rows)} tools in the last {days} days. "
+            f"A PreToolUse hook can intercept before the turn is burned."
+        ),
+        "examples": examples,
+        "hook_type": "workflow",
+        "suggested_action": "warn",
+    }
+
+
 def main():
     args = sys.argv[1:]
     days = DEFAULT_DAYS
@@ -378,6 +520,9 @@ def main():
         check_hook_failures,
         check_code_write_volume,
         check_repeated_bash_patterns,
+        check_correction_patterns,
+        check_retry_loops,
+        check_permission_tool_waste,
     ]
 
     suggestions = []

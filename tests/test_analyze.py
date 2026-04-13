@@ -251,3 +251,85 @@ class TestCheckRepeatedBashPatterns:
             result = analyze.check_repeated_bash_patterns(14, 3)
         assert result is not None
         assert len(result["examples"][0].split(" (")[0]) <= 80
+
+
+class TestCheckCorrectionPatterns:
+    def test_returns_none_when_no_rows(self) -> None:
+        with patch.object(analyze, "query", return_value=[]):
+            assert analyze.check_correction_patterns(14, 3) is None
+
+    def test_returns_suggestion_with_correction_examples(self) -> None:
+        rows = [
+            {"user_msg": "no, that's not what I meant", "occurrences": "5"},
+            {"user_msg": "wrong approach, use the Grep tool", "occurrences": "3"},
+        ]
+        with patch.object(analyze, "query", return_value=rows):
+            result = analyze.check_correction_patterns(14, 3)
+        assert result is not None
+        assert result["id"] == "correction-patterns"
+        assert result["event"] == "Stop"
+        assert result["hook_type"] == "slm-rule"
+        assert len(result["examples"]) == 2
+
+    def test_long_messages_truncated(self) -> None:
+        long_msg = "no, " + "x" * 200
+        rows = [{"user_msg": long_msg, "occurrences": "3"}]
+        with patch.object(analyze, "query", return_value=rows):
+            result = analyze.check_correction_patterns(14, 3)
+        assert result is not None
+        assert len(result["examples"][0]) <= 100
+
+
+class TestCheckRetryLoops:
+    def test_returns_none_when_no_rows(self) -> None:
+        with patch.object(analyze, "query", return_value=[]):
+            assert analyze.check_retry_loops(14, 3) is None
+
+    def test_returns_suggestion_with_tool_retries(self) -> None:
+        rows = [
+            {"tool_name": "Bash", "retry_count": "15"},
+            {"tool_name": "Edit", "retry_count": "8"},
+        ]
+        with patch.object(analyze, "query", return_value=rows):
+            result = analyze.check_retry_loops(14, 3)
+        assert result is not None
+        assert result["id"] == "retry-loops"
+        assert result["event"] == "PostToolUse"
+        assert result["hook_type"] == "slm-rule"
+        assert any("Bash" in ex for ex in result["examples"])
+
+    def test_total_count_sums_retries(self) -> None:
+        rows = [
+            {"tool_name": "Bash", "retry_count": "10"},
+            {"tool_name": "Edit", "retry_count": "5"},
+        ]
+        with patch.object(analyze, "query", return_value=rows):
+            result = analyze.check_retry_loops(14, 3)
+        assert result is not None
+        assert "15" in result["description"]
+
+
+class TestCheckPermissionToolWaste:
+    def test_returns_none_when_no_rows(self) -> None:
+        with patch.object(analyze, "query", return_value=[]):
+            assert analyze.check_permission_tool_waste(14, 3) is None
+
+    def test_returns_suggestion_with_permission_failures(self) -> None:
+        rows = [
+            {"tool_name": "Bash", "failures": "20"},
+            {"tool_name": "Write", "failures": "5"},
+        ]
+        with patch.object(analyze, "query", return_value=rows):
+            result = analyze.check_permission_tool_waste(14, 3)
+        assert result is not None
+        assert result["id"] == "permission-tool-waste"
+        assert result["event"] == "PreToolUse"
+        assert result["hook_type"] == "workflow"
+        assert len(result["examples"]) == 2
+
+    def test_total_count_sums_failures(self) -> None:
+        rows = [{"tool_name": "Bash", "failures": "10"}]
+        with patch.object(analyze, "query", return_value=rows):
+            result = analyze.check_permission_tool_waste(14, 3)
+        assert result is not None
+        assert "10" in result["description"]

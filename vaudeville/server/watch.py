@@ -33,6 +33,14 @@ def _parse_ts_display(ts: str) -> str:
         return ts[:8] if ts else "??:??:??"
 
 
+def _to_float(value: object) -> float:
+    """Coerce *value* to float, returning 0.0 on failure."""
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _verdict_text(verdict: str) -> Text:
     """Colour-code a verdict string."""
     if verdict == "violation":
@@ -58,8 +66,8 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
             _parse_ts_display(evt.get("ts", "")),
             evt.get("rule", "<unknown>"),
             _verdict_text(evt.get("verdict", "?")),
-            f"{evt.get('confidence', 0):.2f}",
-            f"{evt.get('latency_ms', 0):.1f}",
+            f"{_to_float(evt.get('confidence', 0)):.2f}",
+            f"{_to_float(evt.get('latency_ms', 0)):.1f}",
         )
     return table
 

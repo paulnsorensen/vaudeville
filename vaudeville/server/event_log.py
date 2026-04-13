@@ -56,6 +56,13 @@ class EventLogger:
         self._logs_dir = logs_dir
         os.makedirs(logs_dir, exist_ok=True)
 
+        # Remove the default stderr sink so loguru JSON doesn't interleave
+        # with the daemon's stdlib logging output.
+        try:
+            _loguru.remove(0)
+        except ValueError:
+            pass  # already removed by a prior EventLogger in this process
+
         self._logger = _loguru.bind()
         self._events_id: int | None = None
         self._violations_id: int | None = None

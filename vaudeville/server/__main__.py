@@ -106,7 +106,13 @@ def main() -> None:
     from .daemon import VaudevilleDaemon
     from .event_log import EventLogger
 
-    event_logger = EventLogger()
+    try:
+        event_logger: EventLogger | None = EventLogger()
+    except Exception as exc:
+        logging.warning(
+            "Failed to initialize event logger; continuing without it: %s", exc
+        )
+        event_logger = None
 
     daemon = VaudevilleDaemon(
         socket_path=args.socket,

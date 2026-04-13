@@ -40,6 +40,7 @@ class TestGGUFBackend:
             {
                 "huggingface_hub": MagicMock(hf_hub_download=mock_hub),
                 "llama_cpp": MagicMock(Llama=mock_lm_cls),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -59,6 +60,7 @@ class TestGGUFBackend:
             {
                 "huggingface_hub": MagicMock(hf_hub_download=mock_hub),
                 "llama_cpp": MagicMock(Llama=mock_lm_cls),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -183,7 +185,7 @@ class TestSetupGGUF:
         mock_llama_cpp = MagicMock(Llama=mock_llama_cls)
         with patch.dict(
             "sys.modules",
-            {"huggingface_hub": mock_hub, "llama_cpp": mock_llama_cpp},
+            {"huggingface_hub": mock_hub, "llama_cpp": mock_llama_cpp, "llama_cpp.llama_cache": MagicMock()},
         ):
             from vaudeville.setup import _setup_gguf
 

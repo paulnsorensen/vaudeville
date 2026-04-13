@@ -93,14 +93,18 @@ def handle_request(
         )
 
         if event_logger is not None:
+            from .event_log import ClassificationEvent
+
             event_logger.log_event(
-                rule=rule,
-                verdict=response.verdict,
-                confidence=confidence,
-                latency_ms=elapsed_ms,
-                prompt_chars=len(prompt),
-                reason=response.reason,
-                input_snippet=prompt[:500],
+                ClassificationEvent(
+                    rule=rule,
+                    verdict=response.verdict,
+                    confidence=confidence,
+                    latency_ms=elapsed_ms,
+                    prompt_chars=len(prompt),
+                    reason=response.reason,
+                    input_snippet=prompt[:500],
+                )
             )
 
         return _response(response.verdict, response.reason, confidence)

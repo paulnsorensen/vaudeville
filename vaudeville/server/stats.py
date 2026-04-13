@@ -23,20 +23,30 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
     gracefully.
     """
     events = _parse_events(log_path)
-
     if not events:
         return _empty_result()
 
-    # Filter to events with required fields
     valid = [e for e in events if "latency_ms" in e and "ts" in e]
     if not valid:
         return _empty_result()
 
-    latencies = [e["latency_ms"] for e in valid]
-    timestamps = [e["ts"] for e in valid]
+    return {
+        "total": len(valid),
+        "rules": _summarize_rules(valid),
+        "latency": _latency_stats([e["latency_ms"] for e in valid]),
+        "time_range": {
+            "earliest": min(e["ts"] for e in valid),
+            "latest": max(e["ts"] for e in valid),
+        },
+    }
 
+
+def _summarize_rules(
+    events: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Group events by rule and compute per-rule summaries."""
     rules: dict[str, dict[str, Any]] = {}
-    for evt in valid:
+    for evt in events:
         rule = evt.get("rule", "<unknown>")
         if rule not in rules:
             rules[rule] = {"total": 0, "violations": 0, "latencies": []}
@@ -45,28 +55,18 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
             rules[rule]["violations"] += 1
         rules[rule]["latencies"].append(evt["latency_ms"])
 
-    rule_summaries: dict[str, dict[str, Any]] = {}
+    summaries: dict[str, dict[str, Any]] = {}
     for name, data in sorted(rules.items()):
         total = data["total"]
         violations = data["violations"]
         pass_rate = ((total - violations) / total) * 100 if total else 0.0
-        avg_latency = statistics.mean(data["latencies"])
-        rule_summaries[name] = {
+        summaries[name] = {
             "total": total,
             "violations": violations,
             "pass_rate": round(pass_rate, 1),
-            "avg_latency_ms": round(avg_latency, 1),
+            "avg_latency_ms": round(statistics.mean(data["latencies"]), 1),
         }
-
-    return {
-        "total": len(valid),
-        "rules": rule_summaries,
-        "latency": _latency_stats(latencies),
-        "time_range": {
-            "earliest": min(timestamps),
-            "latest": max(timestamps),
-        },
-    }
+    return summaries
 
 
 def _parse_events(log_path: str) -> list[dict[str, Any]]:

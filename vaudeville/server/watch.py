@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any
+from typing import IO, Any
 
 from rich.live import Live
 from rich.table import Table
@@ -64,46 +64,57 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
     return table
 
 
-def watch(log_path: str = _EVENTS_LOG) -> None:
-    """Tail *log_path* and render a live table until interrupted."""
+def _read_new_events(
+    f: IO[str],
+    events: list[dict[str, Any]],
+    totals: tuple[int, int],
+) -> tuple[list[dict[str, Any]], tuple[int, int], bool]:
+    """Read new lines from *f*, return updated events, totals, and changed flag."""
+    total_seen, violations = totals
+    changed = False
+    for line in f.readlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            evt = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        events.append(evt)
+        total_seen += 1
+        if evt.get("verdict") == "violation":
+            violations += 1
+        changed = True
+
+    if len(events) > _MAX_ROWS:
+        events = events[-_MAX_ROWS:]
+
+    return events, (total_seen, violations), changed
+
+
+def _ensure_log_exists(log_path: str) -> None:
+    """Create the log file and parent dirs if missing."""
     if not os.path.exists(log_path):
         parent = os.path.dirname(log_path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        # Touch the file so we can open it
         with open(log_path, "a"):
             pass
 
+
+def watch(log_path: str = _EVENTS_LOG) -> None:
+    """Tail *log_path* and render a live table until interrupted."""
+    _ensure_log_exists(log_path)
+
     events: list[dict[str, Any]] = []
-    total_seen = 0
-    violations = 0
+    totals = (0, 0)
 
     with open(log_path) as f:
         f.seek(0, 2)  # seek to end
 
-        with Live(
-            _build_table(events, (total_seen, violations)), refresh_per_second=5
-        ) as live:
+        with Live(_build_table(events, totals), refresh_per_second=5) as live:
             while True:
-                new_lines = f.readlines()
-                for line in new_lines:
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    try:
-                        evt = json.loads(stripped)
-                    except json.JSONDecodeError:
-                        continue
-                    events.append(evt)
-                    total_seen += 1
-                    if evt.get("verdict") == "violation":
-                        violations += 1
-
-                # Keep only last _MAX_ROWS in memory
-                if len(events) > _MAX_ROWS:
-                    events = events[-_MAX_ROWS:]
-
-                if new_lines:
-                    live.update(_build_table(events, (total_seen, violations)))
-
+                events, totals, changed = _read_new_events(f, events, totals)
+                if changed:
+                    live.update(_build_table(events, totals))
                 time.sleep(_POLL_INTERVAL)

@@ -140,13 +140,6 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
 
-    tail_parser = sub.add_parser("tail", help="Tail active daemon logs")
-    session_group = tail_parser.add_mutually_exclusive_group()
-    session_group.add_argument(
-        "--all", action="store_true", help="Tail all active sessions"
-    )
-    session_group.add_argument("--session", help="Tail a specific session ID")
-
     watch_parser = sub.add_parser("watch", help="Live TUI of rule firings")
     watch_parser.add_argument(
         "--log-path",
@@ -162,14 +155,22 @@ def main() -> None:
         help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
     )
 
+    # Hidden — superseded by `watch`, kept as fallback
+    if sys.argv[1:2] == ["tail"]:
+        tail_parser = argparse.ArgumentParser(prog="vaudeville tail")
+        tail_group = tail_parser.add_mutually_exclusive_group()
+        tail_group.add_argument("--all", action="store_true")
+        tail_group.add_argument("--session")
+        tail_args = tail_parser.parse_args(sys.argv[2:])
+        cmd_tail(argparse.Namespace(command="tail", **vars(tail_args)))
+        return
+
     args = parser.parse_args()
     if args.command is None:
         parser.print_help()
         sys.exit(1)
 
-    if args.command == "tail":
-        cmd_tail(args)
-    elif args.command == "watch":
+    if args.command == "watch":
         cmd_watch(args)
     elif args.command == "stats":
         cmd_stats(args)

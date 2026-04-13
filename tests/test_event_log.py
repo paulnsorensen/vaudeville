@@ -6,7 +6,7 @@ import json
 import pathlib
 import time
 
-from vaudeville.server.event_log import EventLogger
+from vaudeville.server.event_log import ClassificationEvent, EventLogger
 from vaudeville.server.log_config import LogConfig
 
 
@@ -21,11 +21,13 @@ def test_log_event_writes_events_jsonl(tmp_path: pathlib.Path) -> None:
     logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
     try:
         logger.log_event(
-            rule="no-hedging",
-            verdict="clean",
-            confidence=0.92,
-            latency_ms=42.3,
-            prompt_chars=150,
+            ClassificationEvent(
+                rule="no-hedging",
+                verdict="clean",
+                confidence=0.92,
+                latency_ms=42.3,
+                prompt_chars=150,
+            )
         )
         # Give loguru a moment to flush
         time.sleep(0.05)
@@ -48,11 +50,13 @@ def test_clean_verdict_not_in_violations(tmp_path: pathlib.Path) -> None:
     logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
     try:
         logger.log_event(
-            rule="no-hedging",
-            verdict="clean",
-            confidence=0.92,
-            latency_ms=42.3,
-            prompt_chars=150,
+            ClassificationEvent(
+                rule="no-hedging",
+                verdict="clean",
+                confidence=0.92,
+                latency_ms=42.3,
+                prompt_chars=150,
+            )
         )
         time.sleep(0.05)
 
@@ -67,13 +71,15 @@ def test_violation_written_to_both_files(tmp_path: pathlib.Path) -> None:
     logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
     try:
         logger.log_event(
-            rule="no-sycophancy",
-            verdict="violation",
-            confidence=0.88,
-            latency_ms=55.1,
-            prompt_chars=200,
-            reason="Unearned praise detected",
-            input_snippet="Great question! That's a really smart approach.",
+            ClassificationEvent(
+                rule="no-sycophancy",
+                verdict="violation",
+                confidence=0.88,
+                latency_ms=55.1,
+                prompt_chars=200,
+                reason="Unearned praise detected",
+                input_snippet="Great question! That's a really smart approach.",
+            )
         )
         time.sleep(0.05)
 
@@ -101,13 +107,15 @@ def test_input_snippet_truncated_at_500(tmp_path: pathlib.Path) -> None:
     try:
         long_snippet = "x" * 1000
         logger.log_event(
-            rule="test-rule",
-            verdict="violation",
-            confidence=0.75,
-            latency_ms=30.0,
-            prompt_chars=1000,
-            reason="too long",
-            input_snippet=long_snippet,
+            ClassificationEvent(
+                rule="test-rule",
+                verdict="violation",
+                confidence=0.75,
+                latency_ms=30.0,
+                prompt_chars=1000,
+                reason="too long",
+                input_snippet=long_snippet,
+            )
         )
         time.sleep(0.05)
 
@@ -123,11 +131,13 @@ def test_multiple_events(tmp_path: pathlib.Path) -> None:
     try:
         for i in range(3):
             logger.log_event(
-                rule=f"rule-{i}",
-                verdict="clean",
-                confidence=0.9,
-                latency_ms=10.0,
-                prompt_chars=50,
+                ClassificationEvent(
+                    rule=f"rule-{i}",
+                    verdict="clean",
+                    confidence=0.9,
+                    latency_ms=10.0,
+                    prompt_chars=50,
+                )
             )
         time.sleep(0.05)
 
@@ -180,11 +190,13 @@ def test_confidence_rounded(tmp_path: pathlib.Path) -> None:
     logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
     try:
         logger.log_event(
-            rule="test",
-            verdict="clean",
-            confidence=0.123456789,
-            latency_ms=10.0,
-            prompt_chars=50,
+            ClassificationEvent(
+                rule="test",
+                verdict="clean",
+                confidence=0.123456789,
+                latency_ms=10.0,
+                prompt_chars=50,
+            )
         )
         time.sleep(0.05)
 
@@ -199,11 +211,13 @@ def test_latency_rounded(tmp_path: pathlib.Path) -> None:
     logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
     try:
         logger.log_event(
-            rule="test",
-            verdict="clean",
-            confidence=0.9,
-            latency_ms=42.3456,
-            prompt_chars=50,
+            ClassificationEvent(
+                rule="test",
+                verdict="clean",
+                confidence=0.9,
+                latency_ms=42.3456,
+                prompt_chars=50,
+            )
         )
         time.sleep(0.05)
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -17,6 +18,19 @@ from loguru import logger as _loguru
 from .log_config import LogConfig, load_log_config
 
 _LOGS_DIR = os.path.join(os.path.expanduser("~"), ".vaudeville", "logs")
+
+
+@dataclass(frozen=True)
+class ClassificationEvent:
+    """All fields for a single classification result."""
+
+    rule: str
+    verdict: str
+    confidence: float
+    latency_ms: float
+    prompt_chars: int
+    reason: str = ""
+    input_snippet: str = ""
 
 
 class EventLogger:
@@ -73,34 +87,25 @@ class EventLogger:
             filter=lambda r: r["extra"].get("_sink") == "violations",
         )
 
-    def log_event(
-        self,
-        rule: str,
-        verdict: str,
-        confidence: float,
-        latency_ms: float,
-        prompt_chars: int,
-        reason: str = "",
-        input_snippet: str = "",
-    ) -> None:
+    def log_event(self, event: ClassificationEvent) -> None:
         """Record a classification event."""
         ts = datetime.now(tz=timezone.utc).isoformat()
         common: dict[str, Any] = {
             "ts": ts,
-            "rule": rule,
-            "verdict": verdict,
-            "confidence": round(confidence, 4),
-            "latency_ms": round(latency_ms, 1),
-            "prompt_chars": prompt_chars,
+            "rule": event.rule,
+            "verdict": event.verdict,
+            "confidence": round(event.confidence, 4),
+            "latency_ms": round(event.latency_ms, 1),
+            "prompt_chars": event.prompt_chars,
         }
 
         self._logger.bind(_sink="events").info(json.dumps(common, default=str))
 
-        if verdict == "violation":
+        if event.verdict == "violation":
             violation = {
                 **common,
-                "reason": reason,
-                "input_snippet": input_snippet[:500],
+                "reason": event.reason,
+                "input_snippet": event.input_snippet[:500],
             }
             self._logger.bind(_sink="violations").info(
                 json.dumps(violation, default=str)

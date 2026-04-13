@@ -31,6 +31,7 @@ class MLXBackend:
         self._stream_generate = stream_generate
         self._generate_step = generate_step
         self._prefix_caches: dict[str, list[Any]] = {}
+        self._chat_template_parts: tuple[str, str] | None = None
 
     def classify(self, prompt: str, max_tokens: int = 50) -> str:
         """Run inference on prompt, return raw text output."""
@@ -199,9 +200,13 @@ class MLXBackend:
     def _split_chat_template(self) -> tuple[str, str]:
         """Split the chat template into (opening, closing) around user content.
 
+        Result is cached after the first call — the template is static.
         Returns the ChatML fallback if the tokenizer lacks apply_chat_template
         or if SPLIT_MARKER is not preserved in the output.
         """
+        if self._chat_template_parts is not None:
+            return self._chat_template_parts
+
         tokenizer: Any = self._tokenizer
         if hasattr(tokenizer, "apply_chat_template"):
             full: str = tokenizer.apply_chat_template(
@@ -214,11 +219,13 @@ class MLXBackend:
             )
             if "SPLIT_MARKER" in full:
                 opening, _, closing = full.partition("SPLIT_MARKER")
-                return opening, closing
+                self._chat_template_parts = (opening, closing)
+                return self._chat_template_parts
             logger.warning("SPLIT_MARKER not found in chat template — using fallback")
         opening = f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n"
         closing = "<|im_end|>\n<|im_start|>assistant\n"
-        return opening, closing
+        self._chat_template_parts = (opening, closing)
+        return self._chat_template_parts
 
     def _format_prefix(self, user_prefix: str) -> str:
         """Format the prefix through the chat template opening."""

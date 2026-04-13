@@ -30,6 +30,7 @@ class TestGGUFBackend:
             {
                 "huggingface_hub": MagicMock(hf_hub_download=mock_hub),
                 "llama_cpp": MagicMock(Llama=mock_lm_cls),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -49,6 +50,7 @@ class TestGGUFBackend:
             {
                 "huggingface_hub": MagicMock(hf_hub_download=mock_hub),
                 "llama_cpp": MagicMock(Llama=mock_lm_cls),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -69,6 +71,7 @@ class TestGGUFBackend:
             {
                 "huggingface_hub": MagicMock(hf_hub_download=mock_hub),
                 "llama_cpp": MagicMock(Llama=mock_lm_cls),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -109,6 +112,7 @@ class TestGGUFBackend:
             {
                 "huggingface_hub": MagicMock(hf_hub_download=mock_hub),
                 "llama_cpp": MagicMock(Llama=mock_lm_cls),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -133,6 +137,7 @@ class TestGGUFBackend:
             {
                 "huggingface_hub": MagicMock(hf_hub_download=mock_hub),
                 "llama_cpp": MagicMock(Llama=mock_lm_cls),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -170,6 +175,7 @@ class TestGGUFBackend:
             {
                 "huggingface_hub": MagicMock(hf_hub_download=mock_hub),
                 "llama_cpp": MagicMock(Llama=mock_lm_cls),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -194,6 +200,7 @@ class TestGGUFBackend:
                 "llama_cpp": MagicMock(
                     Llama=mock_lm_cls, LlamaGrammar=mock_grammar_cls
                 ),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -241,6 +248,7 @@ class TestGGUFBackend:
                 "llama_cpp": MagicMock(
                     Llama=mock_lm_cls, LlamaGrammar=mock_grammar_cls
                 ),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend
@@ -265,6 +273,7 @@ class TestGGUFBackend:
                 "llama_cpp": MagicMock(
                     Llama=mock_lm_cls, LlamaGrammar=mock_grammar_cls
                 ),
+                "llama_cpp.llama_cache": MagicMock(),
             },
         ):
             from vaudeville.server.gguf_backend import GGUFBackend

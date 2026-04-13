@@ -10,6 +10,8 @@ from typing import Any
 
 from ..core.protocol import ClassifyResult
 
+CACHE_CAPACITY = 2 * 1024 * 1024 * 1024  # 2 GB
+
 DEFAULT_REPO = "microsoft/Phi-4-mini-instruct-gguf"
 DEFAULT_FILE = "Phi-4-mini-instruct-q4.gguf"
 TOP_LOGPROBS = 10
@@ -48,6 +50,7 @@ class GGUFBackend:
     ) -> None:
         from huggingface_hub import hf_hub_download
         from llama_cpp import Llama
+        from llama_cpp.llama_cache import LlamaRAMCache
 
         model_path = hf_hub_download(repo_id=repo_id, filename=filename)
         self._llm = Llama(
@@ -56,6 +59,7 @@ class GGUFBackend:
             n_gpu_layers=0,
             verbose=False,
         )
+        self._llm.set_cache(LlamaRAMCache(capacity_bytes=CACHE_CAPACITY))
 
     def classify(self, prompt: str, max_tokens: int = 50) -> str:
         """Run inference on prompt, return raw text output."""

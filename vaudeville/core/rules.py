@@ -147,7 +147,7 @@ class Rule:
     threshold: float = 0.5
 
     def format_prompt(self, text: str, context: str = "") -> str:
-        safe_text = _sanitize_input(back_truncate(text))
+        safe_text = _sanitize_input(back_truncate(_prepare_text(text, self.event)))
         safe_context = _sanitize_input(context) if context else ""
         return self.prompt.replace("{text}", safe_text).replace(
             "{context}", safe_context
@@ -159,7 +159,7 @@ class Rule:
         prefix_len is the character index where the static prefix ends
         and the variable {text} content begins.
         """
-        safe_text = _sanitize_input(back_truncate(text))
+        safe_text = _sanitize_input(back_truncate(_prepare_text(text, self.event)))
         safe_context = _sanitize_input(context) if context else ""
         prompt_with_context = self.prompt.replace("{context}", safe_context)
 

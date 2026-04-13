@@ -450,7 +450,7 @@ def check_retry_loops(days, min_occ):
 
 
 def check_permission_tool_waste(days, min_occ):
-    """Find tools that fail on permissions and get retried."""
+    """Find tools that hit permission errors, burning turns a PreToolUse hook could intercept."""
     rows = query(f"""
         WITH perm_failures AS (
             SELECT

@@ -81,7 +81,7 @@ def cmd_watch(args: argparse.Namespace) -> None:
 
 def cmd_stats(args: argparse.Namespace) -> None:
     """Print aggregated classification statistics."""
-    from vaudeville.server.stats import aggregate_events
+    from vaudeville.server import aggregate_events
 
     result = aggregate_events(args.log_path)
 

@@ -41,6 +41,42 @@ class VaudevilleClient:
             logger.warning("[vaudeville] classify failed: %s", exc)
             return None
 
+    def condense(self, text: str) -> str:
+        """Send a condense request and return the condensed text.
+
+        Returns the original text if the daemon is unavailable (fail-open).
+        """
+        try:
+            return self._send_condense(text)
+        except Exception as exc:
+            logger.warning("[vaudeville] condense failed: %s", exc)
+            return text
+
+    def _send_condense(self, text: str) -> str:
+        if not os.path.exists(self._socket_path):
+            raise FileNotFoundError(self._socket_path)
+
+        payload = json.dumps({"op": "condense", "text": text}).encode() + b"\n"
+
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(CONNECT_TIMEOUT)
+            sock.connect(self._socket_path)
+            sock.settimeout(READ_TIMEOUT)
+            sock.sendall(payload)
+
+            data = bytearray()
+            while True:
+                scan_from = len(data)
+                chunk = sock.recv(RECV_CHUNK)
+                if not chunk:
+                    break
+                data.extend(chunk)
+                if data.find(b"\n", scan_from) >= 0:
+                    break
+
+        response = json.loads(bytes(data).decode().strip())
+        return str(response.get("text", text))
+
     def _send(self, request: ClassifyRequest) -> ClassifyResponse:
         if not os.path.exists(self._socket_path):
             raise FileNotFoundError(self._socket_path)
@@ -53,16 +89,17 @@ class VaudevilleClient:
             sock.settimeout(READ_TIMEOUT)
             sock.sendall(payload)
 
-            data = b""
+            data = bytearray()
             while True:
+                scan_from = len(data)
                 chunk = sock.recv(RECV_CHUNK)
                 if not chunk:
                     break
-                data += chunk
-                if b"\n" in data:
+                data.extend(chunk)
+                if data.find(b"\n", scan_from) >= 0:
                     break
 
-        response = json.loads(data.decode().strip())
+        response = json.loads(bytes(data).decode().strip())
         return ClassifyResponse(
             verdict=response.get("verdict", "clean"),
             reason=response.get("reason", ""),

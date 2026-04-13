@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,14 +24,12 @@ MAX_INPUT_TOKENS = 3000
 CHARS_PER_TOKEN = 4  # conservative English approximation
 
 
-def _sanitize_input(text: str) -> str:
+def sanitize_input(text: str) -> str:
     """Neutralize verdict/reason markers that could spoof parse_verdict().
 
     parse_verdict() matches case-insensitively, so sanitization must too.
     Zero-width space breaks the pattern match without altering visible text.
     """
-    import re
-
     text = re.sub(r"(?i)VERDICT\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
     text = re.sub(r"(?i)REASON\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
     return text
@@ -42,6 +41,72 @@ def back_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
     if len(text) <= max_chars:
         return text
     return text[-max_chars:]
+
+
+def front_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
+    """Keep the first max_tokens tokens (approx). For context at turn start."""
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars]
+
+
+def sandwich_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
+    """Keep head + tail slices. Violations cluster at the end but beginning gives context."""
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    marker = "\n[...]\n"
+    available = max_chars - len(marker)
+    if available <= 0:
+        return back_truncate(text, max_tokens)
+    head_chars = available * 3 // 10
+    tail_chars = available - head_chars
+    return text[:head_chars] + marker + text[-tail_chars:]
+
+
+def _truncate_for_event(
+    text: str,
+    event: str,
+    max_tokens: int = MAX_INPUT_TOKENS,
+) -> str:
+    """Apply event-aware truncation strategy.
+
+    Stop hooks get sandwich truncation (beginning context + end where violations cluster).
+    PreToolUse hooks care about the beginning (front-truncate).
+    All other events default to back-truncation.
+    """
+    if event == "Stop":
+        return sandwich_truncate(text, max_tokens)
+    if event == "PreToolUse":
+        return front_truncate(text, max_tokens)
+    return back_truncate(text, max_tokens)
+
+
+_CODE_BLOCK_RE = re.compile(
+    r"^```[^\n]*\n.*?^```\s*$",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _strip_code_blocks(text: str) -> str:
+    """Remove fenced code blocks — they consume tokens but rarely contain violations."""
+    return _CODE_BLOCK_RE.sub("", text)
+
+
+def prepare_text(text: str, event: str) -> str:
+    """Strip structural noise before truncation.
+
+    Only applies to Stop hooks (assistant response quality).
+    Other event types pass through unmodified.
+    Fail-open: returns original text on any error.
+    """
+    if event != "Stop":
+        return text
+    try:
+        return _strip_code_blocks(text)
+    except Exception:
+        return text
 
 
 def _resolve_field(data: dict[str, object], path: str) -> object:
@@ -86,8 +151,10 @@ class Rule:
     threshold: float = 0.5
 
     def format_prompt(self, text: str, context: str = "") -> str:
-        safe_text = _sanitize_input(back_truncate(text))
-        safe_context = _sanitize_input(context) if context else ""
+        safe_text = sanitize_input(
+            _truncate_for_event(prepare_text(text, self.event), self.event)
+        )
+        safe_context = sanitize_input(context) if context else ""
         return self.prompt.replace("{text}", safe_text).replace(
             "{context}", safe_context
         )
@@ -98,8 +165,10 @@ class Rule:
         prefix_len is the character index where the static prefix ends
         and the variable {text} content begins.
         """
-        safe_text = _sanitize_input(back_truncate(text))
-        safe_context = _sanitize_input(context) if context else ""
+        safe_text = sanitize_input(
+            _truncate_for_event(prepare_text(text, self.event), self.event)
+        )
+        safe_context = sanitize_input(context) if context else ""
         prompt_with_context = self.prompt.replace("{context}", safe_context)
 
         before, _, after = prompt_with_context.partition("{text}")

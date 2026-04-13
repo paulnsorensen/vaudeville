@@ -232,6 +232,7 @@ class TestRunPipeline:
             threshold=0.5,
         )
         mock_client = MagicMock()
+        mock_client.condense.side_effect = lambda text: text
         mock_client.classify.return_value = ClassifyResponse(
             verdict="clean", reason="", confidence=0.9
         )
@@ -243,9 +244,11 @@ class TestRunPipeline:
         ):
             runner._run_event_rules("Stop", hook_input, mock_client)
 
-        mock_client.classify.assert_called_once()
-        _, kwargs = mock_client.classify.call_args
-        assert kwargs["rule"] == "test-hedging"
+        from unittest.mock import ANY
+
+        mock_client.classify.assert_called_once_with(
+            ANY, rule="test-hedging", prefix_len=ANY
+        )
 
     def test_main_catches_unexpected_exception(
         self, capsys: pytest.CaptureFixture[str]
@@ -255,3 +258,126 @@ class TestRunPipeline:
                 runner.main()
         assert exc_info.value.code == 0
         assert "fail open" in capsys.readouterr().err
+
+
+class TestMaybeCondense:
+    """Tests for _maybe_condense — SLM condensing gate."""
+
+    def test_stop_event_calls_condense(self) -> None:
+        from unittest.mock import MagicMock
+
+        client = MagicMock()
+        client.condense.return_value = "condensed"
+        result = runner._maybe_condense("original text", "Stop", client)
+        assert result == "condensed"
+        client.condense.assert_called_once_with("original text")
+
+    def test_non_stop_event_skips_condense(self) -> None:
+        from unittest.mock import MagicMock
+
+        client = MagicMock()
+        result = runner._maybe_condense("original text", "PreToolUse", client)
+        assert result == "original text"
+        client.condense.assert_not_called()
+
+    def test_unknown_event_skips_condense(self) -> None:
+        from unittest.mock import MagicMock
+
+        client = MagicMock()
+        result = runner._maybe_condense("text", "PostToolUse", client)
+        assert result == "text"
+        client.condense.assert_not_called()
+
+    def test_run_event_rules_condenses_for_stop(self) -> None:
+        """End-to-end: _run_event_rules calls condense for Stop events."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Check: {text}",
+            context=[{"field": "body"}],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+        )
+        client = MagicMock()
+        client.condense.return_value = "condensed body"
+        client.classify.return_value = ClassifyResponse(
+            verdict="clean", reason="ok", confidence=0.9
+        )
+        hook_input = {"body": "x" * 100}
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[rule]),
+            pytest.raises(SystemExit),
+        ):
+            runner._run_event_rules("Stop", hook_input, client)
+
+        client.condense.assert_called_once_with("x" * 100)
+
+    def test_code_blocks_stripped_before_condense(self) -> None:
+        """_prepare_text runs before _maybe_condense: code blocks are gone."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Check: {text}",
+            context=[{"field": "body"}],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+        )
+        client = MagicMock()
+        client.condense.side_effect = lambda text: text
+        client.classify.return_value = ClassifyResponse(
+            verdict="clean", reason="ok", confidence=0.9
+        )
+        body = "prose here\n```python\ncode_block()\n```\nmore prose\n" + "x" * 100
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[rule]),
+            pytest.raises(SystemExit),
+        ):
+            runner._run_event_rules("Stop", {"body": body}, client)
+
+        condensed_arg = client.condense.call_args[0][0]
+        assert "code_block()" not in condensed_arg
+        assert "prose here" in condensed_arg
+
+    def test_run_event_rules_skips_condense_for_pretooluse(self) -> None:
+        """_run_event_rules does NOT condense for PreToolUse events."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        rule = Rule(
+            name="test-rule",
+            event="PreToolUse",
+            prompt="Check: {text}",
+            context=[{"field": "body"}],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+        )
+        client = MagicMock()
+        client.classify.return_value = ClassifyResponse(
+            verdict="clean", reason="ok", confidence=0.9
+        )
+        hook_input = {"body": "x" * 100}
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[rule]),
+            pytest.raises(SystemExit),
+        ):
+            runner._run_event_rules("PreToolUse", hook_input, client)
+
+        client.condense.assert_not_called()

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import errno
 import fcntl
-import json
 import logging
 import os
 import signal
@@ -18,14 +17,11 @@ import threading
 import time
 
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
-from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
+from ._handlers import handle_request
 from .event_log import EventLogger
-from .inference import (
-    CachedBackend,
-    CachedLogprobBackend,
-    InferenceBackend,
-    LogprobBackend,
-)
+from .inference import InferenceBackend
+
+__all__ = ["VaudevilleDaemon", "acquire_pid_lock", "handle_request"]
 
 IDLE_TIMEOUT = 60 * 60  # 60 minutes
 RECV_CHUNK = 4096
@@ -35,6 +31,13 @@ THREAD_WARN = 20
 THREAD_KILL = 50
 
 logger = logging.getLogger(__name__)
+
+
+def _close_fd_safely(fd: int) -> None:
+    try:
+        os.close(fd)
+    except OSError:
+        pass
 
 
 def acquire_pid_lock(pid_file: str) -> int | None:
@@ -52,98 +55,10 @@ def acquire_pid_lock(pid_file: str) -> int | None:
         return pid_fd
     except OSError as exc:
         if pid_fd is not None:
-            try:
-                os.close(pid_fd)
-            except OSError:
-                pass
+            _close_fd_safely(pid_fd)
         if exc.errno not in (errno.EWOULDBLOCK, errno.EACCES):
             logger.error("Failed to acquire PID lock file %r: %s", pid_file, exc)
         return None
-
-
-def _run_inference(
-    backend: InferenceBackend,
-    prompt: str,
-    prefix_len: int = 0,
-) -> ClassifyResult:
-    """Run inference with optional prefix caching and logprobs."""
-    if prefix_len > 0 and isinstance(backend, CachedLogprobBackend):
-        return backend.classify_cached_with_logprobs(prompt, prefix_len)
-    elif prefix_len > 0 and isinstance(backend, CachedBackend):
-        text = backend.classify_cached(prompt, prefix_len)
-        return ClassifyResult(text=text)
-    elif prefix_len > 0:
-        logger.debug(
-            "prefix_len=%d but backend lacks cached methods — uncached", prefix_len
-        )
-    if isinstance(backend, LogprobBackend):
-        return backend.classify_with_logprobs(prompt, max_tokens=50)
-    text = backend.classify(prompt, max_tokens=50)
-    return ClassifyResult(text=text)
-
-
-def handle_request(
-    data: bytes,
-    backend: InferenceBackend,
-    event_logger: EventLogger | None = None,
-) -> bytes:
-    """Pure function: classify one request, return JSON response bytes."""
-    try:
-        request = json.loads(data.decode().strip())
-        prompt = request.get("prompt", "")
-        rule = request.get("rule", "")
-        prefix_len = request.get("prefix_len", 0)
-
-        logger.debug("prompt=%d chars prefix_len=%d", len(prompt), prefix_len)
-        t0 = time.monotonic()
-        result = _run_inference(backend, prompt, prefix_len)
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        response = parse_verdict(result.text)
-        confidence = compute_confidence(result.logprobs, response.verdict)
-        safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:100]
-        logger.info(
-            "CLASSIFY verdict=%s confidence=%.3f "
-            " latency_ms=%.0f prompt_chars=%d reason=%s",
-            response.verdict,
-            confidence,
-            elapsed_ms,
-            len(prompt),
-            safe_reason,
-        )
-
-        if event_logger is not None:
-            from .event_log import ClassificationEvent
-
-            event_logger.log_event(
-                ClassificationEvent(
-                    rule=rule,
-                    verdict=response.verdict,
-                    confidence=confidence,
-                    latency_ms=elapsed_ms,
-                    prompt_chars=len(prompt),
-                    reason=response.reason,
-                    input_snippet=prompt[:500],
-                )
-            )
-
-        return _response(response.verdict, response.reason, confidence)
-
-    except Exception as exc:
-        logger.error("Request error: %s", exc)
-        return _response("clean", "Inference error — fail open")
-
-
-def _response(verdict: str, reason: str, confidence: float = 1.0) -> bytes:
-    return (
-        json.dumps(
-            {
-                "verdict": verdict,
-                "reason": reason,
-                "confidence": confidence,
-            }
-        ).encode()
-        + b"\n"
-    )
 
 
 def _read_message(conn: socket.socket) -> bytes:
@@ -156,12 +71,14 @@ def _read_message(conn: socket.socket) -> bytes:
     """
     buf = bytearray()
     while True:
+        scan_from = len(buf)
         chunk = conn.recv(RECV_CHUNK)
         if not chunk:
             break
         buf.extend(chunk)
-        if b"\n" in buf:
-            return bytes(buf.split(b"\n", 1)[0])
+        nl_pos = buf.find(b"\n", scan_from)
+        if nl_pos >= 0:
+            return bytes(buf[:nl_pos])
         if len(buf) > MAX_REQUEST_SIZE:
             logger.warning("Request exceeded %d bytes — dropping", MAX_REQUEST_SIZE)
             return b""

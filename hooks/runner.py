@@ -28,6 +28,7 @@ if PLUGIN_ROOT not in sys.path:
 
 try:
     from vaudeville.core.client import VaudevilleClient  # noqa: E402
+    from vaudeville.core import prepare_text  # noqa: E402
 except ImportError as _exc:
     print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
     print("{}")
@@ -67,7 +68,7 @@ def extract_field(data: dict, dotted_path: str) -> str:
         current = current.get(key)
         if current is None:
             return ""
-    return "" if current is None else str(current)
+    return str(current)
 
 
 def extract_text_from_dict(hook_input: dict, context: list) -> str:
@@ -168,14 +169,38 @@ def _run() -> None:
     _run_event_rules(event, hook_input, client)
 
 
+_CONDENSE_MAX_CHARS = (
+    500_000  # skip condense above this — daemon would mostly pass through
+)
+
+
+def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
+    """Condense text via SLM pre-pass for Stop events. Fail-open."""
+    if event != "Stop":
+        return text
+    _dbg("condensing %d chars for Stop event", len(text))
+    if len(text) > _CONDENSE_MAX_CHARS:
+        _dbg(
+            "skipping condense: %d chars exceeds %d limit",
+            len(text),
+            _CONDENSE_MAX_CHARS,
+        )
+        return text
+    return client.condense(text)
+
+
 def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> None:
-    """Evaluate all rules matching the given event."""
     rules = _load_rules_for_event(event)
+    condensed: dict[str, str] = {}
     for rule in rules:
         text = extract_text_from_dict(hook_input, rule.context)
         if not text or len(text) < MIN_TEXT_LENGTH:
             continue
 
+        text = prepare_text(text, event)
+        if text not in condensed:
+            condensed[text] = _maybe_condense(text, event, client)
+        text = condensed[text]
         context_str = rule.resolve_context(hook_input, PLUGIN_ROOT)
         prompt, prefix_len = rule.split_prompt(text, context_str)
 
@@ -195,9 +220,4 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as exc:
-        print(f"[vaudeville] runner crashed ({exc}) — fail open", file=sys.stderr)
-        print("{}")
-        sys.exit(0)
+    main()

@@ -87,6 +87,24 @@ def _strip_recaps(text: str) -> str:
         return text
 
 
+def _prepare_text(text: str, event: str) -> str:
+    """Chain content strippers for hook-aware text preparation.
+
+    Only applies stripping for Stop hooks (assistant response quality).
+    Other event types pass through unmodified.
+    Fail-open: returns original text on any error.
+    """
+    if event != "Stop":
+        return text
+    try:
+        result = _strip_blockquotes(text)
+        result = _strip_self_quotes(result)
+        result = _strip_recaps(result)
+        return result
+    except Exception:
+        return text
+
+
 def _resolve_field(data: dict[str, object], path: str) -> object:
     """Resolve a dot-notation path like 'tool_input.body' from a nested dict."""
     current: object = data

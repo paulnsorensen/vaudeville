@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from vaudeville.core.rules import (
+    _prepare_text,
     _strip_blockquotes,
     _strip_recaps,
     _strip_self_quotes,
@@ -153,3 +154,63 @@ class TestFailOpen:
             assert _strip_recaps("keep me") == "keep me"
         finally:
             mod._RECAP_RE = original
+
+
+class TestPrepareText:
+    """Tests for _prepare_text orchestration."""
+
+    def test_stop_event_strips_blockquotes(self) -> None:
+        text = "> quoted\nreal content\n"
+        result = _prepare_text(text, "Stop")
+        assert "> quoted" not in result
+        assert "real content" in result
+
+    def test_stop_event_strips_self_quotes(self) -> None:
+        text = 'I said: "This is a long enough passage to be stripped out" rest'
+        result = _prepare_text(text, "Stop")
+        assert "long enough passage" not in result
+        assert "rest" in result
+
+    def test_stop_event_strips_recaps(self) -> None:
+        text = "Before.\n\nTo recap the discussion.\nDetail.\n\nAfter.\n"
+        result = _prepare_text(text, "Stop")
+        assert "recap" not in result
+        assert "Before." in result
+        assert "After." in result
+
+    def test_stop_event_chains_all_strippers(self) -> None:
+        text = (
+            "> blockquote line\n"
+            'I wrote: "A sufficiently long self-quote for testing"\n'
+            "Normal content here.\n\n"
+            "Let me summarize the key points.\nPoint one.\n\n"
+            "Final paragraph.\n"
+        )
+        result = _prepare_text(text, "Stop")
+        assert "> blockquote" not in result
+        assert "self-quote" not in result
+        assert "summarize" not in result
+        assert "Normal content here." in result
+        assert "Final paragraph." in result
+
+    def test_non_stop_event_passes_through(self) -> None:
+        text = '> blockquote\nI said: "long enough quote to be stripped normally"\n'
+        assert _prepare_text(text, "PreToolUse") == text
+
+    def test_empty_event_passes_through(self) -> None:
+        text = "> keep this\n"
+        assert _prepare_text(text, "") == text
+
+    def test_empty_text_stop_event(self) -> None:
+        assert _prepare_text("", "Stop") == ""
+
+    def test_plain_text_stop_event_unchanged(self) -> None:
+        text = "Just normal text with no patterns to strip."
+        assert _prepare_text(text, "Stop") == text
+
+    def test_fails_open_on_stripper_error(self) -> None:
+        with patch(
+            "vaudeville.core.rules._strip_blockquotes",
+            side_effect=RuntimeError("boom"),
+        ):
+            assert _prepare_text("keep me", "Stop") == "keep me"

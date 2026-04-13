@@ -122,10 +122,31 @@ class TestClassifyRequest:
         req = ClassifyRequest(prompt="classify this text")
         d = req.to_json_dict()
         assert d["prompt"] == "classify this text"
+        assert "rule" not in d
+
+    def test_to_json_dict_with_rule(self) -> None:
+        req = ClassifyRequest(prompt="classify this", rule="no-hedging")
+        d = req.to_json_dict()
+        assert d["prompt"] == "classify this"
+        assert d["rule"] == "no-hedging"
+
+    def test_to_json_dict_empty_rule_omitted(self) -> None:
+        req = ClassifyRequest(prompt="test")
+        d = req.to_json_dict()
+        assert "rule" not in d
+
+    def test_rule_defaults_to_empty(self) -> None:
+        req = ClassifyRequest(prompt="test")
+        assert req.rule == ""
 
     def test_json_serializable(self) -> None:
         req = ClassifyRequest(prompt="test prompt")
         json.dumps(req.to_json_dict())  # must not raise
+
+    def test_json_serializable_with_rule(self) -> None:
+        req = ClassifyRequest(prompt="test", rule="some-rule")
+        d = json.loads(json.dumps(req.to_json_dict()))
+        assert d["rule"] == "some-rule"
 
 
 # --- load_rules ---

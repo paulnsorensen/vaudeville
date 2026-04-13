@@ -20,9 +20,13 @@ _VIOLATION_RE = re.compile(r"\bviolation\b")
 @dataclass
 class ClassifyRequest:
     prompt: str
+    rule: str = ""
 
     def to_json_dict(self) -> dict[str, object]:
-        return {"prompt": self.prompt}
+        d: dict[str, object] = {"prompt": self.prompt}
+        if self.rule:
+            d["rule"] = self.rule
+        return d
 
 
 @dataclass

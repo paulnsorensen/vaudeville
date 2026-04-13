@@ -4,7 +4,7 @@
 - [x] Add `LlamaRAMCache` to `GGUFBackend.__init__` in `vaudeville/server/gguf_backend.py`
 - [x] Add `classify_cached` and `classify_cached_with_logprobs` to `MLXBackend` in `vaudeville/server/mlx_backend.py`
 - [x] Read `prefix_len` and route to cached inference in `vaudeville/server/daemon.py`
-- [ ] Use `rule.split_prompt` and pass `prefix_len` in `hooks/runner.py`
+- [x] Use `rule.split_prompt` and pass `prefix_len` in `hooks/runner.py`
 - [ ] Add tests for `Rule.split_prompt` in `tests/test_core_rules.py`
 - [ ] Add tests for cached inference routing in `tests/test_daemon.py`
 - [ ] Add tests for MLX cached methods in `tests/test_mlx_backend.py`

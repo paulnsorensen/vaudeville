@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,8 +30,6 @@ def _sanitize_input(text: str) -> str:
     parse_verdict() matches case-insensitively, so sanitization must too.
     Zero-width space breaks the pattern match without altering visible text.
     """
-    import re
-
     text = re.sub(r"(?i)VERDICT\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
     text = re.sub(r"(?i)REASON\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
     return text
@@ -42,6 +41,50 @@ def back_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
     if len(text) <= max_chars:
         return text
     return text[-max_chars:]
+
+
+_SELF_QUOTE_RE = re.compile(
+    r"I\s+(?:said|wrote|mentioned)\s*:\s*\"(.{20,}?)\"",
+    re.DOTALL,
+)
+
+_RECAP_RE = re.compile(
+    r"(?i)(?:let me summarize|to recap|in summary)[^\n]*\n(?:.*?\n)*?\n",
+)
+
+
+def _strip_blockquotes(text: str) -> str:
+    """Remove markdown blockquote lines (including nested ``>>``).
+
+    Fail-open: returns original text on any error.
+    """
+    try:
+        return re.sub(r"^>+[^\n]*\n?", "", text, flags=re.MULTILINE)
+    except Exception:
+        return text
+
+
+def _strip_self_quotes(text: str) -> str:
+    """Remove ``I said/wrote/mentioned: "..."`` patterns (20+ char quotes).
+
+    Fail-open: returns original text on any error.
+    """
+    try:
+        return _SELF_QUOTE_RE.sub("", text)
+    except Exception:
+        return text
+
+
+def _strip_recaps(text: str) -> str:
+    """Remove recap paragraphs starting with trigger phrases.
+
+    Matches from the trigger through the next blank line (paragraph break).
+    Fail-open: returns original text on any error.
+    """
+    try:
+        return _RECAP_RE.sub("", text)
+    except Exception:
+        return text
 
 
 def _resolve_field(data: dict[str, object], path: str) -> object:

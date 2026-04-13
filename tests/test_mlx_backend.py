@@ -305,6 +305,22 @@ class TestMLXCachedMethods:
         assert len(captured_caches) == 2
         assert captured_caches[0] != captured_caches[1]
 
+    def test_classify_cached_evicts_lru_when_full(self) -> None:
+        """Oldest prefix cache is evicted when MAX_PREFIX_CACHES is exceeded."""
+        from vaudeville.server.mlx_backend import MAX_PREFIX_CACHES
+
+        backend, mock_stream_gen, mock_gen_step, _ = self._build_backend()
+        mock_gen_step.return_value = iter([])
+
+        with self._patch_mlx_cache(backend):
+            for i in range(MAX_PREFIX_CACHES + 2):
+                resp = self._make_stream_response("VERDICT: clean")
+                mock_stream_gen.return_value = iter([resp])
+                mock_gen_step.return_value = iter([])
+                backend.classify_cached(f"prefix_{i:03d} user text", prefix_len=11)
+
+        assert len(backend._prefix_caches) <= MAX_PREFIX_CACHES
+
     # -- classify_cached_with_logprobs --
 
     def test_classify_cached_with_logprobs_returns_result(self) -> None:

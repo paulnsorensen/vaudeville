@@ -5,6 +5,7 @@ Loads Phi-4-mini int4 via mlx_lm. Model is cached by Hugging Face hub.
 
 from __future__ import annotations
 
+import collections
 import copy
 import hashlib
 import logging
@@ -14,6 +15,7 @@ from ..core.protocol import ClassifyResult
 
 DEFAULT_MODEL = "mlx-community/Phi-4-mini-instruct-4bit"
 TOP_K_LOGPROBS = 10
+MAX_PREFIX_CACHES = 16
 SYSTEM_PROMPT = (
     "You are a binary classifier. Respond with exactly `VERDICT: violation` "
     "or `VERDICT: clean` followed by `REASON: <one sentence>`. No other text."
@@ -30,7 +32,9 @@ class MLXBackend:
         self._model, self._tokenizer, *_ = load(model_path)
         self._stream_generate = stream_generate
         self._generate_step = generate_step
-        self._prefix_caches: dict[str, list[Any]] = {}
+        self._prefix_caches: collections.OrderedDict[str, list[Any]] = (
+            collections.OrderedDict()
+        )
         self._chat_template_parts: tuple[str, str] | None = None
 
     def classify(self, prompt: str, max_tokens: int = 50) -> str:
@@ -106,6 +110,10 @@ class MLXBackend:
             self._validate_token_boundary(formatted_prefix, user_prefix)
             base_cache = self._warm_prefix(formatted_prefix)
             self._prefix_caches[prefix_key] = base_cache
+            while len(self._prefix_caches) > MAX_PREFIX_CACHES:
+                self._prefix_caches.popitem(last=False)
+        else:
+            self._prefix_caches.move_to_end(prefix_key)
         return copy.deepcopy(base_cache)
 
     def _validate_token_boundary(

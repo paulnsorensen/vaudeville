@@ -55,8 +55,15 @@ def acquire_pid_lock(pid_file: str) -> int | None:
         return None
 
 
-def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
-    """Run inference with logprobs, falling back to plain classify."""
+def _run_inference(
+    backend: InferenceBackend, prompt: str, prefix_len: int = 0,
+) -> ClassifyResult:
+    """Run inference with optional prefix caching and logprobs."""
+    if prefix_len > 0 and hasattr(backend, "classify_cached_with_logprobs"):
+        return backend.classify_cached_with_logprobs(prompt, prefix_len)
+    if prefix_len > 0 and hasattr(backend, "classify_cached"):
+        text = backend.classify_cached(prompt, prefix_len)
+        return ClassifyResult(text=text)
     if isinstance(backend, LogprobBackend):
         return backend.classify_with_logprobs(prompt, max_tokens=50)
     text = backend.classify(prompt, max_tokens=50)
@@ -71,10 +78,11 @@ def handle_request(
     try:
         request = json.loads(data.decode().strip())
         prompt = request.get("prompt", "")
+        prefix_len = request.get("prefix_len", 0)
 
-        logger.debug("prompt=%d chars", len(prompt))
+        logger.debug("prompt=%d chars prefix_len=%d", len(prompt), prefix_len)
         t0 = time.monotonic()
-        result = _run_inference(backend, prompt)
+        result = _run_inference(backend, prompt, prefix_len)
         elapsed_ms = (time.monotonic() - t0) * 1000
         response = parse_verdict(result.text)
         confidence = compute_confidence(result.logprobs, response.verdict)

@@ -181,6 +181,24 @@ def test_blank_lines_ignored(tmp_path: pathlib.Path) -> None:
     assert result["total"] == 2
 
 
+def test_partial_records_skipped(tmp_path: pathlib.Path) -> None:
+    """Events missing required fields are skipped gracefully."""
+    log_file = tmp_path / "events.jsonl"
+    partial = json.dumps({"rule": "x", "verdict": "clean"})
+    good = json.dumps(_make_event())
+    log_file.write_text(f"{partial}\n{good}\n")
+    result = aggregate_events(str(log_file))
+    assert result["total"] == 1
+
+
+def test_all_partial_records_returns_empty(tmp_path: pathlib.Path) -> None:
+    """If all records lack required fields, return empty result."""
+    log_file = tmp_path / "events.jsonl"
+    log_file.write_text(json.dumps({"rule": "x"}) + "\n")
+    result = aggregate_events(str(log_file))
+    assert result["total"] == 0
+
+
 def test_single_event_latency_percentiles(tmp_path: pathlib.Path) -> None:
     """Single event has equal p50 and p95."""
     path = _write_events(tmp_path, [_make_event(latency_ms=42.0)])

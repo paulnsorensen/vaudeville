@@ -27,11 +27,16 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
     if not events:
         return _empty_result()
 
-    latencies = [e["latency_ms"] for e in events]
-    timestamps = [e["ts"] for e in events]
+    # Filter to events with required fields
+    valid = [e for e in events if "latency_ms" in e and "ts" in e]
+    if not valid:
+        return _empty_result()
+
+    latencies = [e["latency_ms"] for e in valid]
+    timestamps = [e["ts"] for e in valid]
 
     rules: dict[str, dict[str, Any]] = {}
-    for evt in events:
+    for evt in valid:
         rule = evt.get("rule", "<unknown>")
         if rule not in rules:
             rules[rule] = {"total": 0, "violations": 0, "latencies": []}
@@ -54,7 +59,7 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
         }
 
     return {
-        "total": len(events),
+        "total": len(valid),
         "rules": rule_summaries,
         "latency": _latency_stats(latencies),
         "time_range": {

@@ -73,11 +73,6 @@ class EventLogger:
             filter=lambda r: r["extra"].get("_sink") == "violations",
         )
 
-    @staticmethod
-    def _serialize(fields: dict[str, Any]) -> str:
-        """Serialize *fields* to a single JSON line."""
-        return json.dumps(fields, default=str)
-
     def log_event(
         self,
         rule: str,
@@ -99,7 +94,7 @@ class EventLogger:
             "prompt_chars": prompt_chars,
         }
 
-        self._logger.bind(_sink="events").info(self._serialize(common))
+        self._logger.bind(_sink="events").info(json.dumps(common, default=str))
 
         if verdict == "violation":
             violation = {
@@ -107,7 +102,9 @@ class EventLogger:
                 "reason": reason,
                 "input_snippet": input_snippet[:500],
             }
-            self._logger.bind(_sink="violations").info(self._serialize(violation))
+            self._logger.bind(_sink="violations").info(
+                json.dumps(violation, default=str)
+            )
 
     def close(self) -> None:
         """Remove sinks added by this logger."""

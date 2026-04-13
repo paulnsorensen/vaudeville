@@ -95,6 +95,17 @@ def test_load_unreadable_file(tmp_path: object) -> None:
         path.chmod(0o644)
 
 
+def test_load_invalid_value_types(tmp_path: object) -> None:
+    """Non-numeric values in config fall back to defaults."""
+    import pathlib
+
+    path = pathlib.Path(str(tmp_path)) / "config.yaml"
+    path.write_text(yaml.safe_dump({"retention_days": "abc", "max_size_mb": "xyz"}))
+
+    cfg = load_log_config(str(path))
+    assert cfg == LogConfig()
+
+
 def test_load_write_defaults_oserror(tmp_path: object, monkeypatch: object) -> None:
     """OSError during default file creation returns defaults gracefully."""
     import pathlib

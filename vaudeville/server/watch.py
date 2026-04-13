@@ -67,7 +67,9 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
 def watch(log_path: str = _EVENTS_LOG) -> None:
     """Tail *log_path* and render a live table until interrupted."""
     if not os.path.exists(log_path):
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        parent = os.path.dirname(log_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         # Touch the file so we can open it
         with open(log_path, "a"):
             pass

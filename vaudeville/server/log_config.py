@@ -58,7 +58,10 @@ def load_log_config(config_path: str = _CONFIG_PATH) -> LogConfig:
     if not isinstance(data, dict):
         return LogConfig()
 
-    return LogConfig(
-        retention_days=int(data.get("retention_days", DEFAULT_RETENTION_DAYS)),
-        max_size_mb=int(data.get("max_size_mb", DEFAULT_MAX_SIZE_MB)),
-    )
+    try:
+        return LogConfig(
+            retention_days=int(data.get("retention_days", DEFAULT_RETENTION_DAYS)),
+            max_size_mb=int(data.get("max_size_mb", DEFAULT_MAX_SIZE_MB)),
+        )
+    except (TypeError, ValueError):
+        return LogConfig()

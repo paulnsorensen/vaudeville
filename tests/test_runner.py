@@ -173,6 +173,38 @@ class TestRunPipeline:
             code = self._run_with_stdin(["runner.py", "--event", "Stop"], data)
         assert code == 0
 
+    def test_run_event_rules_passes_rule_name_to_classify(self) -> None:
+        """Verify that _run_event_rules forwards rule.name to client.classify()."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        mock_rule = Rule(
+            name="test-hedging",
+            event="Stop",
+            prompt="Check: {text}",
+            context=[{"field": "body"}],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+        )
+        mock_client = MagicMock()
+        mock_client.classify.return_value = ClassifyResponse(
+            verdict="clean", reason="", confidence=0.9
+        )
+        hook_input = {"body": "x" * 100}
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[mock_rule]),
+            pytest.raises(SystemExit),
+        ):
+            runner._run_event_rules("Stop", hook_input, mock_client)
+
+        mock_client.classify.assert_called_once()
+        _, kwargs = mock_client.classify.call_args
+        assert kwargs["rule"] == "test-hedging"
+
     def test_main_catches_unexpected_exception(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

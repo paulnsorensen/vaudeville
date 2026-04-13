@@ -174,7 +174,7 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
         context_str = rule.resolve_context(hook_input, PLUGIN_ROOT)
         prompt = rule.format_prompt(text, context_str)
 
-        result = client.classify(prompt)
+        result = client.classify(prompt, rule=rule.name)
         if result is None:
             continue
 

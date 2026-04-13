@@ -19,6 +19,7 @@ import yaml
 from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from .core.rules import Rule, load_rules, load_rules_layered
 from .server import InferenceBackend, LogprobBackend
+from .server.condense import condense_text
 
 
 def _find_project_root() -> str | None:
@@ -136,7 +137,10 @@ def classify_case(
 ) -> CaseResult:
     """Classify a single case and update results. Returns CaseResult."""
     positive, negative = "violation", "clean"
-    prompt = rule.format_prompt(case.text)
+    text = case.text
+    if rule.event == "Stop" and len(text) >= 200:
+        text = condense_text(text, backend)
+    prompt = rule.format_prompt(text)
     result = _run_inference(backend, prompt)
     response = parse_verdict(result.text)
     predicted = response.verdict

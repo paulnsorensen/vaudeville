@@ -122,6 +122,46 @@ class TestLoadTestCases:
         assert len(result["test-rule"]) == 1
 
 
+class TestCondenseIntegration:
+    """Verify condense_text is called for Stop+long, skipped otherwise."""
+
+    def test_condense_called_for_stop_long_text(self, rules: dict[str, Rule]) -> None:
+        long_text = "x" * 250
+        backend = MockBackend(verdict="clean", reason="ok")
+        results = EvalResults(rule="violation-detector")
+        case = EvalCase(text=long_text, label="clean")
+        with patch("vaudeville.eval.condense_text", return_value="condensed") as mock:
+            classify_case(case, rules["violation-detector"], backend, results)
+        mock.assert_called_once_with(long_text, backend)
+
+    def test_condense_skipped_for_stop_short_text(self, rules: dict[str, Rule]) -> None:
+        short_text = "short text"
+        backend = MockBackend(verdict="clean", reason="ok")
+        results = EvalResults(rule="violation-detector")
+        case = EvalCase(text=short_text, label="clean")
+        with patch("vaudeville.eval.condense_text") as mock:
+            classify_case(case, rules["violation-detector"], backend, results)
+        mock.assert_not_called()
+
+    def test_condense_skipped_for_pretooluse(self) -> None:
+        rule = Rule(
+            name="tool-rule",
+            event="PreToolUse",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.0,
+        )
+        long_text = "x" * 250
+        backend = MockBackend(verdict="clean", reason="ok")
+        results = EvalResults(rule="tool-rule")
+        case = EvalCase(text=long_text, label="clean")
+        with patch("vaudeville.eval.condense_text") as mock:
+            classify_case(case, rule, backend, results)
+        mock.assert_not_called()
+
+
 class TestClassifyCase:
     def test_true_positive(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation", reason="found issue")

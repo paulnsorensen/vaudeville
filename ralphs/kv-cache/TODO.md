@@ -6,5 +6,5 @@
 - [x] Read `prefix_len` and route to cached inference in `vaudeville/server/daemon.py`
 - [x] Use `rule.split_prompt` and pass `prefix_len` in `hooks/runner.py`
 - [x] Add tests for `Rule.split_prompt` in `tests/test_core_rules.py`
-- [ ] Add tests for cached inference routing in `tests/test_daemon.py`
+- [x] Add tests for cached inference routing in `tests/test_daemon.py`
 - [ ] Add tests for MLX cached methods in `tests/test_mlx_backend.py`

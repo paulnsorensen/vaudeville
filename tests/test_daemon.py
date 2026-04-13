@@ -14,7 +14,9 @@ from unittest.mock import patch
 
 import pytest
 
+from vaudeville.core.protocol import ClassifyResult
 from vaudeville.server.daemon import handle_request, VaudevilleDaemon
+from vaudeville.server.inference import LogprobBackend
 from vaudeville.server.__main__ import detect_backend
 from conftest import MockBackend  # noqa: F401 — used in fixtures
 
@@ -364,6 +366,144 @@ class TestVersionStamp:
         thread.join(timeout=5)
 
         assert not os.path.exists(version_file), "version file not removed on cleanup"
+
+
+class TestCachedInferenceRouting:
+    """Tests for _run_inference prefix_len routing and handle_request integration."""
+
+    def test_prefix_len_zero_uses_uncached_logprobs(self) -> None:
+        """prefix_len=0 falls back to classify_with_logprobs (existing path)."""
+        backend = MockBackend(
+            verdict="clean",
+            reason="uncached",
+            logprobs={"clean": -0.1, "violation": -3.0},
+        )
+        data = json.dumps({"prompt": "test prompt"}).encode() + b"\n"
+        response = json.loads(handle_request(data, backend))
+        assert response["verdict"] == "clean"
+        assert len(backend.calls) == 1
+
+    def test_prefix_len_zero_default_when_absent(self) -> None:
+        """Request without prefix_len field uses uncached path."""
+        backend = MockBackend(verdict="violation", reason="no prefix")
+        data = json.dumps({"prompt": "test"}).encode() + b"\n"
+        response = json.loads(handle_request(data, backend))
+        assert response["verdict"] == "violation"
+
+    def test_prefix_len_routes_to_classify_cached_with_logprobs(self) -> None:
+        """prefix_len > 0 routes to classify_cached_with_logprobs when available."""
+        cached_calls: list[tuple[str, int]] = []
+
+        class CachedLogprobBackend:
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+                raise AssertionError("Should not call uncached classify")
+
+            def classify_cached_with_logprobs(
+                self, prompt: str, prefix_len: int,
+            ) -> ClassifyResult:
+                cached_calls.append((prompt, prefix_len))
+                return ClassifyResult(
+                    text="VERDICT: clean\nREASON: cached logprobs",
+                    logprobs={"clean": -0.05, "violation": -4.0},
+                )
+
+        data = json.dumps({"prompt": "full prompt text", "prefix_len": 42}).encode() + b"\n"
+        response = json.loads(handle_request(data, CachedLogprobBackend()))
+        assert response["verdict"] == "clean"
+        assert len(cached_calls) == 1
+        assert cached_calls[0] == ("full prompt text", 42)
+
+    def test_prefix_len_routes_to_classify_cached_without_logprobs(self) -> None:
+        """prefix_len > 0 routes to classify_cached when logprobs variant is absent."""
+        cached_calls: list[tuple[str, int]] = []
+
+        class CachedOnlyBackend:
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+                raise AssertionError("Should not call uncached classify")
+
+            def classify_cached(
+                self, prompt: str, prefix_len: int,
+            ) -> str:
+                cached_calls.append((prompt, prefix_len))
+                return "VERDICT: violation\nREASON: cached plain"
+
+        data = json.dumps({"prompt": "some prompt", "prefix_len": 10}).encode() + b"\n"
+        response = json.loads(handle_request(data, CachedOnlyBackend()))
+        assert response["verdict"] == "violation"
+        assert response["confidence"] == 0.0  # no logprobs → zero confidence
+        assert len(cached_calls) == 1
+        assert cached_calls[0] == ("some prompt", 10)
+
+    def test_prefix_len_falls_back_when_no_cached_methods(self) -> None:
+        """prefix_len > 0 falls back to uncached path when backend lacks cached methods."""
+
+        class PlainBackend:
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+                return "VERDICT: clean\nREASON: plain fallback"
+
+        data = json.dumps({"prompt": "test", "prefix_len": 5}).encode() + b"\n"
+        response = json.loads(handle_request(data, PlainBackend()))
+        assert response["verdict"] == "clean"
+        assert response["confidence"] == 0.0
+
+    def test_run_inference_prefers_cached_logprobs_over_cached_plain(self) -> None:
+        """When both classify_cached and classify_cached_with_logprobs exist, prefer logprobs."""
+        from vaudeville.server.daemon import _run_inference
+
+        route_taken: list[str] = []
+
+        class DualCachedBackend:
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+                route_taken.append("uncached")
+                return "VERDICT: clean\nREASON: uncached"
+
+            def classify_cached(self, prompt: str, prefix_len: int) -> str:  # noqa: ARG002
+                route_taken.append("cached_plain")
+                return "VERDICT: clean\nREASON: cached plain"
+
+            def classify_cached_with_logprobs(
+                self, prompt: str, prefix_len: int,
+            ) -> ClassifyResult:  # noqa: ARG002
+                route_taken.append("cached_logprobs")
+                return ClassifyResult(
+                    text="VERDICT: clean\nREASON: cached logprobs",
+                    logprobs={"clean": -0.1},
+                )
+
+        _run_inference(DualCachedBackend(), "prompt", prefix_len=20)
+        assert route_taken == ["cached_logprobs"]
+
+    def test_run_inference_uncached_logprobs_when_prefix_zero(self) -> None:
+        """prefix_len=0 uses classify_with_logprobs even when cached methods exist."""
+        from vaudeville.server.daemon import _run_inference
+
+        route_taken: list[str] = []
+
+        class FullBackend(LogprobBackend):
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+                route_taken.append("uncached_plain")
+                return "VERDICT: clean\nREASON: ok"
+
+            def classify_with_logprobs(
+                self, prompt: str, max_tokens: int = 50,
+            ) -> ClassifyResult:  # noqa: ARG002
+                route_taken.append("uncached_logprobs")
+                return ClassifyResult(
+                    text="VERDICT: clean\nREASON: ok",
+                    logprobs={"clean": -0.1},
+                )
+
+            def classify_cached_with_logprobs(
+                self, prompt: str, prefix_len: int,
+            ) -> ClassifyResult:  # noqa: ARG002
+                route_taken.append("cached_logprobs")
+                return ClassifyResult(
+                    text="VERDICT: clean\nREASON: ok",
+                    logprobs={"clean": -0.1},
+                )
+
+        _run_inference(FullBackend(), "prompt", prefix_len=0)
+        assert route_taken == ["uncached_logprobs"]
 
 
 class TestConfidenceScoring:

@@ -92,6 +92,20 @@ class Rule:
             "{context}", safe_context
         )
 
+    def split_prompt(self, text: str, context: str = "") -> tuple[str, int]:
+        """Format prompt and return (full_prompt, prefix_len).
+
+        prefix_len is the character index where the static prefix ends
+        and the variable {text} content begins.
+        """
+        safe_text = _sanitize_input(back_truncate(text))
+        safe_context = _sanitize_input(context) if context else ""
+        prompt_with_context = self.prompt.replace("{context}", safe_context)
+
+        before, _, after = prompt_with_context.partition("{text}")
+        full_prompt = before + safe_text + after
+        return full_prompt, len(before)
+
     def resolve_context(
         self,
         input_data: dict[str, object],

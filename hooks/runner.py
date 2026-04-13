@@ -172,9 +172,9 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
             continue
 
         context_str = rule.resolve_context(hook_input, PLUGIN_ROOT)
-        prompt = rule.format_prompt(text, context_str)
+        prompt, prefix_len = rule.split_prompt(text, context_str)
 
-        result = client.classify(prompt)
+        result = client.classify(prompt, prefix_len=prefix_len)
         if result is None:
             continue
 

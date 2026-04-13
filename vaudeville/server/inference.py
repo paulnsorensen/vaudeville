@@ -25,3 +25,25 @@ class LogprobBackend(InferenceBackend, Protocol):
     def classify_with_logprobs(self, prompt: str, max_tokens: int) -> ClassifyResult:
         """Run inference and return output with first-token logprobs."""
         ...
+
+
+@runtime_checkable
+class CachedBackend(InferenceBackend, Protocol):
+    """Backend that supports KV cache prefix reuse."""
+
+    def classify_cached(self, prompt: str, prefix_len: int) -> str:
+        """Run inference reusing a precomputed KV cache for prompt[:prefix_len]."""
+        ...
+
+
+@runtime_checkable
+class CachedLogprobBackend(CachedBackend, Protocol):
+    """Backend that supports cached inference with logprob extraction."""
+
+    def classify_cached_with_logprobs(
+        self,
+        prompt: str,
+        prefix_len: int,
+    ) -> ClassifyResult:
+        """Cached inference with first-token logprobs."""
+        ...

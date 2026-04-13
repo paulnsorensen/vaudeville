@@ -20,9 +20,13 @@ _VIOLATION_RE = re.compile(r"\bviolation\b")
 @dataclass
 class ClassifyRequest:
     prompt: str
+    prefix_len: int = 0  # 0 = no caching (backward compatible)
 
     def to_json_dict(self) -> dict[str, object]:
-        return {"prompt": self.prompt}
+        d: dict[str, object] = {"prompt": self.prompt}
+        if self.prefix_len > 0:
+            d["prefix_len"] = self.prefix_len
+        return d
 
 
 @dataclass

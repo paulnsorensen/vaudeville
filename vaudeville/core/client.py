@@ -25,7 +25,9 @@ class VaudevilleClient:
         self._socket_path = SOCKET_PATH
 
     def classify(
-        self, prompt: str, prefix_len: int = 0,
+        self,
+        prompt: str,
+        prefix_len: int = 0,
     ) -> ClassifyResponse | None:
         """Send a classify request and return the verdict.
 

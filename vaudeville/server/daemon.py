@@ -19,7 +19,12 @@ import time
 
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
-from .inference import InferenceBackend, LogprobBackend
+from .inference import (
+    CachedBackend,
+    CachedLogprobBackend,
+    InferenceBackend,
+    LogprobBackend,
+)
 
 IDLE_TIMEOUT = 60 * 60  # 60 minutes
 RECV_CHUNK = 4096
@@ -56,14 +61,20 @@ def acquire_pid_lock(pid_file: str) -> int | None:
 
 
 def _run_inference(
-    backend: InferenceBackend, prompt: str, prefix_len: int = 0,
+    backend: InferenceBackend,
+    prompt: str,
+    prefix_len: int = 0,
 ) -> ClassifyResult:
     """Run inference with optional prefix caching and logprobs."""
-    if prefix_len > 0 and hasattr(backend, "classify_cached_with_logprobs"):
+    if prefix_len > 0 and isinstance(backend, CachedLogprobBackend):
         return backend.classify_cached_with_logprobs(prompt, prefix_len)
-    if prefix_len > 0 and hasattr(backend, "classify_cached"):
+    elif prefix_len > 0 and isinstance(backend, CachedBackend):
         text = backend.classify_cached(prompt, prefix_len)
         return ClassifyResult(text=text)
+    elif prefix_len > 0:
+        logger.debug(
+            "prefix_len=%d but backend lacks cached methods — uncached", prefix_len
+        )
     if isinstance(backend, LogprobBackend):
         return backend.classify_with_logprobs(prompt, max_tokens=50)
     text = backend.classify(prompt, max_tokens=50)

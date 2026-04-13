@@ -398,8 +398,13 @@ class TestCachedInferenceRouting:
             def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
                 raise AssertionError("Should not call uncached classify")
 
+            def classify_cached(self, prompt: str, prefix_len: int) -> str:  # noqa: ARG002
+                raise AssertionError("Should prefer logprob variant")
+
             def classify_cached_with_logprobs(
-                self, prompt: str, prefix_len: int,
+                self,
+                prompt: str,
+                prefix_len: int,
             ) -> ClassifyResult:
                 cached_calls.append((prompt, prefix_len))
                 return ClassifyResult(
@@ -407,7 +412,10 @@ class TestCachedInferenceRouting:
                     logprobs={"clean": -0.05, "violation": -4.0},
                 )
 
-        data = json.dumps({"prompt": "full prompt text", "prefix_len": 42}).encode() + b"\n"
+        data = (
+            json.dumps({"prompt": "full prompt text", "prefix_len": 42}).encode()
+            + b"\n"
+        )
         response = json.loads(handle_request(data, CachedLogprobBackend()))
         assert response["verdict"] == "clean"
         assert len(cached_calls) == 1
@@ -422,7 +430,9 @@ class TestCachedInferenceRouting:
                 raise AssertionError("Should not call uncached classify")
 
             def classify_cached(
-                self, prompt: str, prefix_len: int,
+                self,
+                prompt: str,
+                prefix_len: int,
             ) -> str:
                 cached_calls.append((prompt, prefix_len))
                 return "VERDICT: violation\nREASON: cached plain"
@@ -462,7 +472,9 @@ class TestCachedInferenceRouting:
                 return "VERDICT: clean\nREASON: cached plain"
 
             def classify_cached_with_logprobs(
-                self, prompt: str, prefix_len: int,
+                self,
+                prompt: str,
+                prefix_len: int,
             ) -> ClassifyResult:  # noqa: ARG002
                 route_taken.append("cached_logprobs")
                 return ClassifyResult(
@@ -485,7 +497,9 @@ class TestCachedInferenceRouting:
                 return "VERDICT: clean\nREASON: ok"
 
             def classify_with_logprobs(
-                self, prompt: str, max_tokens: int = 50,
+                self,
+                prompt: str,
+                max_tokens: int = 50,
             ) -> ClassifyResult:  # noqa: ARG002
                 route_taken.append("uncached_logprobs")
                 return ClassifyResult(
@@ -494,7 +508,9 @@ class TestCachedInferenceRouting:
                 )
 
             def classify_cached_with_logprobs(
-                self, prompt: str, prefix_len: int,
+                self,
+                prompt: str,
+                prefix_len: int,
             ) -> ClassifyResult:  # noqa: ARG002
                 route_taken.append("cached_logprobs")
                 return ClassifyResult(

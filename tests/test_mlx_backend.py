@@ -211,13 +211,16 @@ class TestMLXCachedMethods:
         backend, _, mock_generate_step, _ = self._build_backend()
         mock_generate_step.return_value = iter([])
 
-        with patch.dict("sys.modules", {
-            "mlx": mock_mlx_parent,
-            "mlx.core": mock_mx,
-            "mlx_lm.models.cache": MagicMock(
-                make_prompt_cache=mock_make_prompt_cache,
-            ),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlx": mock_mlx_parent,
+                "mlx.core": mock_mx,
+                "mlx_lm.models.cache": MagicMock(
+                    make_prompt_cache=mock_make_prompt_cache,
+                ),
+            },
+        ):
             result = backend._warm_prefix("formatted prefix")
 
         assert result is mock_cache
@@ -315,13 +318,14 @@ class TestMLXCachedMethods:
         mock_tokenizer.decode.return_value = " clean\nREASON: looks good"
 
         # First call to generate_step warms prefix, second generates tokens
-        warm_iter = iter([])
+        warm_iter: list[Any] = []
         gen_iter = iter([(mock_token, mock_logprobs)])
         mock_gen_step.side_effect = [warm_iter, gen_iter]
 
         with self._patch_mlx_cache(backend):
             result = backend.classify_cached_with_logprobs(
-                "rule prefix user text", prefix_len=12,
+                "rule prefix user text",
+                prefix_len=12,
             )
 
         assert result.text.startswith("VERDICT:")
@@ -335,13 +339,14 @@ class TestMLXCachedMethods:
         backend, _, mock_gen_step, mock_tokenizer = self._build_backend()
         mock_tokenizer.decode.return_value = " clean"
 
-        warm_iter = iter([])
+        warm_iter: list[Any] = []
         gen_iter = iter([(mock_token, mock_logprobs)])
         mock_gen_step.side_effect = [warm_iter, gen_iter]
 
         with self._patch_mlx_cache(backend):
             backend.classify_cached_with_logprobs(
-                "rule prefix user text", prefix_len=12,
+                "rule prefix user text",
+                prefix_len=12,
             )
 
         # The suffix passed to encode should end with VERDICT:
@@ -361,13 +366,14 @@ class TestMLXCachedMethods:
         backend, _, mock_gen_step, mock_tokenizer = self._build_backend()
         mock_tokenizer.decode.return_value = " clean"
 
-        warm_iter = iter([])
+        warm_iter: list[Any] = []
         gen_iter = iter([(mock_token1, mock_logprobs), (mock_token2, mock_logprobs)])
         mock_gen_step.side_effect = [warm_iter, gen_iter]
 
         with self._patch_mlx_cache(backend):
             result = backend.classify_cached_with_logprobs(
-                "rule prefix user text", prefix_len=12,
+                "rule prefix user text",
+                prefix_len=12,
             )
 
         # Should have decoded only [42, 2] (stopped at eos)
@@ -390,10 +396,13 @@ class TestMLXCachedMethods:
         mock_cache = [mock_cache_entry]
         mock_make_prompt_cache = MagicMock(return_value=mock_cache)
 
-        return patch.dict("sys.modules", {
-            "mlx": mock_mlx_parent,
-            "mlx.core": mock_mx,
-            "mlx_lm.models.cache": MagicMock(
-                make_prompt_cache=mock_make_prompt_cache,
-            ),
-        })
+        return patch.dict(
+            "sys.modules",
+            {
+                "mlx": mock_mlx_parent,
+                "mlx.core": mock_mx,
+                "mlx_lm.models.cache": MagicMock(
+                    make_prompt_cache=mock_make_prompt_cache,
+                ),
+            },
+        )

@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 import yaml
 
 from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
-from .core.rules import Rule, load_rules_layered
+from .core.rules import Rule, load_rules, load_rules_layered
 from .server import InferenceBackend, LogprobBackend
 
 
@@ -232,6 +232,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to JSONL file for regression tracking (appends one line per run)",
     )
     parser.add_argument(
+        "--rules-dir",
+        help="Load rules from this directory only (skip layered resolution)",
+    )
+    parser.add_argument(
         "--backend", default="mlx", choices=["mlx"], help="Inference backend"
     )
     parser.add_argument(
@@ -264,11 +268,14 @@ def _run_calibrate(
         "CLAUDE_PLUGIN_ROOT",
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
-    search_dirs = rules_search_path(project_root=_find_project_root())
-    for subdir in ("rules", "examples/rules"):
-        d = os.path.join(plugin_root, subdir)
-        if os.path.isdir(d) and d not in search_dirs:
-            search_dirs.append(d)
+    if args.rules_dir:
+        search_dirs = [args.rules_dir]
+    else:
+        search_dirs = rules_search_path(project_root=_find_project_root())
+        for subdir in ("rules", "examples/rules"):
+            d = os.path.join(plugin_root, subdir)
+            if os.path.isdir(d) and d not in search_dirs:
+                search_dirs.append(d)
     rule_file = find_rule_file(cal_rule, search_dirs)
     if not rule_file:
         print(f"Cannot find YAML file for rule: {cal_rule}")
@@ -287,7 +294,10 @@ def main() -> None:
     tests_dir = os.path.join(plugin_root, "tests")
 
     backend = _build_backend(args)
-    rules = load_rules_layered(project_root=_find_project_root())
+    if args.rules_dir:
+        rules = load_rules(args.rules_dir)
+    else:
+        rules = load_rules_layered(project_root=_find_project_root())
     test_suites = load_test_cases(tests_dir)
 
     if args.test_file and args.rule:

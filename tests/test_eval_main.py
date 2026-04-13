@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
@@ -72,6 +73,69 @@ class TestMain:
 
                 main()
         assert exc_info.value.code == 1
+
+    def test_rules_dir_loads_from_specified_directory(self) -> None:
+        """--rules-dir loads rules only from the given directory."""
+        with tempfile.TemporaryDirectory() as rules_dir:
+            rule_path = os.path.join(rules_dir, "test-rule.yaml")
+            with open(rule_path, "w") as f:
+                yaml.dump(
+                    {
+                        "name": "test-rule",
+                        "event": "Stop",
+                        "prompt": "Classify:\n{text}\nVERDICT:",
+                        "action": "block",
+                        "message": "{reason}",
+                    },
+                    f,
+                )
+            mock_backend = MockBackend(verdict="clean")
+            mock_mlx_cls = MagicMock(return_value=mock_backend)
+            with (
+                patch(
+                    "sys.argv",
+                    ["eval", "--rules-dir", rules_dir, "--rule", "test-rule"],
+                ),
+                patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+                patch("vaudeville.eval.load_test_cases", return_value={}),
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    from vaudeville.eval import main
+
+                    main()
+            # Exits 1 because no test suite, but load_rules_layered not called
+            assert exc_info.value.code == 1
+
+    def test_rules_dir_skips_layered_resolution(self) -> None:
+        """--rules-dir bypasses load_rules_layered entirely."""
+        with tempfile.TemporaryDirectory() as rules_dir:
+            rule_path = os.path.join(rules_dir, "violation-detector.yaml")
+            with open(rule_path, "w") as f:
+                yaml.dump(
+                    {
+                        "name": "violation-detector",
+                        "event": "Stop",
+                        "prompt": "Classify:\n{text}\nVERDICT:",
+                        "action": "block",
+                        "message": "{reason}",
+                    },
+                    f,
+                )
+            mock_backend = MockBackend(verdict="clean")
+            mock_mlx_cls = MagicMock(return_value=mock_backend)
+            mock_layered = MagicMock(side_effect=AssertionError("should not be called"))
+            with (
+                patch("sys.argv", ["eval", "--rules-dir", rules_dir]),
+                patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+                patch("vaudeville.eval.load_rules_layered", mock_layered),
+                patch("vaudeville.eval.load_test_cases", return_value={}),
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    from vaudeville.eval import main
+
+                    main()
+            assert exc_info.value.code == 0
+            mock_layered.assert_not_called()
 
     def test_test_file_with_wrong_rule_exits_1(self) -> None:
         mock_mlx_cls = MagicMock(return_value=MockBackend())

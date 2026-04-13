@@ -115,19 +115,40 @@ class TestDaemonSocketProtocol:
         import os
         from vaudeville.server.daemon import MAX_REQUEST_SIZE
 
-        with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            suffix=".sock", dir=tempfile.gettempdir(), delete=False
+        ) as f:
             socket_path = f.name
-        with tempfile.NamedTemporaryFile(suffix=".pid", dir="/tmp", delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            suffix=".pid", dir=tempfile.gettempdir(), delete=False
+        ) as f:
             pid_file = f.name
         os.unlink(socket_path)
 
         backend = MockBackend(verdict="violation", reason="should not reach backend")
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        daemon = VaudevilleDaemon(socket_path, pid_file, plugin_root, backend)
+        with tempfile.NamedTemporaryFile(
+            suffix=".version", dir=tempfile.gettempdir(), delete=True
+        ) as vf:
+            version_file = vf.name
+        daemon = VaudevilleDaemon(
+            socket_path, pid_file, plugin_root, backend, version_file=version_file
+        )
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
-        time.sleep(0.2)
+
+        # Wait for daemon socket to be ready
+        for _ in range(20):
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                    probe.settimeout(0.1)
+                    probe.connect(socket_path)
+                    break
+            except (ConnectionRefusedError, FileNotFoundError):
+                time.sleep(0.05)
+        else:
+            raise RuntimeError("Daemon socket not ready after 1s")
 
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(3.0)

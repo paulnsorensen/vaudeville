@@ -1,0 +1,10 @@
+- [x] Add `split_prompt` method to `Rule` in `vaudeville/core/rules.py`
+- [ ] Add `prefix_len` field to `ClassifyRequest` in `vaudeville/core/protocol.py`
+- [ ] Pass `prefix_len` through `VaudevilleClient.classify` in `vaudeville/core/client.py`
+- [ ] Add `LlamaRAMCache` to `GGUFBackend.__init__` in `vaudeville/server/gguf_backend.py`
+- [ ] Add `classify_cached` and `classify_cached_with_logprobs` to `MLXBackend` in `vaudeville/server/mlx_backend.py`
+- [ ] Read `prefix_len` and route to cached inference in `vaudeville/server/daemon.py`
+- [ ] Use `rule.split_prompt` and pass `prefix_len` in `hooks/runner.py`
+- [ ] Add tests for `Rule.split_prompt` in `tests/test_core_rules.py`
+- [ ] Add tests for cached inference routing in `tests/test_daemon.py`
+- [ ] Add tests for MLX cached methods in `tests/test_mlx_backend.py`

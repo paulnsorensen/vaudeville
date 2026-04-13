@@ -135,6 +135,11 @@ def _load_rules_for_event(event: str) -> list:
 
 
 def _run() -> None:
+    if os.environ.get("VAUDEVILLE_SKIP", "") == "1":
+        _dbg("VAUDEVILLE_SKIP=1 — bypassing all rules")
+        print("{}")
+        sys.exit(0)
+
     args = sys.argv[1:]
 
     # Parse --event flag

@@ -138,6 +138,48 @@ class TestVerdictToHookResponse:
         assert "vaudeville hook [r] prevented response:" in resp["systemMessage"]
 
 
+class TestSkipEnvVar:
+    """Tests for VAUDEVILLE_SKIP bypass."""
+
+    def test_skip_exits_immediately(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with (
+            patch.dict(os.environ, {"VAUDEVILLE_SKIP": "1"}),
+            patch.object(sys, "argv", ["runner.py", "--event", "Stop"]),
+            patch("sys.stdin", io.StringIO('{"body": "text"}')),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            runner._run()
+        assert exc_info.value.code == 0
+        assert capsys.readouterr().out.strip() == "{}"
+
+    def test_skip_not_set_proceeds(self) -> None:
+        """Without VAUDEVILLE_SKIP, runner proceeds normally."""
+        with (
+            patch.dict(os.environ, {}, clear=False),
+            patch.object(sys, "argv", ["runner.py", "--event", "Stop"]),
+            patch("sys.stdin", io.StringIO('{"body": "text"}')),
+            patch("runner._load_rules_for_event", return_value=[]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            env = os.environ.copy()
+            env.pop("VAUDEVILLE_SKIP", None)
+            with patch.dict(os.environ, env, clear=True):
+                runner._run()
+        assert exc_info.value.code == 0
+
+    def test_skip_value_must_be_1(self) -> None:
+        """VAUDEVILLE_SKIP=true or other values don't trigger skip."""
+        with (
+            patch.dict(os.environ, {"VAUDEVILLE_SKIP": "true"}),
+            patch.object(sys, "argv", ["runner.py", "--event", "Stop"]),
+            patch("sys.stdin", io.StringIO('{"body": "text"}')),
+            patch("runner._load_rules_for_event", return_value=[]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            runner._run()
+        assert exc_info.value.code == 0
+
+
 class TestRunPipeline:
     """Tests for _run() — the main execution loop."""
 

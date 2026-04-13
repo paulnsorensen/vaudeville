@@ -104,13 +104,11 @@ def _latency_stats(latencies: list[float]) -> dict[str, Any]:
     histogram = _empty_histogram()
 
     for lat in sorted_lat:
-        placed = False
         for bucket in _HISTOGRAM_BUCKETS:
             if lat <= bucket:
                 histogram[f"<={bucket}ms"] += 1
-                placed = True
                 break
-        if not placed:
+        else:
             histogram[f">{_HISTOGRAM_BUCKETS[-1]}ms"] += 1
 
     return {

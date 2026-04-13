@@ -8,7 +8,7 @@ from vaudeville.core.rules import (
     CHARS_PER_TOKEN,
     MAX_INPUT_TOKENS,
     Rule,
-    _prepare_text,
+    prepare_text,
     _strip_code_blocks,
     _truncate_for_event,
     front_truncate,
@@ -64,42 +64,42 @@ class TestStripCodeBlocks:
     def test_fails_open(self) -> None:
         with patch("vaudeville.core.rules._CODE_BLOCK_RE") as mock_re:
             mock_re.sub.side_effect = RuntimeError("boom")
-            # _prepare_text wraps _strip_code_blocks; fail-open returns original
-            assert _prepare_text("keep me", "Stop") == "keep me"
+            # prepare_text wraps _strip_code_blocks; fail-open returns original
+            assert prepare_text("keep me", "Stop") == "keep me"
 
 
 class TestPrepareText:
     def test_stop_event_strips_code_blocks(self) -> None:
         text = "prose\n```python\ncode()\n```\nmore prose\n"
-        result = _prepare_text(text, "Stop")
+        result = prepare_text(text, "Stop")
         assert "code()" not in result
         assert "prose" in result
 
     def test_non_stop_event_passes_through(self) -> None:
         text = "prose\n```python\ncode()\n```\nmore\n"
-        assert _prepare_text(text, "PreToolUse") == text
+        assert prepare_text(text, "PreToolUse") == text
 
     def test_empty_event_passes_through(self) -> None:
         text = "```\ncode\n```\n"
-        assert _prepare_text(text, "") == text
+        assert prepare_text(text, "") == text
 
     def test_empty_text_stop_event(self) -> None:
-        assert _prepare_text("", "Stop") == ""
+        assert prepare_text("", "Stop") == ""
 
     def test_plain_text_stop_event_unchanged(self) -> None:
         text = "Just normal text with no patterns to strip."
-        assert _prepare_text(text, "Stop") == text
+        assert prepare_text(text, "Stop") == text
 
     def test_fails_open_on_stripper_error(self) -> None:
         with patch(
             "vaudeville.core.rules._strip_code_blocks",
             side_effect=RuntimeError("boom"),
         ):
-            assert _prepare_text("keep me", "Stop") == "keep me"
+            assert prepare_text("keep me", "Stop") == "keep me"
 
 
 class TestFormatPromptIntegration:
-    """Verify format_prompt and split_prompt apply _prepare_text."""
+    """Verify format_prompt and split_prompt apply prepare_text."""
 
     def _make_rule(self, event: str) -> Rule:
         return Rule(

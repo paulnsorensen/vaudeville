@@ -24,7 +24,7 @@ MAX_INPUT_TOKENS = 3000
 CHARS_PER_TOKEN = 4  # conservative English approximation
 
 
-def _sanitize_input(text: str) -> str:
+def sanitize_input(text: str) -> str:
     """Neutralize verdict/reason markers that could spoof parse_verdict().
 
     parse_verdict() matches case-insensitively, so sanitization must too.
@@ -58,6 +58,8 @@ def sandwich_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
         return text
     marker = "\n[...]\n"
     available = max_chars - len(marker)
+    if available <= 0:
+        return back_truncate(text, max_tokens)
     head_chars = available * 3 // 10
     tail_chars = available - head_chars
     return text[:head_chars] + marker + text[-tail_chars:]
@@ -92,7 +94,7 @@ def _strip_code_blocks(text: str) -> str:
     return _CODE_BLOCK_RE.sub("", text)
 
 
-def _prepare_text(text: str, event: str) -> str:
+def prepare_text(text: str, event: str) -> str:
     """Strip structural noise before truncation.
 
     Only applies to Stop hooks (assistant response quality).
@@ -149,10 +151,10 @@ class Rule:
     threshold: float = 0.5
 
     def format_prompt(self, text: str, context: str = "") -> str:
-        safe_text = _sanitize_input(
-            _truncate_for_event(_prepare_text(text, self.event), self.event)
+        safe_text = sanitize_input(
+            _truncate_for_event(prepare_text(text, self.event), self.event)
         )
-        safe_context = _sanitize_input(context) if context else ""
+        safe_context = sanitize_input(context) if context else ""
         return self.prompt.replace("{text}", safe_text).replace(
             "{context}", safe_context
         )
@@ -163,10 +165,10 @@ class Rule:
         prefix_len is the character index where the static prefix ends
         and the variable {text} content begins.
         """
-        safe_text = _sanitize_input(
-            _truncate_for_event(_prepare_text(text, self.event), self.event)
+        safe_text = sanitize_input(
+            _truncate_for_event(prepare_text(text, self.event), self.event)
         )
-        safe_context = _sanitize_input(context) if context else ""
+        safe_context = sanitize_input(context) if context else ""
         prompt_with_context = self.prompt.replace("{context}", safe_context)
 
         before, _, after = prompt_with_context.partition("{text}")

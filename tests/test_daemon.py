@@ -619,7 +619,7 @@ class TestCachedInferenceRouting:
 
     def test_run_inference_prefers_cached_logprobs_over_cached_plain(self) -> None:
         """When both classify_cached and classify_cached_with_logprobs exist, prefer logprobs."""
-        from vaudeville.server.daemon import _run_inference
+        from vaudeville.server._handlers import _run_inference
 
         route_taken: list[str] = []
 
@@ -648,7 +648,7 @@ class TestCachedInferenceRouting:
 
     def test_run_inference_uncached_logprobs_when_prefix_zero(self) -> None:
         """prefix_len=0 uses classify_with_logprobs even when cached methods exist."""
-        from vaudeville.server.daemon import _run_inference
+        from vaudeville.server._handlers import _run_inference
 
         route_taken: list[str] = []
 

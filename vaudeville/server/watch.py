@@ -76,7 +76,7 @@ def _read_new_events(
 ) -> tuple[list[dict[str, Any]], tuple[int, int], bool]:
     total_seen, violations = totals
     changed = False
-    for line in f.readlines():
+    for line in f:
         stripped = line.strip()
         if not stripped:
             continue

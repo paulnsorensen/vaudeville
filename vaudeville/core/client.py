@@ -64,16 +64,17 @@ class VaudevilleClient:
             sock.settimeout(READ_TIMEOUT)
             sock.sendall(payload)
 
-            data = b""
+            data = bytearray()
             while True:
+                scan_from = len(data)
                 chunk = sock.recv(RECV_CHUNK)
                 if not chunk:
                     break
-                data += chunk
-                if b"\n" in data:
+                data.extend(chunk)
+                if data.find(b"\n", scan_from) >= 0:
                     break
 
-        response = json.loads(data.decode().strip())
+        response = json.loads(bytes(data).decode().strip())
         return str(response.get("text", text))
 
     def _send(self, request: ClassifyRequest) -> ClassifyResponse:
@@ -88,16 +89,17 @@ class VaudevilleClient:
             sock.settimeout(READ_TIMEOUT)
             sock.sendall(payload)
 
-            data = b""
+            data = bytearray()
             while True:
+                scan_from = len(data)
                 chunk = sock.recv(RECV_CHUNK)
                 if not chunk:
                     break
-                data += chunk
-                if b"\n" in data:
+                data.extend(chunk)
+                if data.find(b"\n", scan_from) >= 0:
                     break
 
-        response = json.loads(data.decode().strip())
+        response = json.loads(bytes(data).decode().strip())
         return ClassifyResponse(
             verdict=response.get("verdict", "clean"),
             reason=response.get("reason", ""),

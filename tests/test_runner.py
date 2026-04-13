@@ -277,6 +277,39 @@ class TestMaybeCondense:
 
         client.condense.assert_called_once_with("x" * 100)
 
+    def test_code_blocks_stripped_before_condense(self) -> None:
+        """_prepare_text runs before _maybe_condense: code blocks are gone."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Check: {text}",
+            context=[{"field": "body"}],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+        )
+        client = MagicMock()
+        client.condense.side_effect = lambda text: text
+        client.classify.return_value = ClassifyResponse(
+            verdict="clean", reason="ok", confidence=0.9
+        )
+        body = "prose here\n```python\ncode_block()\n```\nmore prose\n" + "x" * 100
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[rule]),
+            pytest.raises(SystemExit),
+        ):
+            runner._run_event_rules("Stop", {"body": body}, client)
+
+        condensed_arg = client.condense.call_args[0][0]
+        assert "code_block()" not in condensed_arg
+        assert "prose here" in condensed_arg
+
     def test_run_event_rules_skips_condense_for_pretooluse(self) -> None:
         """_run_event_rules does NOT condense for PreToolUse events."""
         from unittest.mock import MagicMock

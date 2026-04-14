@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import optuna
 import pytest
@@ -21,6 +21,7 @@ from vaudeville.tune.harness import (
     _compute_metrics,
     _eval_subset,
     _format_verdict,
+    _make_default_sampler,
     _make_trial_rule,
     _pool_ids,
     _study_db_path,
@@ -173,6 +174,38 @@ class TestStudyDbPath:
             assert path.startswith(tmpdir)
             assert "my-rule" in path
             assert path.endswith(".db")
+
+
+class TestMakeDefaultSampler:
+    @patch("vaudeville.tune.harness.LLMSampler")
+    def test_uses_llm_sampler_when_anthropic_available(
+        self,
+        mock_llm_cls: MagicMock,
+    ) -> None:
+        mock_client = MagicMock()
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            sampler = _make_default_sampler()
+        mock_llm_cls.assert_called_once_with(anthropic_client=mock_client)
+        assert sampler == mock_llm_cls.return_value
+
+    def test_falls_back_to_tpe_when_anthropic_missing(self) -> None:
+        with patch.dict("sys.modules", {"anthropic": None}):
+            sampler = _make_default_sampler()
+        assert isinstance(sampler, optuna.samplers.TPESampler)
+
+    @patch("vaudeville.tune.harness.LLMSampler")
+    def test_falls_back_to_tpe_on_client_error(
+        self,
+        mock_llm_cls: MagicMock,
+    ) -> None:
+        mock_anthropic = MagicMock()
+        mock_anthropic.Anthropic.side_effect = RuntimeError("no key")
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            sampler = _make_default_sampler()
+        mock_llm_cls.assert_not_called()
+        assert isinstance(sampler, optuna.samplers.TPESampler)
 
 
 class TestCreateStudy:
@@ -499,16 +532,6 @@ class TestFormatVerdict:
         )
         lines = _format_verdict(verdict).strip().splitlines()
         assert 8 <= len(lines) <= 12
-
-
-class TestStudyConfigAuthor:
-    def test_author_default_false(self) -> None:
-        cfg = StudyConfig(rule_name="test")
-        assert cfg.author is False
-
-    def test_author_can_be_set(self) -> None:
-        cfg = StudyConfig(rule_name="test", author=True)
-        assert cfg.author is True
 
 
 class TestRunStudy:

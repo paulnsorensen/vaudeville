@@ -6,6 +6,7 @@ to optimize precision and recall on a held-out set.
 
 from __future__ import annotations
 
+import difflib
 import logging
 import os
 from dataclasses import dataclass
@@ -16,20 +17,11 @@ import optuna
 from ..core.rules import Rule, render_prompt
 from ..eval import CaseResult, EvalCase, evaluate_rule
 from ..server.inference import InferenceBackend
+from .sampler import LLMSampler
 
 logger = logging.getLogger(__name__)
 
 PROMPT_BUDGET = 2000
-
-
-@dataclass
-class TrialResult:
-    precision_tune: float
-    recall_tune: float
-    precision_held: float
-    recall_held: float
-    example_ids: list[str]
-    prompt_len: int
 
 
 @dataclass
@@ -39,7 +31,6 @@ class StudyConfig:
     r_min: float = 0.80
     budget: int = 15
     study_dir: str = ""
-    author: bool = False
     consecutive_target: int = 2
 
     def resolve_study_dir(self) -> str:
@@ -128,6 +119,18 @@ def _eval_subset(
     return precision, recall, case_results
 
 
+def _make_default_sampler() -> optuna.samplers.BaseSampler:
+    """Build LLMSampler with Anthropic client, or TPE if unavailable."""
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic()
+        return LLMSampler(anthropic_client=client)
+    except Exception:
+        logger.debug("Anthropic client unavailable, using TPE sampler")
+        return optuna.samplers.TPESampler()
+
+
 def create_study(
     config: StudyConfig,
     sampler: optuna.samplers.BaseSampler | None = None,
@@ -136,7 +139,7 @@ def create_study(
     db_path = _study_db_path(config)
     storage = f"sqlite:///{db_path}"
     if sampler is None:
-        sampler = optuna.samplers.TPESampler()
+        sampler = _make_default_sampler()
     study = optuna.create_study(
         study_name=config.rule_name,
         storage=storage,
@@ -224,8 +227,6 @@ def _write_prompt_diff(
     config: StudyConfig,
 ) -> str:
     """Write a prompt diff file. Returns the file path."""
-    import difflib
-
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     d = config.resolve_study_dir()
     os.makedirs(d, exist_ok=True)

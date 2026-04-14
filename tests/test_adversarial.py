@@ -23,7 +23,7 @@ import time
 from unittest.mock import MagicMock, patch
 
 from vaudeville.core.paths import VERSION_FILE
-from vaudeville.server.daemon import VaudevilleDaemon, handle_request
+from vaudeville.server import DaemonConfig, VaudevilleDaemon, handle_request
 from conftest import MockBackend
 
 
@@ -34,7 +34,8 @@ def _make_daemon(
 ) -> VaudevilleDaemon:
     plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return VaudevilleDaemon(
-        socket_path, pid_file, plugin_root, MockBackend(), version_file=version_file
+        MockBackend(),
+        DaemonConfig(socket_path, pid_file, plugin_root, version_file),
     )
 
 
@@ -117,11 +118,8 @@ class TestVersionStampRace:
 
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon2 = VaudevilleDaemon(
-                socket_path2,
-                pid_file,
-                plugin_root,
                 MockBackend(),
-                version_file=version_file,
+                DaemonConfig(socket_path2, pid_file, plugin_root, version_file),
             )
             # serve() should return immediately due to PID lock held by daemon1
             thread2 = threading.Thread(target=daemon2.serve, daemon=True)
@@ -162,11 +160,8 @@ class TestVersionStampRace:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path,
-            pid_file,
-            plugin_root,
             TracingBackend(),
-            version_file=version_file,
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
 
         original_write = daemon._write_version_stamp
@@ -222,11 +217,8 @@ class TestVersionFilePermissions:
 
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon = VaudevilleDaemon(
-                socket_path,
-                pid_file,
-                plugin_root,
                 MockBackend(),
-                version_file=version_file,
+                DaemonConfig(socket_path, pid_file, plugin_root, version_file),
             )
 
             # Serve should still bind the socket despite write failure
@@ -269,11 +261,13 @@ class TestGitNotAvailable:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            "/tmp/_test_git_na.sock",
-            "/tmp/_test_git_na.pid",
-            plugin_root,
             MockBackend(),
-            version_file=version_file,
+            DaemonConfig(
+                "/tmp/_test_git_na.sock",
+                "/tmp/_test_git_na.pid",
+                plugin_root,
+                version_file,
+            ),
         )
 
         # Simulate git not found by making the subprocess raise OSError
@@ -294,11 +288,13 @@ class TestGitNotAvailable:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            "/tmp/_test_git_fail.sock",
-            "/tmp/_test_git_fail.pid",
-            plugin_root,
             MockBackend(),
-            version_file=version_file,
+            DaemonConfig(
+                "/tmp/_test_git_fail.sock",
+                "/tmp/_test_git_fail.pid",
+                plugin_root,
+                version_file,
+            ),
         )
 
         fake_result = MagicMock()
@@ -322,11 +318,13 @@ class TestGitNotAvailable:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            "/tmp/_test_git_timeout.sock",
-            "/tmp/_test_git_timeout.pid",
-            plugin_root,
             MockBackend(),
-            version_file=version_file,
+            DaemonConfig(
+                "/tmp/_test_git_timeout.sock",
+                "/tmp/_test_git_timeout.pid",
+                plugin_root,
+                version_file,
+            ),
         )
 
         with patch(
@@ -373,11 +371,8 @@ class TestShutdownRace:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path,
-            pid_file,
-            plugin_root,
             SlowBackend(),
-            version_file=version_file,
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
@@ -483,11 +478,8 @@ class TestPidFileGarbage:
         try:
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon = VaudevilleDaemon(
-                socket_path,
-                pid_file,
-                plugin_root,
                 MockBackend(),
-                version_file=version_file,
+                DaemonConfig(socket_path, pid_file, plugin_root, version_file),
             )
             thread = threading.Thread(target=daemon.serve, daemon=True)
             thread.start()
@@ -524,11 +516,8 @@ class TestPidFileGarbage:
         # The daemon re-opens and relocks the PID file; garbage content shouldn't matter
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path,
-            pid_file,
-            plugin_root,
             MockBackend(),
-            version_file=version_file,
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
@@ -562,11 +551,13 @@ class TestCleanupInterrupted:
         """_cleanup() must not raise if socket/pid/version files are already gone."""
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            "/tmp/_nonexistent_test.sock",
-            "/tmp/_nonexistent_test.pid",
-            plugin_root,
             MockBackend(),
-            version_file="/tmp/_nonexistent_test.version",
+            DaemonConfig(
+                "/tmp/_nonexistent_test.sock",
+                "/tmp/_nonexistent_test.pid",
+                plugin_root,
+                "/tmp/_nonexistent_test.version",
+            ),
         )
         # No files exist — must not raise
         daemon._cleanup()
@@ -593,11 +584,8 @@ class TestCleanupInterrupted:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path,
-            pid_file,
-            plugin_root,
             MockBackend(),
-            version_file=version_file,
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
@@ -711,11 +699,8 @@ class TestBackendLockContention:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            socket_path,
-            pid_file,
-            plugin_root,
             TimingBackend(),
-            version_file=version_file,
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
@@ -816,11 +801,13 @@ class TestCleanupWithoutPidLock:
         """_cleanup() with pid_fd=None must not raise AttributeError or OSError."""
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            "/tmp/_skip_test.sock",
-            "/tmp/_skip_test.pid",
-            plugin_root,
             MockBackend(),
-            version_file="/tmp/_skip_test.version",
+            DaemonConfig(
+                "/tmp/_skip_test.sock",
+                "/tmp/_skip_test.pid",
+                plugin_root,
+                "/tmp/_skip_test.version",
+            ),
         )
         assert daemon._pid_fd is None
         # Must not raise

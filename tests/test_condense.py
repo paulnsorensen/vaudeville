@@ -14,7 +14,7 @@ from vaudeville.server.condense import (
     _split_into_chunks,
     condense_text,
 )
-from vaudeville.server.daemon import handle_request
+from vaudeville.server import handle_request
 
 
 class TestBuildCondensePrompt:

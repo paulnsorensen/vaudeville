@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from vaudeville.core.protocol import ClassifyResult
-from vaudeville.server.daemon import handle_request, VaudevilleDaemon
+from vaudeville.server import DaemonConfig, VaudevilleDaemon, handle_request
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.log_config import LogConfig
 from vaudeville.server.inference import LogprobBackend
@@ -172,10 +172,8 @@ class TestDaemonEventLoggerWiring:
         el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            "/tmp/test.sock",
-            "/tmp/test.pid",
-            plugin_root,
             MockBackend(),
+            DaemonConfig("/tmp/test.sock", "/tmp/test.pid", plugin_root),
             event_logger=el,
         )
         assert daemon._event_logger is el
@@ -194,10 +192,8 @@ class TestDaemonEventLoggerWiring:
         pid = str(Path(tmp_path) / "test.pid")
         Path(pid).touch()
         daemon = VaudevilleDaemon(
-            sock,
-            pid,
-            plugin_root,
             MockBackend(),
+            DaemonConfig(sock, pid, plugin_root),
             event_logger=el,
         )
         daemon._cleanup()
@@ -208,10 +204,8 @@ class TestDaemonEventLoggerWiring:
         """Daemon defaults to None event_logger."""
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            "/tmp/test.sock",
-            "/tmp/test.pid",
-            plugin_root,
             MockBackend(),
+            DaemonConfig("/tmp/test.sock", "/tmp/test.pid", plugin_root),
         )
         assert daemon._event_logger is None
 
@@ -237,7 +231,8 @@ class TestDaemonSocketProtocol:
         ) as vf:
             version_file = vf.name
         daemon = VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, backend, version_file=version_file
+            backend,
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -295,7 +290,8 @@ class TestDaemonSocketProtocol:
         ) as vf:
             version_file = vf.name
         daemon = VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, backend, version_file=version_file
+            backend,
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -366,7 +362,8 @@ class TestBackendLockSerialization:
         ) as vf:
             version_file = vf.name
         daemon = VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, SlowBackend(), version_file=version_file
+            SlowBackend(),
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -427,7 +424,9 @@ class TestSignalHandlers:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         backend = MockBackend()
-        daemon = VaudevilleDaemon(socket_path, pid_file, plugin_root, backend)
+        daemon = VaudevilleDaemon(
+            backend, DaemonConfig(socket_path, pid_file, plugin_root)
+        )
 
         # Install handlers (normally done by serve())
         daemon._install_signal_handlers()
@@ -447,7 +446,8 @@ class TestVersionStamp:
     ) -> "VaudevilleDaemon":
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         return VaudevilleDaemon(
-            socket_path, pid_file, plugin_root, MockBackend(), version_file=version_file
+            MockBackend(),
+            DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
 
     def test_version_file_written_after_serve(self) -> None:

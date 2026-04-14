@@ -127,7 +127,7 @@ def main() -> None:
 
 def _load_rules_for_event(event: str) -> list:
     """Auto-discover all rules matching an event via layered resolution."""
-    from vaudeville.core.rules import load_rules_layered  # noqa: E402
+    from vaudeville.core import load_rules_layered  # noqa: E402
 
     project_root = _find_project_root()
     all_rules = load_rules_layered(project_root)

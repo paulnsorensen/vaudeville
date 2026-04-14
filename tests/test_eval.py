@@ -25,6 +25,7 @@ from vaudeville.eval_report import (
     MIN_CALIBRATION_CASES,
     _find_best_threshold,
     _git_head,
+    CalibrateTarget,
     calibrate_rule,
     cross_validate_rule,
     find_rule_file,
@@ -46,6 +47,7 @@ def rules() -> dict[str, Rule]:
             context=[{"field": "last_assistant_message"}],
             action="block",
             message="{reason}",
+            threshold=0.0,
         ),
     }
 
@@ -121,6 +123,46 @@ class TestLoadTestCases:
         assert len(result["test-rule"]) == 1
 
 
+class TestCondenseIntegration:
+    """Verify condense_text is called for Stop+long, skipped otherwise."""
+
+    def test_condense_called_for_stop_long_text(self, rules: dict[str, Rule]) -> None:
+        long_text = "x" * 250
+        backend = MockBackend(verdict="clean", reason="ok")
+        results = EvalResults(rule="violation-detector")
+        case = EvalCase(text=long_text, label="clean")
+        with patch("vaudeville.eval.condense_text", return_value="condensed") as mock:
+            classify_case(case, rules["violation-detector"], backend, results)
+        mock.assert_called_once_with(long_text, backend)
+
+    def test_condense_skipped_for_stop_short_text(self, rules: dict[str, Rule]) -> None:
+        short_text = "short text"
+        backend = MockBackend(verdict="clean", reason="ok")
+        results = EvalResults(rule="violation-detector")
+        case = EvalCase(text=short_text, label="clean")
+        with patch("vaudeville.eval.condense_text") as mock:
+            classify_case(case, rules["violation-detector"], backend, results)
+        mock.assert_not_called()
+
+    def test_condense_skipped_for_pretooluse(self) -> None:
+        rule = Rule(
+            name="tool-rule",
+            event="PreToolUse",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.0,
+        )
+        long_text = "x" * 250
+        backend = MockBackend(verdict="clean", reason="ok")
+        results = EvalResults(rule="tool-rule")
+        case = EvalCase(text=long_text, label="clean")
+        with patch("vaudeville.eval.condense_text") as mock:
+            classify_case(case, rule, backend, results)
+        mock.assert_not_called()
+
+
 class TestClassifyCase:
     def test_true_positive(self, rules: dict[str, Rule]) -> None:
         backend = MockBackend(verdict="violation", reason="found issue")
@@ -153,6 +195,68 @@ class TestClassifyCase:
         classify_case(case, rules["violation-detector"], backend, results)
         assert results.fn == 1
         assert results.misclassified[0]["actual"] == "violation"
+
+    def test_threshold_downgrades_low_confidence_violation(self) -> None:
+        """A violation with confidence below the rule threshold becomes clean."""
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.7,
+        )
+        backend = MockBackend(
+            verdict="violation",
+            reason="found issue",
+            logprobs={"violation": -1.5, "clean": -0.5},
+        )
+        results = EvalResults(rule="test-rule")
+        case = EvalCase(text="borderline text", label="clean")
+        cr = classify_case(case, rule, backend, results)
+        assert cr.predicted == "clean"
+        assert results.tn == 1
+        assert results.fp == 0
+
+    def test_threshold_keeps_high_confidence_violation(self) -> None:
+        """A violation with confidence above the rule threshold stays violation."""
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+        )
+        backend = MockBackend(
+            verdict="violation",
+            reason="found issue",
+            logprobs={"violation": -0.05, "clean": -5.0},
+        )
+        results = EvalResults(rule="test-rule")
+        case = EvalCase(text="hedging text", label="violation")
+        cr = classify_case(case, rule, backend, results)
+        assert cr.predicted == "violation"
+        assert results.tp == 1
+
+    def test_threshold_zero_disables_downgrade(self) -> None:
+        """threshold=0.0 means no downgrading even with zero confidence."""
+        rule = Rule(
+            name="test-rule",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            threshold=0.0,
+        )
+        backend = MockBackend(verdict="violation", reason="found issue")
+        results = EvalResults(rule="test-rule")
+        case = EvalCase(text="test text", label="violation")
+        classify_case(case, rule, backend, results)
+        assert results.tp == 1
 
 
 class TestEvaluateRule:
@@ -279,6 +383,21 @@ class TestThresholdSweep:
         assert "0.90" in out
 
 
+class TestRunInference:
+    def test_non_logprob_backend_uses_classify(self) -> None:
+        """A backend without classify_with_logprobs falls back to classify()."""
+        from vaudeville.eval import _run_inference
+
+        class PlainBackend:
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+                return "VERDICT: clean\nREASON: ok"
+
+        backend = PlainBackend()
+        result = _run_inference(backend, "test prompt")
+        assert result.text == "VERDICT: clean\nREASON: ok"
+        assert result.logprobs == {}
+
+
 class TestBuildBackend:
     def test_returns_mlx_backend(self) -> None:
         import argparse
@@ -351,6 +470,7 @@ class TestMain:
                         context=[{"field": "last_assistant_message"}],
                         action="block",
                         message="{reason}",
+                        threshold=0.0,
                     ),
                 },
             ),
@@ -380,6 +500,7 @@ class TestMain:
                         context=[{"field": "last_assistant_message"}],
                         action="block",
                         message="{reason}",
+                        threshold=0.0,
                     ),
                 },
             ),
@@ -411,6 +532,7 @@ class TestMain:
                         context=[{"field": "last_assistant_message"}],
                         action="block",
                         message="{reason}",
+                        threshold=0.0,
                     ),
                 },
             ),
@@ -446,6 +568,7 @@ class TestMain:
                         context=[{"field": "last_assistant_message"}],
                         action="block",
                         message="{reason}",
+                        threshold=0.0,
                     ),
                 },
             ),
@@ -626,9 +749,8 @@ class TestCalibrateRule:
             yaml.dump({"name": "violation-detector", "threshold": 0.5})
         )
         cases = [EvalCase(f"text {i}", "violation") for i in range(19)]
-        result = calibrate_rule(
-            "violation-detector", cases, rules, MockBackend(), str(rule_file)
-        )
+        target = CalibrateTarget("violation-detector", str(rule_file))
+        result = calibrate_rule(target, cases, rules, MockBackend())
         assert result is None
         out = capsys.readouterr().out
         assert "minimum" in out
@@ -686,9 +808,8 @@ class TestCalibrateRule:
             "vaudeville.eval.evaluate_rule",
             return_value=(mock_results, case_results),
         ):
-            result = calibrate_rule(
-                "violation-detector", cases, rules, MockBackend(), str(rule_file)
-            )
+            target = CalibrateTarget("violation-detector", str(rule_file))
+            result = calibrate_rule(target, cases, rules, MockBackend())
 
         assert result == 0.45
         with open(rule_file) as f:
@@ -725,9 +846,8 @@ class TestCalibrateRule:
             "vaudeville.eval.evaluate_rule",
             return_value=(mock_results, case_results),
         ):
-            result = calibrate_rule(
-                "violation-detector", cases, rules, MockBackend(), str(rule_file)
-            )
+            target = CalibrateTarget("violation-detector", str(rule_file))
+            result = calibrate_rule(target, cases, rules, MockBackend())
 
         assert result is None
         out = capsys.readouterr().out

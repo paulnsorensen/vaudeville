@@ -83,6 +83,7 @@ class TestEvaluateRule:
                 context=[{"field": "last_assistant_message"}],
                 action="block",
                 message="{reason}",
+                threshold=0.0,
             ),
         }
 

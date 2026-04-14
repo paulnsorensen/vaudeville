@@ -60,7 +60,7 @@ def _split_into_chunks(text: str, max_chars: int) -> list[str]:
     current_len = 0
 
     for line in lines:
-        line_len = len(line) + 1  # +1 for the newline we'll rejoin with
+        line_len = len(line) + 1
         if current and current_len + line_len > max_chars:
             chunks.append("\n".join(current))
             current = []

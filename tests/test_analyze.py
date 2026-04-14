@@ -6,19 +6,36 @@ import importlib.util
 import json
 import os
 import pathlib
+import sys
 from typing import Any, Callable
 from unittest.mock import patch
 
 import pytest
 
-# Load analyze.py as a module from the skills directory
-_ANALYZE_PATH = os.path.join(
+_SCRIPTS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "skills",
     "hook-suggester",
     "scripts",
-    "analyze.py",
 )
+
+# Ensure the scripts directory is on sys.path so relative imports work
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
+_ANALYZERS_PATH = os.path.join(_SCRIPTS_DIR, "analyzers.py")
+_ANALYZE_PATH = os.path.join(_SCRIPTS_DIR, "analyze.py")
+
+if "analyzers" not in sys.modules:
+    analyzers_spec = importlib.util.spec_from_file_location(
+        "analyzers", _ANALYZERS_PATH
+    )
+    assert analyzers_spec is not None and analyzers_spec.loader is not None
+    _analyzers_mod = importlib.util.module_from_spec(analyzers_spec)
+    sys.modules["analyzers"] = _analyzers_mod
+    analyzers_spec.loader.exec_module(_analyzers_mod)
+
+analyzers = sys.modules["analyzers"]
 
 spec = importlib.util.spec_from_file_location("analyze", _ANALYZE_PATH)
 assert spec is not None and spec.loader is not None
@@ -29,7 +46,7 @@ spec.loader.exec_module(analyze)
 class TestQuery:
     def test_duckdb_not_found_exits(self, tmp_path: pathlib.Path) -> None:
         db = str(tmp_path / "test.duckdb")
-        with patch.object(analyze, "DB_PATH", db):
+        with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", side_effect=FileNotFoundError):
                 with pytest.raises(SystemExit) as exc_info:
                     analyze.query("SELECT 1")
@@ -40,7 +57,7 @@ class TestQuery:
     ) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type("R", (), {"returncode": 1, "stdout": "", "stderr": "err!"})()
-        with patch.object(analyze, "DB_PATH", db):
+        with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 result = analyze.query("SELECT 1")
         assert result == []
@@ -53,7 +70,7 @@ class TestQuery:
         mock_result = type(
             "R", (), {"returncode": 1, "stdout": "", "stderr": "SQL error"}
         )()
-        with patch.object(analyze, "DB_PATH", db):
+        with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 analyze.query("BAD SQL")
         err = capsys.readouterr().err
@@ -62,7 +79,7 @@ class TestQuery:
     def test_empty_stdout_returns_empty(self, tmp_path: pathlib.Path) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
-        with patch.object(analyze, "DB_PATH", db):
+        with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 result = analyze.query("SELECT 1")
         assert result == []
@@ -72,7 +89,7 @@ class TestQuery:
     ) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type("R", (), {"returncode": 0, "stdout": "[{]", "stderr": ""})()
-        with patch.object(analyze, "DB_PATH", db):
+        with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 result = analyze.query("SELECT 1")
         assert result == []
@@ -84,7 +101,7 @@ class TestQuery:
         mock_result = type(
             "R", (), {"returncode": 0, "stdout": "not-json", "stderr": ""}
         )()
-        with patch.object(analyze, "DB_PATH", db):
+        with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 result = analyze.query("SELECT 1")
         assert result == []
@@ -96,7 +113,7 @@ class TestQuery:
         mock_result = type(
             "R", (), {"returncode": 0, "stdout": json.dumps(data), "stderr": ""}
         )()
-        with patch.object(analyze, "DB_PATH", db):
+        with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 result = analyze.query("SELECT 1")
         assert result == data
@@ -104,12 +121,12 @@ class TestQuery:
 
 class TestCheckDangerousBash:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_dangerous_bash(14, 3) is None
 
     def test_returns_suggestion_when_rows_found(self) -> None:
         rows = [{"bash_cmd": "rm -rf /tmp/foo", "uses": "5"}]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_dangerous_bash(14, 3)
         assert result is not None
         assert result["id"] == "dangerous-bash"
@@ -119,7 +136,7 @@ class TestCheckDangerousBash:
 
 class TestCheckToolMisuse:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_tool_misuse(14, 3) is None
 
     def test_returns_suggestion_with_misuse_types(self) -> None:
@@ -127,7 +144,7 @@ class TestCheckToolMisuse:
             {"misuse_type": "grep/rg → Grep tool", "uses": "100"},
             {"misuse_type": "cat/head/tail → Read tool", "uses": "50"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_tool_misuse(14, 3)
         assert result is not None
         assert result["id"] == "tool-misuse"
@@ -136,14 +153,14 @@ class TestCheckToolMisuse:
 
 class TestCheckHighErrorTools:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_high_error_tools(14, 3) is None
 
     def test_returns_suggestion_with_tool_names(self) -> None:
         rows = [
             {"tool_name": "mcp__github__create_pr", "error_pct": "100.0", "total": "5"}
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_high_error_tools(14, 3)
         assert result is not None
         assert result["id"] == "high-error-tools"
@@ -152,7 +169,7 @@ class TestCheckHighErrorTools:
 
 class TestCheckPermissionFriction:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_permission_friction(14, 3) is None
 
     def test_returns_suggestion_with_denial_examples(self) -> None:
@@ -160,7 +177,7 @@ class TestCheckPermissionFriction:
             {"denial": "Permission to use Bash has been denied.", "denials": "10"},
             {"denial": "Permission to use Read has been denied.", "denials": "5"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_permission_friction(14, 3)
         assert result is not None
         assert result["id"] == "permission-friction"
@@ -182,15 +199,15 @@ class TestCheckMissingQualityHooks:
         return _q
 
     def test_returns_none_when_stop_count_zero(self) -> None:
-        with patch.object(analyze, "query", self._mock_counts(0, 0)):
+        with patch.object(analyzers, "query", self._mock_counts(0, 0)):
             assert analyze.check_missing_quality_hooks(14) is None
 
     def test_returns_none_when_ratio_above_threshold(self) -> None:
-        with patch.object(analyze, "query", self._mock_counts(60, 100)):
+        with patch.object(analyzers, "query", self._mock_counts(60, 100)):
             assert analyze.check_missing_quality_hooks(14) is None
 
     def test_returns_suggestion_when_low_ratio(self) -> None:
-        with patch.object(analyze, "query", self._mock_counts(10, 100)):
+        with patch.object(analyzers, "query", self._mock_counts(10, 100)):
             result = analyze.check_missing_quality_hooks(14)
         assert result is not None
         assert result["id"] == "missing-quality-hooks"
@@ -199,12 +216,12 @@ class TestCheckMissingQualityHooks:
 
 class TestCheckHookFailures:
     def test_returns_none_when_no_errors(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_hook_failures(14, 3) is None
 
     def test_returns_suggestion_with_error_examples(self) -> None:
         rows = [{"err": "Timeout after 30s", "cnt": "5"}]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_hook_failures(14, 3)
         assert result is not None
         assert result["id"] == "hook-failures"
@@ -213,7 +230,7 @@ class TestCheckHookFailures:
 
 class TestCheckCodeWriteVolume:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_code_write_volume(14, 3) is None
 
     def test_returns_suggestion_with_language_breakdown(self) -> None:
@@ -221,7 +238,7 @@ class TestCheckCodeWriteVolume:
             {"lang": "Python", "writes": "500"},
             {"lang": "Rust", "writes": "200"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_code_write_volume(14, 3)
         assert result is not None
         assert result["id"] == "auto-format"
@@ -230,7 +247,7 @@ class TestCheckCodeWriteVolume:
 
 class TestCheckRepeatedBashPatterns:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_repeated_bash_patterns(14, 3) is None
 
     def test_returns_suggestion_with_commands(self) -> None:
@@ -238,7 +255,7 @@ class TestCheckRepeatedBashPatterns:
             {"cmd": "git merge origin/main --no-edit", "uses": "50"},
             {"cmd": "git remote get-url origin", "uses": "30"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_repeated_bash_patterns(14, 3)
         assert result is not None
         assert result["id"] == "repeated-commands"
@@ -247,7 +264,7 @@ class TestCheckRepeatedBashPatterns:
     def test_long_commands_truncated_in_display(self) -> None:
         long_cmd = "x" * 100
         rows = [{"cmd": long_cmd, "uses": "20"}]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_repeated_bash_patterns(14, 3)
         assert result is not None
         assert len(result["examples"][0].split(" (")[0]) <= 80
@@ -255,7 +272,7 @@ class TestCheckRepeatedBashPatterns:
 
 class TestCheckCorrectionPatterns:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_correction_patterns(14, 3) is None
 
     def test_returns_suggestion_with_correction_examples(self) -> None:
@@ -263,7 +280,7 @@ class TestCheckCorrectionPatterns:
             {"user_msg": "no, that's not what I meant", "occurrences": "5"},
             {"user_msg": "wrong approach, use the Grep tool", "occurrences": "3"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_correction_patterns(14, 3)
         assert result is not None
         assert result["id"] == "correction-patterns"
@@ -276,7 +293,7 @@ class TestCheckCorrectionPatterns:
             {"user_msg": "no, wrong", "occurrences": "7"},
             {"user_msg": "that's not right", "occurrences": "3"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_correction_patterns(14, 3)
         assert result is not None
         assert "10" in result["description"]
@@ -284,7 +301,7 @@ class TestCheckCorrectionPatterns:
     def test_long_messages_truncated(self) -> None:
         long_msg = "no, " + "x" * 200
         rows = [{"user_msg": long_msg, "occurrences": "3"}]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_correction_patterns(14, 3)
         assert result is not None
         assert len(result["examples"][0]) <= 100
@@ -292,7 +309,7 @@ class TestCheckCorrectionPatterns:
 
 class TestCheckRetryLoops:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_retry_loops(14, 3) is None
 
     def test_returns_suggestion_with_tool_retries(self) -> None:
@@ -300,7 +317,7 @@ class TestCheckRetryLoops:
             {"tool_name": "Bash", "retry_count": "15"},
             {"tool_name": "Edit", "retry_count": "8"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_retry_loops(14, 3)
         assert result is not None
         assert result["id"] == "retry-loops"
@@ -313,7 +330,7 @@ class TestCheckRetryLoops:
             {"tool_name": "Bash", "retry_count": "10"},
             {"tool_name": "Edit", "retry_count": "5"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_retry_loops(14, 3)
         assert result is not None
         assert "15" in result["description"]
@@ -321,7 +338,7 @@ class TestCheckRetryLoops:
 
 class TestCheckPermissionToolWaste:
     def test_returns_none_when_no_rows(self) -> None:
-        with patch.object(analyze, "query", return_value=[]):
+        with patch.object(analyzers, "query", return_value=[]):
             assert analyze.check_permission_tool_waste(14, 3) is None
 
     def test_returns_suggestion_with_permission_failures(self) -> None:
@@ -329,7 +346,7 @@ class TestCheckPermissionToolWaste:
             {"tool_name": "Bash", "failures": "20"},
             {"tool_name": "Write", "failures": "5"},
         ]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_permission_tool_waste(14, 3)
         assert result is not None
         assert result["id"] == "permission-tool-waste"
@@ -339,7 +356,7 @@ class TestCheckPermissionToolWaste:
 
     def test_total_count_sums_failures(self) -> None:
         rows = [{"tool_name": "Bash", "failures": "10"}]
-        with patch.object(analyze, "query", return_value=rows):
+        with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_permission_tool_waste(14, 3)
         assert result is not None
         assert "10" in result["description"]

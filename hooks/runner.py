@@ -192,10 +192,11 @@ def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
 def _dispatch_violation(rule, result) -> bool:  # type: ignore[no-untyped-def]
     """Handle a tier-aware violation. Returns True if the rule loop should continue."""
     if rule.tier == "shadow":
-        print(
-            f"[vaudeville:shadow] {rule.name}: "
-            f"{result.verdict} ({result.confidence:.2f})",
-            file=sys.stderr,
+        _dbg(
+            "shadow %s: %s (%.2f)",
+            rule.name,
+            result.verdict,
+            result.confidence,
         )
         return True
 

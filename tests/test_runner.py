@@ -253,7 +253,7 @@ class TestRunPipeline:
     def test_shadow_tier_logs_but_passes(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Shadow tier logs verdict to stderr but returns {} (pass)."""
+        """Shadow tier skips violation and returns {} (pass)."""
         from unittest.mock import MagicMock
 
         from vaudeville.core.protocol import ClassifyResponse
@@ -285,7 +285,44 @@ class TestRunPipeline:
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
         assert captured.out.strip() == "{}"
-        assert "[vaudeville:shadow] test-shadow: violation (0.90)" in captured.err
+
+    def test_shadow_tier_debug_logs_when_enabled(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Shadow tier emits debug log when VAUDEVILLE_DEBUG=1."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        mock_rule = Rule(
+            name="test-shadow",
+            event="Stop",
+            prompt="Check: {text}",
+            context=[{"field": "body"}],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+            tier="shadow",
+        )
+        mock_client = MagicMock()
+        mock_client.classify.return_value = ClassifyResponse(
+            verdict="violation", reason="hedging detected", confidence=0.9
+        )
+        mock_client.condense.side_effect = lambda text: text
+        hook_input = {"body": "x" * 100}
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[mock_rule]),
+            patch.dict(os.environ, {"VAUDEVILLE_DEBUG": "1"}),
+            patch.object(runner, "_DEBUG", True),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            runner._run_event_rules("Stop", hook_input, mock_client)
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "shadow test-shadow" in captured.err
 
     def test_warn_tier_returns_warn_decision(
         self, capsys: pytest.CaptureFixture[str]

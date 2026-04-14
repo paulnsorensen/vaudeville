@@ -193,7 +193,21 @@ def evaluate_rule(
 
 
 def _build_backend(args: argparse.Namespace) -> InferenceBackend:
-    """Initialize the inference backend from CLI args."""
+    """Initialize the inference backend from CLI args.
+
+    Prefers a warm daemon over in-process MLXBackend unless --no-daemon.
+    """
+    no_daemon = getattr(args, "no_daemon", False)
+    if not no_daemon:
+        from .server.daemon_backend import DaemonBackend, daemon_is_alive
+
+        if daemon_is_alive():
+            print("Using warm daemon for inference")
+            return DaemonBackend()
+        logging.warning(
+            "[vaudeville] Daemon not available — falling back to in-process MLXBackend"
+        )
+
     from .server import MLXBackend
 
     print(f"Loading model: {args.model}")
@@ -226,6 +240,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--eval-log",
         help="Path to JSONL file for regression tracking (appends one line per run)",
+    )
+    parser.add_argument(
+        "--no-daemon",
+        action="store_true",
+        help="Force in-process backend, skip daemon check",
     )
     parser.add_argument(
         "--backend", default="mlx", choices=["mlx"], help="Inference backend"

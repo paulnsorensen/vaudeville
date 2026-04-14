@@ -1,0 +1,101 @@
+"""Daemon-backed inference for eval and tune harnesses.
+
+Wraps the Unix socket client to conform to InferenceBackend,
+enabling eval/tune to reuse a warm daemon instead of loading
+the model in-process.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import socket
+
+from ..core.paths import SOCKET_PATH
+from ..core.protocol import ClassifyResult
+
+CONNECT_TIMEOUT = 2.0
+READ_TIMEOUT = 30.0
+RECV_CHUNK = 4096
+
+logger = logging.getLogger(__name__)
+
+
+def daemon_is_alive(socket_path: str = SOCKET_PATH) -> bool:
+    """Check if the daemon socket exists and accepts connections."""
+    if not os.path.exists(socket_path):
+        return False
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(CONNECT_TIMEOUT)
+            sock.connect(socket_path)
+            return True
+    except (OSError, socket.timeout):
+        return False
+
+
+def _recv_response(sock: socket.socket) -> dict[str, object]:
+    data = bytearray()
+    while True:
+        scan_from = len(data)
+        chunk = sock.recv(RECV_CHUNK)
+        if not chunk:
+            break
+        data.extend(chunk)
+        if data.find(b"\n", scan_from) >= 0:
+            break
+    result: dict[str, object] = json.loads(bytes(data).decode().strip())
+    return result
+
+
+class DaemonBackend:
+    """InferenceBackend that forwards requests to a warm daemon."""
+
+    def __init__(self, socket_path: str = SOCKET_PATH) -> None:
+        self._socket_path = socket_path
+
+    def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+        response = self._send_classify(prompt)
+        verdict = response.get("verdict", "clean")
+        reason = response.get("reason", "")
+        return f"VERDICT: {verdict}\nREASON: {reason}"
+
+    def classify_with_logprobs(
+        self,
+        prompt: str,
+        max_tokens: int = 50,  # noqa: ARG002
+    ) -> ClassifyResult:
+        response = self._send_classify(prompt)
+        verdict = response.get("verdict", "clean")
+        reason = response.get("reason", "")
+        text = f"VERDICT: {verdict}\nREASON: {reason}"
+        confidence = float(str(response.get("confidence", 0.0)))
+        logprobs = _confidence_to_logprobs(str(verdict), confidence)
+        return ClassifyResult(text=text, logprobs=logprobs)
+
+    def _send_classify(self, prompt: str) -> dict[str, object]:
+        payload = json.dumps({"prompt": prompt}).encode() + b"\n"
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(CONNECT_TIMEOUT)
+            sock.connect(self._socket_path)
+            sock.settimeout(READ_TIMEOUT)
+            sock.sendall(payload)
+            return _recv_response(sock)
+
+
+def _confidence_to_logprobs(verdict: str, confidence: float) -> dict[str, float]:
+    """Reconstruct approximate logprobs from daemon confidence."""
+    import math
+
+    confidence = max(0.01, min(0.99, confidence))
+    other = 1.0 - confidence
+    if verdict == "violation":
+        return {
+            "violation": math.log(confidence),
+            "clean": math.log(other),
+        }
+    return {
+        "clean": math.log(confidence),
+        "violation": math.log(other),
+    }

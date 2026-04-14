@@ -280,15 +280,34 @@ class TestThresholdSweep:
 
 
 class TestBuildBackend:
-    def test_returns_mlx_backend(self) -> None:
+    def test_returns_mlx_backend_with_no_daemon(self) -> None:
         import argparse
 
         from vaudeville.eval import _build_backend
 
-        args = argparse.Namespace(model="test-model")
+        args = argparse.Namespace(model="test-model", no_daemon=True)
         mock_instance = MagicMock()
         mock_mlx = MagicMock(return_value=mock_instance)
         with patch("vaudeville.server.MLXBackend", mock_mlx):
+            backend = _build_backend(args)
+        mock_mlx.assert_called_once_with("test-model")
+        assert backend is mock_instance
+
+    def test_falls_back_to_mlx_when_daemon_unavailable(self) -> None:
+        import argparse
+
+        from vaudeville.eval import _build_backend
+
+        args = argparse.Namespace(model="test-model", no_daemon=False)
+        mock_instance = MagicMock()
+        mock_mlx = MagicMock(return_value=mock_instance)
+        with (
+            patch(
+                "vaudeville.server.daemon_backend.daemon_is_alive",
+                return_value=False,
+            ),
+            patch("vaudeville.server.MLXBackend", mock_mlx),
+        ):
             backend = _build_backend(args)
         mock_mlx.assert_called_once_with("test-model")
         assert backend is mock_instance
@@ -339,7 +358,7 @@ class TestMain:
         mock_backend = MockBackend(verdict="clean")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
-            patch("sys.argv", ["eval"]),
+            patch("sys.argv", ["eval", "--no-daemon"]),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
@@ -368,7 +387,7 @@ class TestMain:
         mock_backend = MockBackend(verdict="clean")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
-            patch("sys.argv", ["eval", "--rule", "violation-detector"]),
+            patch("sys.argv", ["eval", "--no-daemon", "--rule", "violation-detector"]),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
@@ -399,7 +418,7 @@ class TestMain:
     def test_exits_1_when_no_suite_for_specified_rule(self) -> None:
         mock_mlx_cls = MagicMock(return_value=MockBackend())
         with (
-            patch("sys.argv", ["eval", "--rule", "nonexistent-rule"]),
+            patch("sys.argv", ["eval", "--no-daemon", "--rule", "nonexistent-rule"]),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
@@ -433,7 +452,14 @@ class TestMain:
         with (
             patch(
                 "sys.argv",
-                ["eval", "--rule", "violation-detector", "--test-file", tf],
+                [
+                    "eval",
+                    "--no-daemon",
+                    "--rule",
+                    "violation-detector",
+                    "--test-file",
+                    tf,
+                ],
             ),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(

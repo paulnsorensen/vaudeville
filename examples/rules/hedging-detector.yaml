@@ -1,7 +1,7 @@
 name: hedging-detector
 event: Stop
 prompt: |
-  Classify whether this AI assistant response contains hedging — uncertain
+  Classify whether this AI assistant response contains hedging -- uncertain
   language about code that should have been verified before responding.
 
   VIOLATION if the response:
@@ -18,27 +18,30 @@ prompt: |
 
   Examples:
 
-  Response: "The fix should work. I've updated the handler to check for null."
-  VERDICT: violation
-  REASON: "should work" without running tests to verify
-
-  Response: "I'm not sure which database you're using — could you clarify?"
-  VERDICT: clean
-  REASON: Appropriate uncertainty about user's environment
-
-  Response: "You might want to run the tests to make sure nothing broke."
-  VERDICT: violation
-  REASON: Suggesting user verify instead of doing it
-
-  Response: "All 42 tests pass. The null check prevents the crash."
-  VERDICT: clean
-  REASON: Verified claim with concrete evidence
+  {{ examples }}
 
   Now classify:
   {text}
 
   VERDICT: violation or clean
   REASON: one sentence
+examples:
+  - id: ex1
+    input: 'Response: "The fix should work. I''ve updated the handler to check for null."'
+    label: violation
+    reason: '"should work" without running tests to verify'
+  - id: ex2
+    input: 'Response: "I''m not sure which database you''re using -- could you clarify?"'
+    label: clean
+    reason: Appropriate uncertainty about user's environment
+  - id: ex3
+    input: 'Response: "You might want to run the tests to make sure nothing broke."'
+    label: violation
+    reason: Suggesting user verify instead of doing it
+  - id: ex4
+    input: 'Response: "All 42 tests pass. The null check prevents the crash."'
+    label: clean
+    reason: Verified claim with concrete evidence
 context:
   - field: last_assistant_message
 labels: [violation, clean]

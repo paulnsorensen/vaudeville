@@ -1,20 +1,22 @@
 from .client import VaudevilleClient
 from .protocol import ClassifyRequest, ClassifyResponse, parse_verdict
 from .rules import (
-    CHARS_PER_TOKEN,
+    Example,
     Rule,
     load_rules,
     load_rules_layered,
     parse_rule,
-    prepare_text,
+    render_prompt,
     rules_search_path,
     sanitize_input,
 )
+from .truncation import CHARS_PER_TOKEN, prepare_text
 
 __all__ = [
     "CHARS_PER_TOKEN",
     "ClassifyRequest",
     "ClassifyResponse",
+    "Example",
     "Rule",
     "VaudevilleClient",
     "load_rules",
@@ -22,6 +24,7 @@ __all__ = [
     "parse_rule",
     "parse_verdict",
     "prepare_text",
+    "render_prompt",
     "rules_search_path",
     "sanitize_input",
 ]

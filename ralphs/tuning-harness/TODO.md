@@ -1,0 +1,8 @@
+- [x] US-001: Structured examples/candidates in rule YAML — parse `examples: [{id, input, label, reason}]` and `candidates:` in `core/rules.py`, add Jinja template rendering to prompt, migrate all 4 rules in `rules_dev/`, verify existing tests pass
+- [ ] US-002: Eval connects to warm daemon — `eval.py::_build_backend()` prefers daemon socket, falls back to in-process `MLXBackend` with warning
+- [ ] US-003: Per-case JSONL eval output — `eval --json` flag emits `{rule, case_id, expected, predicted, confidence, text}` per case, existing text output preserved without flag
+- [ ] US-004: Optuna study with custom LLMSampler — `LLMSampler(BaseSampler)` with TPE fallback, hypothesis-per-trial, constrained multi-objective via NSGA-II, study persists to sqlite
+- [ ] US-005: Candidate authoring (--author) — batch-generate new clauses targeting FN clusters, write to `<rule>.candidates.yaml`, respect 2000-char budget
+- [ ] US-006: Tune/held-out split — deterministic 70/30 split seeded by rule name + test file mtime, small-N escape hatch for <10 cases
+- [ ] US-007: `vaudeville tune` CLI + verdict output — single command, exit codes 0/1/2, 8-12 line verdict, flags for p-min/r-min/budget/author/no-daemon
+- [ ] US-008: `/tune` skill rewrite — shrink to ~30 lines, shell out to `vaudeville tune`, parse verdict

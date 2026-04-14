@@ -299,7 +299,7 @@ class TestSplitPrompt:
         assert "REASON\u200b:" in full
 
     def test_back_truncates_long_text(self) -> None:
-        from vaudeville.core.rules import CHARS_PER_TOKEN, MAX_INPUT_TOKENS
+        from vaudeville.core.truncation import CHARS_PER_TOKEN, MAX_INPUT_TOKENS
 
         max_chars = MAX_INPUT_TOKENS * CHARS_PER_TOKEN
         long_text = "A" * (max_chars + 100)

@@ -16,10 +16,10 @@ from vaudeville.core.protocol import (
 from vaudeville.core.rules import (
     Rule,
     sanitize_input,
-    back_truncate,
     load_rules,
     parse_rule,
 )
+from vaudeville.core.truncation import back_truncate
 
 
 # --- parse_verdict ---

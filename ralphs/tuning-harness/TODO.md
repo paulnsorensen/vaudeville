@@ -4,5 +4,5 @@
 - [x] US-004: Optuna study with custom LLMSampler — `LLMSampler(BaseSampler)` with TPE fallback, hypothesis-per-trial, constrained multi-objective via NSGA-II, study persists to sqlite
 - [x] US-005: Candidate authoring (--author) — batch-generate new clauses targeting FN clusters, write to `<rule>.candidates.yaml`, respect 2000-char budget
 - [x] US-006: Tune/held-out split — deterministic 70/30 split seeded by rule name + test file mtime, small-N escape hatch for <10 cases
-- [ ] US-007: `vaudeville tune` CLI + verdict output — single command, exit codes 0/1/2, 8-12 line verdict, flags for p-min/r-min/budget/author/no-daemon
-- [ ] US-008: `/tune` skill rewrite — shrink to ~30 lines, shell out to `vaudeville tune`, parse verdict
+- [x] US-007: `vaudeville tune` CLI + verdict output — single command, exit codes 0/1/2, 8-12 line verdict, flags for p-min/r-min/budget/author/no-daemon
+- [x] US-008: `/tune` skill rewrite — shrink to ~30 lines, shell out to `vaudeville tune`, parse verdict

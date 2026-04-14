@@ -39,11 +39,27 @@ class StudyConfig:
     r_min: float = 0.80
     budget: int = 15
     study_dir: str = ""
+    author: bool = False
+    consecutive_target: int = 2
 
     def resolve_study_dir(self) -> str:
         if self.study_dir:
             return self.study_dir
         return os.path.join(os.path.expanduser("~"), ".vaudeville", "tunes")
+
+
+@dataclass
+class TuneVerdict:
+    passed: bool
+    p_tune: float
+    r_tune: float
+    p_held: float
+    r_held: float
+    trials_run: int
+    pool_size: int
+    best_ids: list[str]
+    study_uri: str
+    diff_path: str
 
 
 def _study_db_path(config: StudyConfig) -> str:
@@ -177,3 +193,140 @@ def best_trial_ids(study: optuna.Study) -> list[str] | None:
     if not best:
         return None
     return best[0].user_attrs.get("example_ids")
+
+
+def _check_consecutive_hits(
+    study: optuna.Study,
+    config: StudyConfig,
+) -> bool:
+    """Check if the last N consecutive trials hit targets on held-out."""
+    completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if len(completed) < config.consecutive_target:
+        return False
+    recent = completed[-config.consecutive_target :]
+    return all(_trial_hits_targets(t, config) for t in recent)
+
+
+def _trial_hits_targets(
+    trial: optuna.trial.FrozenTrial,
+    config: StudyConfig,
+) -> bool:
+    """Check if a single trial meets precision and recall targets."""
+    if not trial.values or len(trial.values) < 2:
+        return False
+    r_held, p_held = float(trial.values[0]), float(trial.values[1])
+    return p_held >= config.p_min and r_held >= config.r_min
+
+
+def _write_prompt_diff(
+    original: str,
+    tuned: str,
+    config: StudyConfig,
+) -> str:
+    """Write a prompt diff file. Returns the file path."""
+    import difflib
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    d = config.resolve_study_dir()
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, f"{config.rule_name}-{ts}.diff")
+
+    diff = difflib.unified_diff(
+        original.splitlines(keepends=True),
+        tuned.splitlines(keepends=True),
+        fromfile="original",
+        tofile="tuned",
+    )
+    with open(path, "w") as f:
+        f.writelines(diff)
+    return path
+
+
+def _format_verdict(verdict: TuneVerdict) -> str:
+    """Format the 8-12 line final verdict."""
+    status = "PASS" if verdict.passed else "FAIL"
+    lines = [
+        f"=== vaudeville tune: {status} ===",
+        "",
+        f"Tune  — precision: {verdict.p_tune:.1%}  recall: {verdict.r_tune:.1%}",
+        f"Held  — precision: {verdict.p_held:.1%}  recall: {verdict.r_held:.1%}",
+        "",
+        f"Trials: {verdict.trials_run}  Pool: {verdict.pool_size} examples",
+        f"Best IDs: {', '.join(verdict.best_ids)}",
+        f"Study: {verdict.study_uri}",
+    ]
+    if verdict.diff_path:
+        lines.append(f"Diff: {verdict.diff_path}")
+    return "\n".join(lines)
+
+
+def run_study(
+    rule: Rule,
+    tune_cases: list[EvalCase],
+    held_cases: list[EvalCase],
+    backend: InferenceBackend,
+    config: StudyConfig,
+    sampler: optuna.samplers.BaseSampler | None = None,
+) -> TuneVerdict:
+    """Run the full Optuna study loop. Returns a TuneVerdict."""
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study, db_path = create_study(config, sampler=sampler)
+    original_prompt = render_prompt(rule)
+
+    for i in range(config.budget):
+        trial = study.ask()
+        try:
+            values = run_trial(
+                trial,
+                rule,
+                tune_cases,
+                held_cases,
+                backend,
+                config,
+            )
+            study.tell(trial, values=list(values))
+        except optuna.TrialPruned as e:
+            study.tell(trial, state=optuna.trial.TrialState.PRUNED)
+            logger.debug("Trial %d pruned: %s", i, e)
+            continue
+
+        if _check_consecutive_hits(study, config):
+            logger.info(
+                "Target hit %dx consecutively — stopping", config.consecutive_target
+            )
+            break
+
+    best_ids = best_trial_ids(study) or []
+    tuned_prompt = render_prompt(rule, best_ids) if best_ids else original_prompt
+    diff_path = _write_prompt_diff(original_prompt, tuned_prompt, config)
+
+    p_tune = r_tune = p_held = r_held = 0.0
+    completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if completed:
+        best = completed[-1]
+        if best_ids:
+            for t in reversed(completed):
+                if t.user_attrs.get("example_ids") == best_ids:
+                    best = t
+                    break
+        p_tune = best.user_attrs.get("precision_tune", 0.0)
+        r_tune = best.user_attrs.get("recall_tune", 0.0)
+        if best.values and len(best.values) >= 2:
+            r_held, p_held = best.values[0], best.values[1]
+
+    passed = p_held >= config.p_min and r_held >= config.r_min
+    pool_size = len(_pool_ids(rule))
+    study_uri = f"sqlite:///{db_path}"
+
+    return TuneVerdict(
+        passed=passed,
+        p_tune=p_tune,
+        r_tune=r_tune,
+        p_held=p_held,
+        r_held=r_held,
+        trials_run=len(study.trials),
+        pool_size=pool_size,
+        best_ids=best_ids,
+        study_uri=study_uri,
+        diff_path=diff_path,
+    )

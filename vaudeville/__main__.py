@@ -92,6 +92,14 @@ def cmd_stats(args: argparse.Namespace) -> None:
     _print_stats_human(result)
 
 
+def cmd_tune(args: argparse.Namespace) -> None:
+    """Run the rule tuning harness."""
+    from vaudeville.tune.cli import run_tune
+
+    code = run_tune(args)
+    sys.exit(code)
+
+
 def _print_stats_human(result: dict[str, Any]) -> None:
     """Format stats as human-readable text."""
     total = result["total"]
@@ -155,6 +163,37 @@ def main() -> None:
         help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
     )
 
+    tune_parser = sub.add_parser("tune", help="Tune a rule via Optuna study")
+    tune_parser.add_argument("rule", help="Rule name to tune")
+    tune_parser.add_argument(
+        "--p-min",
+        type=float,
+        default=0.95,
+        help="Minimum precision",
+    )
+    tune_parser.add_argument(
+        "--r-min",
+        type=float,
+        default=0.80,
+        help="Minimum recall",
+    )
+    tune_parser.add_argument(
+        "--budget",
+        type=int,
+        default=15,
+        help="Max trials",
+    )
+    tune_parser.add_argument(
+        "--author",
+        action="store_true",
+        help="Enable candidate authoring",
+    )
+    tune_parser.add_argument(
+        "--no-daemon",
+        action="store_true",
+        help="Force in-process backend",
+    )
+
     # Hidden — superseded by `watch`, kept as fallback
     if sys.argv[1:2] == ["tail"]:
         tail_parser = argparse.ArgumentParser(prog="vaudeville tail")
@@ -174,6 +213,8 @@ def main() -> None:
         cmd_watch(args)
     elif args.command == "stats":
         cmd_stats(args)
+    elif args.command == "tune":
+        cmd_tune(args)
 
 
 if __name__ == "__main__":

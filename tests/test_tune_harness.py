@@ -15,14 +15,19 @@ from vaudeville.eval import CaseResult, EvalCase
 from vaudeville.tune.harness import (
     PROMPT_BUDGET,
     StudyConfig,
+    TuneVerdict,
+    _check_consecutive_hits,
     _check_prompt_budget,
     _compute_metrics,
     _eval_subset,
+    _format_verdict,
     _make_trial_rule,
     _pool_ids,
     _study_db_path,
+    _write_prompt_diff,
     best_trial_ids,
     create_study,
+    run_study,
     run_trial,
 )
 
@@ -380,3 +385,180 @@ class TestBestTrialIds:
             study.tell(trial, values=[0.9, 0.9])
             ids = best_trial_ids(study)
             assert ids == ["ex1", "ex2"]
+
+
+class TestCheckConsecutiveHits:
+    def test_not_enough_trials(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(rule_name="test", study_dir=tmpdir)
+            study, _ = create_study(cfg)
+            assert not _check_consecutive_hits(study, cfg)
+
+    def test_consecutive_hits_detected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(
+                rule_name="test",
+                study_dir=tmpdir,
+                p_min=0.90,
+                r_min=0.80,
+            )
+            study, _ = create_study(cfg)
+            for _ in range(2):
+                trial = study.ask()
+                study.tell(trial, values=[0.85, 0.95])
+            assert _check_consecutive_hits(study, cfg)
+
+    def test_non_consecutive_not_detected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(
+                rule_name="test",
+                study_dir=tmpdir,
+                p_min=0.90,
+                r_min=0.80,
+            )
+            study, _ = create_study(cfg)
+            trial1 = study.ask()
+            study.tell(trial1, values=[0.85, 0.95])
+            trial2 = study.ask()
+            study.tell(trial2, values=[0.50, 0.50])
+            assert not _check_consecutive_hits(study, cfg)
+
+
+class TestWritePromptDiff:
+    def test_writes_diff_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(rule_name="test", study_dir=tmpdir)
+            path = _write_prompt_diff("original\ntext", "tuned\ntext", cfg)
+            assert os.path.exists(path)
+            assert path.endswith(".diff")
+            with open(path) as f:
+                content = f.read()
+            assert "original" in content
+            assert "tuned" in content
+
+    def test_empty_diff_for_identical(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(rule_name="test", study_dir=tmpdir)
+            path = _write_prompt_diff("same", "same", cfg)
+            with open(path) as f:
+                content = f.read()
+            assert content == ""
+
+
+class TestFormatVerdict:
+    def test_pass_verdict(self) -> None:
+        verdict = TuneVerdict(
+            passed=True,
+            p_tune=0.96,
+            r_tune=0.85,
+            p_held=0.96,
+            r_held=0.85,
+            trials_run=5,
+            pool_size=3,
+            best_ids=["ex1", "ex2"],
+            study_uri="sqlite:///test.db",
+            diff_path="/tmp/test.diff",
+        )
+        output = _format_verdict(verdict)
+        assert "PASS" in output
+        assert "96.0%" in output
+        assert "85.0%" in output
+        assert "ex1, ex2" in output
+        assert "sqlite:///test.db" in output
+        assert "/tmp/test.diff" in output
+
+    def test_fail_verdict(self) -> None:
+        verdict = TuneVerdict(
+            passed=False,
+            p_tune=0.80,
+            r_tune=0.60,
+            p_held=0.80,
+            r_held=0.60,
+            trials_run=15,
+            pool_size=5,
+            best_ids=["ex1"],
+            study_uri="sqlite:///test.db",
+            diff_path="",
+        )
+        output = _format_verdict(verdict)
+        assert "FAIL" in output
+        assert "Diff:" not in output
+
+    def test_verdict_line_count(self) -> None:
+        verdict = TuneVerdict(
+            passed=True,
+            p_tune=0.96,
+            r_tune=0.85,
+            p_held=0.96,
+            r_held=0.85,
+            trials_run=5,
+            pool_size=3,
+            best_ids=["ex1"],
+            study_uri="sqlite:///test.db",
+            diff_path="/tmp/t.diff",
+        )
+        lines = _format_verdict(verdict).strip().splitlines()
+        assert 8 <= len(lines) <= 12
+
+
+class TestStudyConfigAuthor:
+    def test_author_default_false(self) -> None:
+        cfg = StudyConfig(rule_name="test")
+        assert cfg.author is False
+
+    def test_author_can_be_set(self) -> None:
+        cfg = StudyConfig(rule_name="test", author=True)
+        assert cfg.author is True
+
+
+class TestRunStudy:
+    def test_runs_study_and_returns_verdict(
+        self,
+        simple_rule: Rule,
+        mock_backend: MagicMock,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(
+                rule_name="test-rule",
+                study_dir=tmpdir,
+                budget=3,
+            )
+            verdict = run_study(
+                simple_rule,
+                eval_cases,
+                eval_cases,
+                mock_backend,
+                cfg,
+                sampler=_AllOneSampler(),
+            )
+            assert isinstance(verdict, TuneVerdict)
+            assert verdict.trials_run > 0
+            assert verdict.study_uri.startswith("sqlite:///")
+            assert os.path.exists(verdict.diff_path)
+
+    def test_early_stop_on_consecutive_hits(
+        self,
+        simple_rule: Rule,
+        mock_backend: MagicMock,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(
+                rule_name="test-rule",
+                study_dir=tmpdir,
+                budget=20,
+                p_min=0.0,
+                r_min=0.0,
+                consecutive_target=2,
+            )
+            verdict = run_study(
+                simple_rule,
+                eval_cases,
+                eval_cases,
+                mock_backend,
+                cfg,
+                sampler=_AllOneSampler(),
+            )
+            assert verdict.trials_run <= 20
+            assert verdict.passed is True

@@ -209,9 +209,24 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
             continue
 
         if result.verdict == "violation" and result.confidence >= rule.threshold:
-            response = verdict_to_hook_response(
-                rule.name, rule.message, result.reason, rule.action
-            )
+            tier = getattr(rule, "tier", "enforce")
+
+            if tier == "shadow":
+                print(
+                    f"[vaudeville:shadow] {rule.name}: "
+                    f"{result.verdict} ({result.confidence:.2f})",
+                    file=sys.stderr,
+                )
+                continue
+
+            if tier == "warn":
+                response = verdict_to_hook_response(
+                    rule.name, rule.message, result.reason, "warn"
+                )
+            else:  # enforce (default)
+                response = verdict_to_hook_response(
+                    rule.name, rule.message, result.reason, rule.action
+                )
             print(json.dumps(response))
             sys.exit(0)
 

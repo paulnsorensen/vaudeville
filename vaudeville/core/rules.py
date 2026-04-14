@@ -140,6 +140,9 @@ def _read_context_entry(
     return ""
 
 
+VALID_TIERS = ("shadow", "warn", "enforce")
+
+
 @dataclass
 class Rule:
     name: str
@@ -149,6 +152,7 @@ class Rule:
     action: str
     message: str
     threshold: float = 0.5
+    tier: str = "enforce"
 
     def format_prompt(self, text: str, context: str = "") -> str:
         safe_text = sanitize_input(
@@ -277,6 +281,9 @@ def load_rules_layered(
 
 def parse_rule(data: dict[str, Any]) -> Rule:
     """Parse a raw YAML dict into a validated Rule."""
+    tier = str(data.get("tier", "enforce"))
+    if tier not in VALID_TIERS:
+        raise ValueError(f"Invalid tier {tier!r}, must be one of {VALID_TIERS}")
     return Rule(
         name=str(data["name"]),
         event=str(data.get("event", "")),
@@ -285,4 +292,5 @@ def parse_rule(data: dict[str, Any]) -> Rule:
         action=str(data.get("action", "block")),
         message=str(data.get("message", "{reason}")),
         threshold=float(data.get("threshold", 0.5)),
+        tier=tier,
     )

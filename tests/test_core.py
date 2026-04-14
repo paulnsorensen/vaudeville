@@ -159,6 +159,14 @@ class TestClassifyRequest:
         d = json.loads(json.dumps(req.to_json_dict()))
         assert d["rule"] == "some-rule"
 
+    def test_to_json_dict_tier_omitted_when_enforce(self) -> None:
+        req = ClassifyRequest(prompt="test")
+        assert "tier" not in req.to_json_dict()
+
+    def test_to_json_dict_tier_included_when_not_enforce(self) -> None:
+        req = ClassifyRequest(prompt="test", tier="shadow")
+        assert req.to_json_dict()["tier"] == "shadow"
+
 
 # --- load_rules ---
 

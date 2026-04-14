@@ -204,12 +204,14 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
         context_str = rule.resolve_context(hook_input, PLUGIN_ROOT)
         prompt, prefix_len = rule.split_prompt(text, context_str)
 
-        result = client.classify(prompt, rule=rule.name, prefix_len=prefix_len)
+        result = client.classify(
+            prompt, rule=rule.name, prefix_len=prefix_len, tier=rule.tier
+        )
         if result is None:
             continue
 
         if result.verdict == "violation" and result.confidence >= rule.threshold:
-            tier = getattr(rule, "tier", "enforce")
+            tier = rule.tier
 
             if tier == "shadow":
                 print(

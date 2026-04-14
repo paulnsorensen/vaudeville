@@ -29,12 +29,15 @@ class VaudevilleClient:
         prompt: str,
         rule: str = "",
         prefix_len: int = 0,
+        tier: str = "enforce",
     ) -> ClassifyResponse | None:
         """Send a classify request and return the verdict.
 
         Returns None if the daemon is unavailable (fail-open semantics).
         """
-        request = ClassifyRequest(prompt=prompt, rule=rule, prefix_len=prefix_len)
+        request = ClassifyRequest(
+            prompt=prompt, rule=rule, prefix_len=prefix_len, tier=tier
+        )
         try:
             return self._send(request)
         except Exception as exc:

@@ -47,10 +47,22 @@ class EvalCase:
 
 @dataclass
 class CaseResult:
+    rule: str
+    case_id: int
     text: str
     label: str
     predicted: str
     confidence: float
+
+    def to_jsonl_dict(self) -> dict[str, str | int | float]:
+        return {
+            "rule": self.rule,
+            "case_id": self.case_id,
+            "expected": self.label,
+            "predicted": self.predicted,
+            "confidence": round(self.confidence, 4),
+            "text": self.text,
+        }
 
 
 @dataclass
@@ -168,6 +180,8 @@ def classify_case(
         )
 
     return CaseResult(
+        rule="",
+        case_id=0,
         text=case.text,
         label=case.label,
         predicted=predicted,
@@ -187,8 +201,11 @@ def evaluate_rule(
 
     results = EvalResults(rule=rule_name)
     case_results: list[CaseResult] = []
-    for case in cases:
-        case_results.append(classify_case(case, rule, backend, results))
+    for i, case in enumerate(cases):
+        cr = classify_case(case, rule, backend, results)
+        cr.rule = rule_name
+        cr.case_id = i
+        case_results.append(cr)
     return results, case_results
 
 
@@ -242,6 +259,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to JSONL file for regression tracking (appends one line per run)",
     )
     parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit per-case JSONL output instead of summary text",
+    )
+    parser.add_argument(
         "--no-daemon",
         action="store_true",
         help="Force in-process backend, skip daemon check",
@@ -292,6 +314,14 @@ def _run_calibrate(
     sys.exit(0 if result is not None else 1)
 
 
+def _emit_jsonl(case_results: list[CaseResult]) -> None:
+    """Write per-case results as JSONL to stdout."""
+    import json
+
+    for cr in case_results:
+        print(json.dumps(cr.to_jsonl_dict()))
+
+
 def main() -> None:
     args = _build_parser().parse_args()
 
@@ -326,7 +356,12 @@ def main() -> None:
 
     from .eval_report import run_evaluations, threshold_sweep, write_eval_log
 
-    passed, all_results = run_evaluations(args, rules, test_suites, backend)
+    passed, all_results, all_case_results = run_evaluations(
+        args, rules, test_suites, backend
+    )
+
+    if args.json:
+        _emit_jsonl(all_case_results)
 
     if args.eval_log and all_results:
         write_eval_log(args.eval_log, args.model, all_results)
@@ -335,7 +370,8 @@ def main() -> None:
     if args.threshold_sweep:
         threshold_sweep(test_suites, rules, backend)
 
-    print("\n" + ("ALL RULES PASS" if passed else "SOME RULES FAILED"))
+    if not args.json:
+        print("\n" + ("ALL RULES PASS" if passed else "SOME RULES FAILED"))
     sys.exit(0 if passed else 1)
 
 

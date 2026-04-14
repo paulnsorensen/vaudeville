@@ -29,6 +29,7 @@ class ClassificationEvent:
     prompt_chars: int
     reason: str = ""
     input_snippet: str = ""
+    tier: str = "enforce"
 
 
 class EventLogger:
@@ -92,6 +93,7 @@ class EventLogger:
             "confidence": round(event.confidence, 4),
             "latency_ms": round(event.latency_ms, 1),
             "prompt_chars": event.prompt_chars,
+            "tier": event.tier,
         }
 
         self._logger.bind(_sink="events").info(json.dumps(common, default=str))

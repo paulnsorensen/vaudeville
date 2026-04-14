@@ -23,6 +23,7 @@ class ClassifyRequest:
     rule: str = ""
 
     prefix_len: int = 0  # 0 = no caching (backward compatible)
+    tier: str = "enforce"
 
     def to_json_dict(self) -> dict[str, object]:
         d: dict[str, object] = {"prompt": self.prompt}
@@ -30,6 +31,8 @@ class ClassifyRequest:
             d["rule"] = self.rule
         if self.prefix_len > 0:
             d["prefix_len"] = self.prefix_len
+        if self.tier != "enforce":
+            d["tier"] = self.tier
         return d
 
 

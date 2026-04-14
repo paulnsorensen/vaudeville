@@ -63,6 +63,7 @@ def _handle_classify(
 ) -> bytes:
     prompt = str(request.get("prompt", ""))
     rule = str(request.get("rule", ""))
+    tier = str(request.get("tier", "enforce"))
     raw_prefix = request.get("prefix_len", 0)
     prefix_len = int(float(str(raw_prefix))) if raw_prefix else 0
 
@@ -91,6 +92,7 @@ def _handle_classify(
         prompt_chars=len(prompt),
         reason=response.reason,
         input_snippet=prompt[:500],
+        tier=tier,
     )
     if event_logger is not None:
         event_logger.log_event(evt)

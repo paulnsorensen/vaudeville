@@ -13,6 +13,7 @@ from vaudeville.server.watch import (
     _MAX_ROWS,
     _build_table,
     _parse_ts_display,
+    _tier_text,
     _verdict_text,
     watch,
 )
@@ -50,6 +51,27 @@ def test_verdict_text_violation() -> None:
 def test_verdict_text_clean() -> None:
     text = _verdict_text("clean")
     assert text.plain == "clean"
+    assert "green" in str(text.style)
+
+
+# --- _tier_text ---
+
+
+def test_tier_text_shadow() -> None:
+    text = _tier_text("shadow")
+    assert text.plain == "shadow"
+    assert "dim" in str(text.style)
+
+
+def test_tier_text_warn() -> None:
+    text = _tier_text("warn")
+    assert text.plain == "warn"
+    assert "yellow" in str(text.style)
+
+
+def test_tier_text_enforce() -> None:
+    text = _tier_text("enforce")
+    assert text.plain == "enforce"
     assert "green" in str(text.style)
 
 
@@ -92,6 +114,13 @@ def test_build_table_truncates_to_max_rows() -> None:
     events = [_make_event(rule=f"rule-{i}") for i in range(30)]
     table = _build_table(events, (30, 0))
     assert table.row_count == _MAX_ROWS
+
+
+def test_build_table_has_tier_column() -> None:
+    events = [_make_event()]
+    table = _build_table(events, (1, 0))
+    col_names = [c.header for c in table.columns]
+    assert "Tier" in [str(h) for h in col_names]
 
 
 def test_build_table_missing_fields() -> None:

@@ -46,6 +46,14 @@ def _verdict_text(verdict: str) -> Text:
     return Text(verdict, style="bold green")
 
 
+def _tier_text(tier: str) -> Text:
+    if tier == "shadow":
+        return Text(tier, style="dim")
+    if tier == "warn":
+        return Text(tier, style="yellow")
+    return Text(tier, style="bold green")
+
+
 def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table:
     total_seen, violations = totals
     table = Table(
@@ -54,6 +62,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
     )
     table.add_column("Time", style="dim", width=10)
     table.add_column("Rule", width=30)
+    table.add_column("Tier", width=10)
     table.add_column("Verdict", width=12)
     table.add_column("Confidence", justify="right", width=12)
     table.add_column("Latency ms", justify="right", width=12)
@@ -62,6 +71,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
         table.add_row(
             _parse_ts_display(evt.get("ts", "")),
             evt.get("rule", "<unknown>"),
+            _tier_text(evt.get("tier", "enforce")),
             _verdict_text(evt.get("verdict", "?")),
             f"{_to_float(evt.get('confidence', 0)):.2f}",
             f"{_to_float(evt.get('latency_ms', 0)):.1f}",

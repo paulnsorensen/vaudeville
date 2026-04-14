@@ -189,6 +189,28 @@ def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
     return client.condense(text)
 
 
+def _dispatch_violation(rule, result) -> bool:  # type: ignore[no-untyped-def]
+    """Handle a tier-aware violation. Returns True if the rule loop should continue."""
+    if rule.tier == "shadow":
+        print(
+            f"[vaudeville:shadow] {rule.name}: "
+            f"{result.verdict} ({result.confidence:.2f})",
+            file=sys.stderr,
+        )
+        return True
+
+    if rule.tier == "warn":
+        response = verdict_to_hook_response(
+            rule.name, rule.message, result.reason, "warn"
+        )
+    else:  # enforce (default)
+        response = verdict_to_hook_response(
+            rule.name, rule.message, result.reason, rule.action
+        )
+    print(json.dumps(response))
+    sys.exit(0)
+
+
 def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> None:
     rules = _load_rules_for_event(event)
     condensed: dict[str, str] = {}
@@ -211,26 +233,8 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
             continue
 
         if result.verdict == "violation" and result.confidence >= rule.threshold:
-            tier = rule.tier
-
-            if tier == "shadow":
-                print(
-                    f"[vaudeville:shadow] {rule.name}: "
-                    f"{result.verdict} ({result.confidence:.2f})",
-                    file=sys.stderr,
-                )
+            if _dispatch_violation(rule, result):
                 continue
-
-            if tier == "warn":
-                response = verdict_to_hook_response(
-                    rule.name, rule.message, result.reason, "warn"
-                )
-            else:  # enforce (default)
-                response = verdict_to_hook_response(
-                    rule.name, rule.message, result.reason, rule.action
-                )
-            print(json.dumps(response))
-            sys.exit(0)
 
     print("{}")
     sys.exit(0)

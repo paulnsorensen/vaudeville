@@ -19,7 +19,7 @@ import yaml
 from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
 from .core.rules import Rule, load_rules, load_rules_layered
 from .server import InferenceBackend, LogprobBackend
-from .server.condense import condense_text
+from .server import condense_text
 
 
 def _find_project_root() -> str | None:
@@ -129,6 +129,24 @@ def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
     return ClassifyResult(text=text)
 
 
+def _update_results(results: EvalResults, case: EvalCase, predicted: str) -> None:
+    positive, negative = "violation", "clean"
+    if case.label == positive and predicted == positive:
+        results.tp += 1
+    elif case.label == negative and predicted == negative:
+        results.tn += 1
+    elif case.label == negative and predicted == positive:
+        results.fp += 1
+        results.misclassified.append(
+            {"text": case.text, "actual": negative, "predicted": positive}
+        )
+    else:
+        results.fn += 1
+        results.misclassified.append(
+            {"text": case.text, "actual": positive, "predicted": negative}
+        )
+
+
 def classify_case(
     case: EvalCase,
     rule: Rule,
@@ -136,7 +154,6 @@ def classify_case(
     results: EvalResults,
 ) -> CaseResult:
     """Classify a single case and update results. Returns CaseResult."""
-    positive, negative = "violation", "clean"
     text = case.text
     if rule.event == "Stop" and len(text) >= 200:
         text = condense_text(text, backend)
@@ -146,34 +163,11 @@ def classify_case(
     predicted = response.verdict
     confidence = compute_confidence(result.logprobs, predicted)
 
-    # Apply rule threshold: low-confidence violations are downgraded to clean
     if predicted == "violation" and rule.threshold > 0 and confidence < rule.threshold:
         predicted = "clean"
 
     results.confidences.append(confidence)
-
-    if case.label == positive and predicted == positive:
-        results.tp += 1
-    elif case.label == negative and predicted == negative:
-        results.tn += 1
-    elif case.label == negative and predicted == positive:
-        results.fp += 1
-        results.misclassified.append(
-            {
-                "text": case.text,
-                "actual": negative,
-                "predicted": positive,
-            }
-        )
-    else:
-        results.fn += 1
-        results.misclassified.append(
-            {
-                "text": case.text,
-                "actual": positive,
-                "predicted": negative,
-            }
-        )
+    _update_results(results, case, predicted)
 
     return CaseResult(
         text=case.text,
@@ -250,44 +244,6 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_calibrate(
-    args: argparse.Namespace,
-    rules: dict[str, Rule],
-    test_suites: dict[str, list[EvalCase]],
-    backend: InferenceBackend,
-) -> None:
-    """Run --calibrate subcommand and exit."""
-    from .core.rules import rules_search_path
-    from .eval_report import calibrate_rule, find_rule_file
-
-    cal_rule = args.calibrate
-    if cal_rule not in test_suites:
-        print(f"No test suite found for rule: {cal_rule}")
-        sys.exit(1)
-    if cal_rule not in rules:
-        print(f"Rule not found: {cal_rule}")
-        sys.exit(1)
-
-    plugin_root = os.environ.get(
-        "CLAUDE_PLUGIN_ROOT",
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    if args.rules_dir:
-        search_dirs = [args.rules_dir]
-    else:
-        search_dirs = rules_search_path(project_root=_find_project_root())
-        for subdir in ("rules", "examples/rules"):
-            d = os.path.join(plugin_root, subdir)
-            if os.path.isdir(d) and d not in search_dirs:
-                search_dirs.append(d)
-    rule_file = find_rule_file(cal_rule, search_dirs)
-    if not rule_file:
-        print(f"Cannot find YAML file for rule: {cal_rule}")
-        sys.exit(1)
-    result = calibrate_rule(cal_rule, test_suites[cal_rule], rules, backend, rule_file)
-    sys.exit(0 if result is not None else 1)
-
-
 def main() -> None:
     args = _build_parser().parse_args()
 
@@ -315,7 +271,9 @@ def main() -> None:
         test_suites[args.rule] = existing + extra_cases
 
     if args.calibrate:
-        _run_calibrate(args, rules, test_suites, backend)
+        from .eval_report import run_calibrate
+
+        run_calibrate(args, rules, test_suites, backend, _find_project_root())
 
     if args.rule:
         test_suites = {k: v for k, v in test_suites.items() if k == args.rule}

@@ -533,7 +533,7 @@ class TestEventDiscovery:
             ),
         }
 
-        with patch("vaudeville.core.rules.load_rules_layered", return_value=mock_rules):
+        with patch("vaudeville.core.load_rules_layered", return_value=mock_rules):
             stop_rules = runner._load_rules_for_event("Stop")
             assert len(stop_rules) == 1
             assert stop_rules[0].name == "stop-rule"

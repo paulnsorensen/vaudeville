@@ -25,6 +25,7 @@ from vaudeville.eval_report import (
     MIN_CALIBRATION_CASES,
     _find_best_threshold,
     _git_head,
+    CalibrateTarget,
     calibrate_rule,
     cross_validate_rule,
     find_rule_file,
@@ -382,6 +383,21 @@ class TestThresholdSweep:
         assert "0.90" in out
 
 
+class TestRunInference:
+    def test_non_logprob_backend_uses_classify(self) -> None:
+        """A backend without classify_with_logprobs falls back to classify()."""
+        from vaudeville.eval import _run_inference
+
+        class PlainBackend:
+            def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+                return "VERDICT: clean\nREASON: ok"
+
+        backend = PlainBackend()
+        result = _run_inference(backend, "test prompt")
+        assert result.text == "VERDICT: clean\nREASON: ok"
+        assert result.logprobs == {}
+
+
 class TestBuildBackend:
     def test_returns_mlx_backend(self) -> None:
         import argparse
@@ -733,9 +749,8 @@ class TestCalibrateRule:
             yaml.dump({"name": "violation-detector", "threshold": 0.5})
         )
         cases = [EvalCase(f"text {i}", "violation") for i in range(19)]
-        result = calibrate_rule(
-            "violation-detector", cases, rules, MockBackend(), str(rule_file)
-        )
+        target = CalibrateTarget("violation-detector", str(rule_file))
+        result = calibrate_rule(target, cases, rules, MockBackend())
         assert result is None
         out = capsys.readouterr().out
         assert "minimum" in out
@@ -793,9 +808,8 @@ class TestCalibrateRule:
             "vaudeville.eval.evaluate_rule",
             return_value=(mock_results, case_results),
         ):
-            result = calibrate_rule(
-                "violation-detector", cases, rules, MockBackend(), str(rule_file)
-            )
+            target = CalibrateTarget("violation-detector", str(rule_file))
+            result = calibrate_rule(target, cases, rules, MockBackend())
 
         assert result == 0.45
         with open(rule_file) as f:
@@ -832,9 +846,8 @@ class TestCalibrateRule:
             "vaudeville.eval.evaluate_rule",
             return_value=(mock_results, case_results),
         ):
-            result = calibrate_rule(
-                "violation-detector", cases, rules, MockBackend(), str(rule_file)
-            )
+            target = CalibrateTarget("violation-detector", str(rule_file))
+            result = calibrate_rule(target, cases, rules, MockBackend())
 
         assert result is None
         out = capsys.readouterr().out

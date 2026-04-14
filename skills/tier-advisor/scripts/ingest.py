@@ -26,11 +26,11 @@ def read_jsonl(path: Path) -> list[dict]:
     rows = []
     with open(path) as f:
         for line in f:
-            line = line.strip()
-            if not line:
+            stripped = line.strip()
+            if not stripped:
                 continue
             try:
-                rows.append(json.loads(line))
+                rows.append(json.loads(stripped))
             except json.JSONDecodeError:
                 continue
     return rows

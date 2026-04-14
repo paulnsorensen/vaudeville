@@ -10,6 +10,7 @@ Output: JSON array of per-rule metric objects to stdout.
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -50,6 +51,28 @@ PUSHBACK_KEYWORDS = [
     "skip that",
     "leave it",
 ]
+
+
+def _compile_keywords(keywords: list[str]) -> re.Pattern[str]:
+    """Compile keyword list into a single regex pattern.
+
+    Single-word keywords use word boundaries to prevent false positives
+    (e.g. "no" matching "know", "right" matching "copyright").
+    Multi-word phrases use substring matching.
+    """
+    patterns = []
+    for kw in keywords:
+        escaped = re.escape(kw)
+        if " " not in kw:
+            patterns.append(rf"\b{escaped}\b")
+        else:
+            patterns.append(escaped)
+    return re.compile("|".join(patterns), re.IGNORECASE)
+
+
+_PUSHBACK_RE = _compile_keywords(PUSHBACK_KEYWORDS)
+_ACK_RE = _compile_keywords(ACK_KEYWORDS)
+_CORRECTION_RE = _compile_keywords(CORRECTION_KEYWORDS)
 
 
 def query(sql: str) -> list[dict]:
@@ -141,26 +164,51 @@ def compute_agreement_proxy() -> dict[str, dict]:
             agreement[rule]["uncertain"] += 1
             continue
 
-        lower = next_text.lower()
-        if any(kw in lower for kw in PUSHBACK_KEYWORDS):
-            agreement[rule]["disagreed"] += 1
-        elif any(kw in lower for kw in ACK_KEYWORDS):
-            agreement[rule]["agreed"] += 1
-        elif any(kw in lower for kw in CORRECTION_KEYWORDS):
-            agreement[rule]["agreed"] += 1
-        else:
-            agreement[rule]["uncertain"] += 1
+        category = _classify_user_response(next_text)
+        agreement[rule][category] += 1
 
     return agreement
+
+
+def _classify_user_response(text: str) -> str:
+    """Classify user response as agreed, disagreed, or uncertain."""
+    if _PUSHBACK_RE.search(text):
+        return "disagreed"
+    if _ACK_RE.search(text):
+        return "agreed"
+    if _CORRECTION_RE.search(text):
+        return "agreed"
+    return "uncertain"
 
 
 def _find_next_user_message(
     violation_ts: str, user_msgs: list[tuple[str, str]]
 ) -> str | None:
+    """Find the next user message after a violation, within a 5-minute window.
+
+    Without sessionId in the verdicts table, we use a time gap heuristic:
+    messages more than 5 minutes after the violation likely belong to a
+    different session or context.
+    """
+    cutoff = (
+        violation_ts[:11] + _add_minutes(violation_ts[11:16], 5) + violation_ts[16:]
+    )
     for ts, text in user_msgs:
         if ts > violation_ts:
+            if ts > cutoff:
+                return None
             return text
     return None
+
+
+def _add_minutes(time_str: str, minutes: int) -> str:
+    """Add minutes to a HH:MM time string. Handles hour rollover."""
+    parts = time_str.split(":")
+    h, m = int(parts[0]), int(parts[1])
+    m += minutes
+    h += m // 60
+    m = m % 60
+    return f"{h:02d}:{m:02d}"
 
 
 def build_analysis() -> list[dict]:

@@ -415,18 +415,20 @@ class TestClientSocket:
 
 class TestDaemonExtras:
     def test_cleanup_tolerates_missing_files(self) -> None:
-        from vaudeville.server.daemon import VaudevilleDaemon
+        from vaudeville.server.daemon import DaemonConfig, VaudevilleDaemon
 
         daemon = VaudevilleDaemon(
-            socket_path="/tmp/nonexistent-vd.sock",
-            pid_file="/tmp/nonexistent-vd.pid",
-            plugin_root=PROJECT_ROOT,
-            backend=MockBackend(),
+            MockBackend(),
+            DaemonConfig(
+                socket_path="/tmp/nonexistent-vd.sock",
+                pid_file="/tmp/nonexistent-vd.pid",
+                plugin_root=PROJECT_ROOT,
+            ),
         )
         daemon._cleanup()  # should not raise
 
     def test_accept_loop_stops_on_stop_event(self) -> None:
-        from vaudeville.server.daemon import VaudevilleDaemon
+        from vaudeville.server.daemon import DaemonConfig, VaudevilleDaemon
 
         with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
             sock_path = f.name
@@ -434,17 +436,20 @@ class TestDaemonExtras:
             pid_path = f.name
         os.unlink(sock_path)
 
-        daemon = VaudevilleDaemon(sock_path, pid_path, PROJECT_ROOT, MockBackend())
+        daemon = VaudevilleDaemon(
+            MockBackend(), DaemonConfig(sock_path, pid_path, PROJECT_ROOT)
+        )
         mock_server = MagicMock()
         mock_server.accept.side_effect = socket.timeout
         daemon._stop_event.set()
         daemon._accept_loop(mock_server)  # should return immediately
 
     def test_handle_client_exception_logged(self) -> None:
-        from vaudeville.server.daemon import VaudevilleDaemon
+        from vaudeville.server.daemon import DaemonConfig, VaudevilleDaemon
 
         daemon = VaudevilleDaemon(
-            "/tmp/x.sock", "/tmp/x.pid", PROJECT_ROOT, MockBackend()
+            MockBackend(),
+            DaemonConfig("/tmp/x.sock", "/tmp/x.pid", PROJECT_ROOT),
         )
         broken_conn = MagicMock()
         broken_conn.recv.side_effect = OSError("connection reset")

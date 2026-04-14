@@ -68,7 +68,7 @@ class MLXBackend:
             prompt_tokens,
             max_tokens,
         )
-        text: str = "VERDICT:" + self._tokenizer.decode(tokens)
+        text = "VERDICT:" + self._tokenizer.decode(tokens)
         return ClassifyResult(text=text, logprobs=first_logprobs)
 
     def classify_cached(
@@ -95,7 +95,7 @@ class MLXBackend:
             parts.append(response.text)
             if response.finish_reason is not None:
                 break
-        return "".join(parts)
+        return "VERDICT:" + "".join(parts)
 
     def _get_or_warm_cache(self, user_prefix: str) -> list[Any]:
         """Return a deepcopy of the KV cache for a prefix, warming on first call.

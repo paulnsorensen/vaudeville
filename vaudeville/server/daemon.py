@@ -15,13 +15,23 @@ import socket
 import subprocess
 import threading
 import time
+from dataclasses import dataclass
 
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ._handlers import handle_request
 from .event_log import EventLogger
 from .inference import InferenceBackend
 
-__all__ = ["VaudevilleDaemon", "acquire_pid_lock", "handle_request"]
+__all__ = ["DaemonConfig", "VaudevilleDaemon", "acquire_pid_lock"]
+
+
+@dataclass
+class DaemonConfig:
+    socket_path: str
+    pid_file: str
+    plugin_root: str
+    version_file: str = VERSION_FILE
+
 
 IDLE_TIMEOUT = 60 * 60  # 60 minutes
 RECV_CHUNK = 4096
@@ -88,19 +98,13 @@ def _read_message(conn: socket.socket) -> bytes:
 class VaudevilleDaemon:
     def __init__(
         self,
-        socket_path: str,
-        pid_file: str,
-        plugin_root: str,
         backend: InferenceBackend,
-        version_file: str = VERSION_FILE,
+        config: DaemonConfig,
         pid_fd: int | None = None,
         event_logger: EventLogger | None = None,
     ) -> None:
-        self._socket_path = socket_path
-        self._pid_file = pid_file
-        self._plugin_root = plugin_root
         self._backend = backend
-        self._version_file = version_file
+        self.config = config
         self._backend_lock = threading.Lock()
         self._last_request = time.monotonic()
         self._stop_event = threading.Event()
@@ -123,7 +127,7 @@ class VaudevilleDaemon:
 
         # Acquire PID lock if not pre-acquired by __main__
         if self._pid_fd is None:
-            pid_fd = acquire_pid_lock(self._pid_file)
+            pid_fd = acquire_pid_lock(self.config.pid_file)
             if pid_fd is None:
                 logger.info("Another instance holds PID lock — exiting")
                 return
@@ -133,15 +137,15 @@ class VaudevilleDaemon:
 
         server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            os.unlink(self._socket_path)
+            os.unlink(self.config.socket_path)
         except (FileNotFoundError, PermissionError):
             pass
-        server_socket.bind(self._socket_path)
+        server_socket.bind(self.config.socket_path)
         server_socket.listen(16)
         server_socket.settimeout(1.0)
 
         threading.Thread(target=self._watch_threads, daemon=True).start()
-        logger.info("Listening on %s", self._socket_path)
+        logger.info("Listening on %s", self.config.socket_path)
 
         try:
             self._accept_loop(server_socket)
@@ -199,7 +203,7 @@ class VaudevilleDaemon:
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
-                cwd=self._plugin_root,
+                cwd=self.config.plugin_root,
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -208,7 +212,7 @@ class VaudevilleDaemon:
         except (OSError, subprocess.TimeoutExpired):
             stamp = "unknown"
         try:
-            with open(self._version_file, "w") as f:
+            with open(self.config.version_file, "w") as f:
                 f.write(stamp + "\n")
         except OSError:
             logger.warning("Could not write version stamp")
@@ -219,7 +223,11 @@ class VaudevilleDaemon:
         if self._pid_fd is not None:
             os.close(self._pid_fd)
             self._pid_fd = None
-        for path in (self._socket_path, self._pid_file, self._version_file):
+        for path in (
+            self.config.socket_path,
+            self.config.pid_file,
+            self.config.version_file,
+        ):
             try:
                 os.unlink(path)
             except FileNotFoundError:

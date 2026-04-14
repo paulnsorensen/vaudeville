@@ -235,7 +235,7 @@ class TestMLXCachedMethods:
         )
         # _warm_prefix uses generate_step, then classify_cached uses stream_generate
         mock_gen_step.return_value = iter([])
-        response = self._make_stream_response("VERDICT: clean")
+        response = self._make_stream_response(" clean")
         mock_stream_gen.return_value = iter([response])
 
         with self._patch_mlx_cache(backend):

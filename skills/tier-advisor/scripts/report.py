@@ -47,78 +47,85 @@ def get_current_tier(rule_name: str) -> str:
     return "shadow"
 
 
+def _classify_warn(rule: dict, tier_thresholds: dict) -> tuple[str, str]:
+    """Classify a rule currently at warn tier."""
+    vr = rule["violation_rate"]
+    agreement = rule.get("agreement_rate")
+    p50 = rule.get("p50_confidence", 0.0)
+    total = rule["total_evals"]
+
+    t = tier_thresholds["demote_warn_to_shadow"]
+    if agreement is not None and agreement < t["max_agreement"]:
+        return (
+            "demote",
+            f"Agreement {agreement:.0%} below {t['max_agreement']:.0%} threshold.",
+        )
+    if vr > t["max_violation_rate"]:
+        return (
+            "demote",
+            f"Violation rate {vr:.0%} exceeds {t['max_violation_rate']:.0%} ceiling.",
+        )
+
+    t = tier_thresholds["warn_to_block"]
+    if (
+        total >= t["min_evals"]
+        and (agreement is not None and agreement >= t["min_agreement"])
+        and t["violation_rate_min"] <= vr <= t["violation_rate_max"]
+        and p50 >= t["min_p50_confidence"]
+    ):
+        return "promote-to-block", (
+            f"{total} evals, {agreement:.0%} agreement, "
+            f"{vr:.0%} violation rate, p50 confidence {p50:.2f}."
+        )
+
+    return "hold-at-warn", f"{total} evals, {vr:.0%} violation rate."
+
+
+def _classify_shadow(rule: dict, tier_thresholds: dict) -> tuple[str, str]:
+    """Classify a rule currently at shadow tier."""
+    vr = rule["violation_rate"]
+    agreement = rule.get("agreement_rate")
+    total = rule["total_evals"]
+
+    t = tier_thresholds["shadow_to_warn"]
+    if total < t["min_evals"]:
+        return (
+            "insufficient-data",
+            f"{total}/{t['min_evals']} evals needed for promotion.",
+        )
+    if agreement is not None and agreement < t["min_agreement"]:
+        return (
+            "hold-at-shadow",
+            f"Agreement {agreement:.0%} below {t['min_agreement']:.0%} threshold.",
+        )
+    if not (t["violation_rate_min"] <= vr <= t["violation_rate_max"]):
+        return (
+            "hold-at-shadow",
+            f"Violation rate {vr:.0%} outside [{t['violation_rate_min']:.0%}, {t['violation_rate_max']:.0%}].",
+        )
+
+    agreement_str = (
+        f"{agreement:.0%} agreement, "
+        if agreement is not None
+        else "no agreement data, "
+    )
+    return "promote-to-warn", f"{total} evals, {agreement_str}{vr:.0%} violation rate."
+
+
 def classify(rule: dict) -> tuple[str, str]:
     """Return (recommendation, reason) for a rule."""
     tier = get_current_tier(rule["rule"])
     total = rule["total_evals"]
-    vr = rule["violation_rate"]
-    agreement = rule.get("agreement_rate")
-    p50 = rule.get("p50_confidence", 0.0)
-    evaluated = rule.get("agreement_evaluated", 0)
 
     if total < 10:
         return "insufficient-data", f"Only {total} evals recorded."
-
     if tier == "warn":
-        t = THRESHOLDS["demote_warn_to_shadow"]
-        if agreement is not None and agreement < t["max_agreement"]:
-            return (
-                "demote",
-                f"Agreement {agreement:.0%} below {t['max_agreement']:.0%} threshold.",
-            )
-        if vr > t["max_violation_rate"]:
-            return (
-                "demote",
-                f"Violation rate {vr:.0%} exceeds {t['max_violation_rate']:.0%} ceiling.",
-            )
-
-        t = THRESHOLDS["warn_to_block"]
-        if (
-            total >= t["min_evals"]
-            and (agreement is not None and agreement >= t["min_agreement"])
-            and t["violation_rate_min"] <= vr <= t["violation_rate_max"]
-            and p50 >= t["min_p50_confidence"]
-        ):
-            return "promote-to-block", (
-                f"{total} evals, {agreement:.0%} agreement, "
-                f"{vr:.0%} violation rate, p50 confidence {p50:.2f}."
-            )
-
-        return "hold-at-warn", f"{total} evals, {vr:.0%} violation rate."
-
+        return _classify_warn(rule, THRESHOLDS)
     if tier == "shadow":
-        t = THRESHOLDS["shadow_to_warn"]
-        if total < t["min_evals"]:
-            return (
-                "insufficient-data",
-                f"{total}/{t['min_evals']} evals needed for promotion.",
-            )
+        return _classify_shadow(rule, THRESHOLDS)
 
-        if agreement is not None and agreement < t["min_agreement"]:
-            return (
-                "hold-at-shadow",
-                f"Agreement {agreement:.0%} below {t['min_agreement']:.0%} threshold.",
-            )
-
-        if not (t["violation_rate_min"] <= vr <= t["violation_rate_max"]):
-            return (
-                "hold-at-shadow",
-                f"Violation rate {vr:.0%} outside [{t['violation_rate_min']:.0%}, {t['violation_rate_max']:.0%}].",
-            )
-
-        return "promote-to-warn", (
-            f"{total} evals, "
-            + (
-                f"{agreement:.0%} agreement, "
-                if agreement is not None
-                else "no agreement data, "
-            )
-            + f"{vr:.0%} violation rate."
-        )
-
-    if evaluated == 0:
+    if rule.get("agreement_evaluated", 0) == 0:
         return "insufficient-data", "No agreement data available."
-
     return "hold-at-shadow", f"Tier '{tier}' — manual review needed."
 
 

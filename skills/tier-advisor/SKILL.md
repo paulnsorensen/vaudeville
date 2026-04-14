@@ -4,7 +4,10 @@ description: >
   Analyze vaudeville warn logs and eval data to recommend rule tier promotions
   and demotions. Use when the user says "promote rule", "tier advisor",
   "warn log analysis", "should we enforce", "demote rule", "rule metrics",
-  "tier recommendation", or invokes /tier-advisor.
+  "tier recommendation", "warn to block", "shadow to warn", "rule performance",
+  "check rule health", "evaluate rule tiers", "promotion analysis",
+  or invokes /tier-advisor. Do NOT use for editing rule files — use
+  /rule-admin for that.
 model: sonnet
 context: fork
 allowed-tools: Bash(uv:*), Bash(duckdb:*), Bash(python3:*), Read, Glob
@@ -27,7 +30,7 @@ uv run python3 ${CLAUDE_PLUGIN_ROOT}/skills/tier-advisor/scripts/ingest.py
 ```
 
 This reads `~/.vaudeville/logs/events.jsonl` and `violations.jsonl`,
-deduplicates, and upserts into `~/.claude/analytics/sessions.duckdb`
+deduplicates, and replaces table contents in `~/.claude/analytics/sessions.duckdb`
 as table `vaudeville_verdicts`.
 
 ### 2. Analyze
@@ -55,10 +58,19 @@ promote-to-warn, demote, insufficient-data.
 
 ### 4. Present
 
-Show the report to the user. If the user confirms a promotion or demotion:
-- Edit the rule's `tier:` field in `rules_dev/<rule>.yaml`
-- For promotions to warn: copy rule to `~/.vaudeville/rules/<rule>.yaml`
-- For demotions to shadow: remove from `~/.vaudeville/rules/<rule>.yaml`
+Show the report to the user. If the user wants to act on a recommendation,
+tell them to use `/rule-admin` to promote, demote, or edit rule tiers.
+
+## Gotchas
+
+- Agreement proxy is approximate — the next-message heuristic misclassifies
+  multi-turn corrections where the user responds several messages later
+- DuckDB `raw_entries` table may not exist if session-analytics hasn't been
+  ingested yet — analyze.py returns empty agreement data, not an error
+- Empty `~/.vaudeville/logs/` produces zero records from ingest.py (exit 1),
+  which is expected — tell the user to run some sessions first
+- Short keywords in agreement matching use word boundaries, but multi-word
+  phrases still use substring matching — "it's fine" matches inside longer text
 
 ## Thresholds
 

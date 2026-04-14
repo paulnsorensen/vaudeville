@@ -123,19 +123,93 @@ class TestIngest:
 
 
 class TestAnalyze:
-    def test_find_next_user_message(self, analyze_mod: Any) -> None:
+    def test_find_next_user_message_within_window(self, analyze_mod: Any) -> None:
         msgs = [
             ("2026-04-10T09:00:00Z", "earlier"),
-            ("2026-04-10T10:05:00Z", "after violation"),
+            ("2026-04-10T10:02:00Z", "after violation"),
             ("2026-04-10T10:10:00Z", "later"),
         ]
         result = analyze_mod._find_next_user_message("2026-04-10T10:00:00Z", msgs)
         assert result == "after violation"
 
-    def test_find_next_user_message_none(self, analyze_mod: Any) -> None:
+    def test_find_next_user_message_none_before(self, analyze_mod: Any) -> None:
         msgs = [("2026-04-10T09:00:00Z", "earlier")]
         result = analyze_mod._find_next_user_message("2026-04-10T10:00:00Z", msgs)
         assert result is None
+
+    def test_find_next_user_message_none_beyond_window(self, analyze_mod: Any) -> None:
+        """Messages >5 minutes after the violation are ignored (cross-session)."""
+        msgs = [("2026-04-10T10:06:00Z", "too late")]
+        result = analyze_mod._find_next_user_message("2026-04-10T10:00:00Z", msgs)
+        assert result is None
+
+    def test_find_next_user_message_boundary(self, analyze_mod: Any) -> None:
+        msgs = [("2026-04-10T10:05:00Z", "just in time")]
+        result = analyze_mod._find_next_user_message("2026-04-10T10:00:00Z", msgs)
+        assert result == "just in time"
+
+    def test_add_minutes_rollover(self, analyze_mod: Any) -> None:
+        assert analyze_mod._add_minutes("23:58", 5) == "24:03"
+        assert analyze_mod._add_minutes("10:55", 10) == "11:05"
+        assert analyze_mod._add_minutes("10:00", 5) == "10:05"
+
+
+class TestKeywordMatching:
+    """Word-boundary matching prevents short keywords from matching inside words."""
+
+    def test_no_does_not_match_know(self, analyze_mod: Any) -> None:
+        assert not analyze_mod._CORRECTION_RE.search("I know that")
+
+    def test_no_does_not_match_another(self, analyze_mod: Any) -> None:
+        assert not analyze_mod._CORRECTION_RE.search("another thing entirely")
+
+    def test_no_matches_standalone(self, analyze_mod: Any) -> None:
+        assert analyze_mod._CORRECTION_RE.search("no, that's wrong")
+
+    def test_no_matches_at_start(self, analyze_mod: Any) -> None:
+        assert analyze_mod._CORRECTION_RE.search("No way")
+
+    def test_yes_does_not_match_yesterday(self, analyze_mod: Any) -> None:
+        assert not analyze_mod._ACK_RE.search("yesterday I tried")
+
+    def test_yes_matches_standalone(self, analyze_mod: Any) -> None:
+        assert analyze_mod._ACK_RE.search("yes, that's right")
+
+    def test_right_does_not_match_copyright(self, analyze_mod: Any) -> None:
+        assert not analyze_mod._ACK_RE.search("copyright notice")
+
+    def test_right_matches_standalone(self, analyze_mod: Any) -> None:
+        assert analyze_mod._ACK_RE.search("right, agreed")
+
+    def test_stop_does_not_match_unstoppable(self, analyze_mod: Any) -> None:
+        assert not analyze_mod._CORRECTION_RE.search("unstoppable force")
+
+    def test_stop_matches_standalone(self, analyze_mod: Any) -> None:
+        assert analyze_mod._CORRECTION_RE.search("stop doing that")
+
+    def test_long_keyword_still_uses_substring(self, analyze_mod: Any) -> None:
+        assert analyze_mod._CORRECTION_RE.search("that's not what I expected")
+
+    def test_pushback_false_positive_matches(self, analyze_mod: Any) -> None:
+        assert analyze_mod._PUSHBACK_RE.search("no that's fine, leave it")
+
+    def test_pushback_checked_case_insensitive(self, analyze_mod: Any) -> None:
+        assert analyze_mod._PUSHBACK_RE.search("FALSE POSITIVE detected")
+
+    def test_ack_good_catch(self, analyze_mod: Any) -> None:
+        assert analyze_mod._ACK_RE.search("good catch, thanks!")
+
+    def test_compile_keywords_boundary_for_single_words(self, analyze_mod: Any) -> None:
+        """Single-word keywords use word boundaries, multi-word use substring."""
+        import re
+
+        pattern = analyze_mod._compile_keywords(["no", "right", "longer phrase"])
+        assert pattern.flags & re.IGNORECASE
+        assert not pattern.search("know")
+        assert not pattern.search("copyright")
+        assert pattern.search("no way")
+        assert pattern.search("that's right")
+        assert pattern.search("a longer phrase here")
 
 
 class TestReport:

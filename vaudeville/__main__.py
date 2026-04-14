@@ -27,6 +27,13 @@ def cmd_watch(args: argparse.Namespace) -> None:
         pass
 
 
+def cmd_setup(_args: argparse.Namespace) -> None:
+    """Run model download and verification."""
+    from vaudeville.setup import main as setup_main
+
+    setup_main()
+
+
 def cmd_stats(args: argparse.Namespace) -> None:
     """Print aggregated classification statistics."""
     from vaudeville.server import aggregate_events
@@ -94,6 +101,8 @@ def main() -> None:
         help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
     )
 
+    sub.add_parser("setup", help="Download model and verify inference")
+
     stats_parser = sub.add_parser("stats", help="Show classification statistics")
     stats_parser.add_argument("--json", action="store_true", help="Output raw JSON")
     stats_parser.add_argument(
@@ -109,6 +118,8 @@ def main() -> None:
 
     if args.command == "watch":
         cmd_watch(args)
+    elif args.command == "setup":
+        cmd_setup(args)
     elif args.command == "stats":
         cmd_stats(args)
 

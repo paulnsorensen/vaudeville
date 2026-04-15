@@ -80,7 +80,9 @@ def _make_default_sampler() -> optuna.samplers.BaseSampler:
         client = anthropic.Anthropic()
         return LLMSampler(anthropic_client=client)
     except Exception:
-        logger.debug("Anthropic client unavailable, using NSGA-II sampler")
+        logger.debug(
+            "Anthropic client unavailable, using NSGA-II sampler", exc_info=True
+        )
         return optuna.samplers.NSGAIISampler(
             constraints_func=_constraints_func,
         )

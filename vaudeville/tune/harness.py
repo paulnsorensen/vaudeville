@@ -107,7 +107,7 @@ def run_trial(
     trial.set_user_attr("recall_tune", r_tune)
     trial.set_user_attr("example_ids", selected)
 
-    if p_held < ctx.config.p_min:
+    if p_held < ctx.config.p_min or r_held < ctx.config.r_min:
         trial.set_user_attr("constraint_violated", True)
 
     return r_held, p_held

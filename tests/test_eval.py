@@ -17,11 +17,13 @@ from vaudeville.eval import (
     CaseResult,
     EvalCase,
     EvalResults,
-    _emit_jsonl,
     classify_case,
-    _find_project_root,
     evaluate_rule,
     load_test_cases,
+)
+from vaudeville.eval_cli import (
+    _emit_jsonl,
+    _find_project_root,
 )
 from vaudeville.eval_report import (
     MIN_CALIBRATION_CASES,
@@ -285,7 +287,7 @@ class TestBuildBackend:
     def test_returns_mlx_backend_with_no_daemon(self) -> None:
         import argparse
 
-        from vaudeville.eval import _build_backend
+        from vaudeville.eval_cli import _build_backend
 
         args = argparse.Namespace(model="test-model", no_daemon=True)
         mock_instance = MagicMock()
@@ -298,7 +300,7 @@ class TestBuildBackend:
     def test_falls_back_to_mlx_when_daemon_unavailable(self) -> None:
         import argparse
 
-        from vaudeville.eval import _build_backend
+        from vaudeville.eval_cli import _build_backend
 
         args = argparse.Namespace(model="test-model", no_daemon=False)
         mock_instance = MagicMock()
@@ -365,7 +367,7 @@ class TestMain:
             patch("sys.argv", ["eval", "--no-daemon"]),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -377,10 +379,10 @@ class TestMain:
                     ),
                 },
             ),
-            patch("vaudeville.eval.load_test_cases", return_value={}),
+            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
         assert exc_info.value.code == 0
@@ -394,7 +396,7 @@ class TestMain:
             patch("sys.argv", ["eval", "--no-daemon", "--rule", "violation-detector"]),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -407,12 +409,12 @@ class TestMain:
                 },
             ),
             patch(
-                "vaudeville.eval.load_test_cases",
+                "vaudeville.eval_cli.load_test_cases",
                 return_value={"violation-detector": [EvalCase("text", "clean")]},
             ),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
         assert (
@@ -425,7 +427,7 @@ class TestMain:
             patch("sys.argv", ["eval", "--no-daemon", "--rule", "nonexistent-rule"]),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -437,10 +439,10 @@ class TestMain:
                     ),
                 },
             ),
-            patch("vaudeville.eval.load_test_cases", return_value={}),
+            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
         assert exc_info.value.code == 1
@@ -467,7 +469,7 @@ class TestMain:
             ),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -479,10 +481,10 @@ class TestMain:
                     ),
                 },
             ),
-            patch("vaudeville.eval.load_test_cases", return_value={}),
+            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
         assert exc_info.value.code == 1
@@ -929,7 +931,7 @@ class TestJsonFlag:
             ),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -942,7 +944,7 @@ class TestJsonFlag:
                 },
             ),
             patch(
-                "vaudeville.eval.load_test_cases",
+                "vaudeville.eval_cli.load_test_cases",
                 return_value={
                     "violation-detector": [
                         EvalCase("hedging text", "violation"),
@@ -960,7 +962,7 @@ class TestJsonFlag:
             old_stdout = sys.stdout
             sys.stdout = captured
             try:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
             finally:
@@ -986,7 +988,7 @@ class TestJsonFlag:
             patch("sys.argv", ["eval", "--no-daemon"]),
             patch("vaudeville.server.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -998,10 +1000,10 @@ class TestJsonFlag:
                     ),
                 },
             ),
-            patch("vaudeville.eval.load_test_cases", return_value={}),
+            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
             pytest.raises(SystemExit),
         ):
-            from vaudeville.eval import main
+            from vaudeville.eval_cli import main
 
             main()
         out = capsys.readouterr().out

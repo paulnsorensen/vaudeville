@@ -191,7 +191,7 @@ class TestBuildBackendDaemonPreference:
     def test_uses_daemon_when_alive(self) -> None:
         import argparse
 
-        from vaudeville.eval import _build_backend
+        from vaudeville.eval_cli import _build_backend
 
         args = argparse.Namespace(model="test-model", no_daemon=False)
         with (
@@ -209,7 +209,7 @@ class TestBuildBackendDaemonPreference:
     def test_falls_back_to_mlx_when_no_daemon(self) -> None:
         import argparse
 
-        from vaudeville.eval import _build_backend
+        from vaudeville.eval_cli import _build_backend
 
         args = argparse.Namespace(model="test-model", no_daemon=False)
         mock_mlx = object()
@@ -225,7 +225,7 @@ class TestBuildBackendDaemonPreference:
     def test_skips_daemon_with_no_daemon_flag(self) -> None:
         import argparse
 
-        from vaudeville.eval import _build_backend
+        from vaudeville.eval_cli import _build_backend
 
         args = argparse.Namespace(model="test-model", no_daemon=True)
         mock_mlx = object()
@@ -236,14 +236,14 @@ class TestBuildBackendDaemonPreference:
 
 class TestNoDaemonCliFlag:
     def test_parser_accepts_no_daemon(self) -> None:
-        from vaudeville.eval import _build_parser
+        from vaudeville.eval_cli import _build_parser
 
         parser = _build_parser()
         args = parser.parse_args(["--no-daemon"])
         assert args.no_daemon is True
 
     def test_parser_default_is_false(self) -> None:
-        from vaudeville.eval import _build_parser
+        from vaudeville.eval_cli import _build_parser
 
         parser = _build_parser()
         args = parser.parse_args([])

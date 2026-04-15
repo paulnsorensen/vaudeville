@@ -9,12 +9,12 @@ import collections
 import copy
 import hashlib
 import logging
-from typing import Any, cast
+from typing import Any
 
 from ..core.protocol import ClassifyResult
+from .mlx_logprobs import extract_top_logprobs
 
 DEFAULT_MODEL = "mlx-community/Phi-4-mini-instruct-4bit"
-TOP_K_LOGPROBS = 10
 MAX_PREFIX_CACHES = 16
 # The system prompt constrains output to `VERDICT: x\nREASON: <sentence>`.
 # We count newlines in generated output and halt after two (one following
@@ -57,6 +57,7 @@ class MLXBackend:
             self._tokenizer,
             prompt=formatted,
             max_tokens=max_tokens,
+            temp=0.0,
         ):
             parts.append(response.text)
             newlines += response.text.count("\n")
@@ -104,6 +105,7 @@ class MLXBackend:
             prompt=suffix_tokens,
             max_tokens=max_tokens,
             prompt_cache=request_cache,
+            temp=0.0,
         ):
             parts.append(response.text)
             newlines += response.text.count("\n")
@@ -192,7 +194,7 @@ class MLXBackend:
             token_id = int(token.item() if hasattr(token, "item") else token)
             tokens.append(token_id)
             if i == 0:
-                first_logprobs = self._extract_top_logprobs(
+                first_logprobs = extract_top_logprobs(
                     logprobs_arr,
                     self._tokenizer,
                 )
@@ -263,28 +265,6 @@ class MLXBackend:
         """Format the suffix with closing chat template tags."""
         _, closing = self._split_chat_template()
         return user_suffix + closing
-
-    def _extract_top_logprobs(
-        self, logprobs_arr: Any, tokenizer: Any
-    ) -> dict[str, float]:
-        """Extract top-K token logprobs from the full vocab distribution."""
-        import mlx.core as mx
-
-        try:
-            mx.eval(logprobs_arr)
-            top_indices = mx.argpartition(logprobs_arr, kth=-TOP_K_LOGPROBS)[
-                -TOP_K_LOGPROBS:
-            ]
-            mx.eval(top_indices)
-
-            result: dict[str, float] = {}
-            for idx in cast(list[Any], top_indices.tolist()):
-                token_str: str = tokenizer.decode([idx])
-                result[token_str] = logprobs_arr[idx].item()
-            return result
-        except Exception as exc:
-            logger.warning("[vaudeville] Logprob extraction failed: %s", exc)
-            return {}
 
     def _apply_chat_template(self, prompt: str) -> str:
         """Format prompt using the model's chat template."""

@@ -30,7 +30,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
             patch("sys.argv", ["eval"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch("vaudeville.eval.load_test_cases", return_value={}),
         ):
@@ -45,7 +45,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
             patch("sys.argv", ["eval", "--rule", "violation-detector"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch(
                 "vaudeville.eval.load_test_cases",
@@ -64,7 +64,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=MockBackend())
         with (
             patch("sys.argv", ["eval", "--rule", "nonexistent-rule"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch("vaudeville.eval.load_test_cases", return_value={}),
         ):
@@ -96,7 +96,7 @@ class TestMain:
                     "sys.argv",
                     ["eval", "--rules-dir", rules_dir, "--rule", "test-rule"],
                 ),
-                patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+                patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
                 patch("vaudeville.eval.load_test_cases", return_value={}),
             ):
                 with pytest.raises(SystemExit) as exc_info:
@@ -126,7 +126,7 @@ class TestMain:
             mock_layered = MagicMock(side_effect=AssertionError("should not be called"))
             with (
                 patch("sys.argv", ["eval", "--rules-dir", rules_dir]),
-                patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+                patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
                 patch("vaudeville.eval.load_rules_layered", mock_layered),
                 patch("vaudeville.eval.load_test_cases", return_value={}),
             ):
@@ -150,7 +150,7 @@ class TestMain:
                 "sys.argv",
                 ["eval", "--rule", "violation-detector", "--test-file", tf],
             ),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch("vaudeville.eval.load_test_cases", return_value={}),
         ):
@@ -184,7 +184,7 @@ class TestMain:
                 f,
             )
             tf = f.name
-        merged_suites: dict[str, list[object]] = {}
+        merged_suites: dict[str, list[EvalCase]] = {}
 
         def capture_suites(args, rules, suites, backend):  # type: ignore[no-untyped-def]
             merged_suites.update(suites)
@@ -199,7 +199,7 @@ class TestMain:
                 "sys.argv",
                 ["eval", "--rule", "violation-detector", "--test-file", tf],
             ),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
                 return_value={"violation-detector": zero_threshold_rule},
@@ -217,7 +217,11 @@ class TestMain:
 
                 main()
         # Both the existing case and the extra case should be in the merged suite
-        assert len(merged_suites.get("violation-detector", [])) == 2
+        merged = merged_suites.get("violation-detector", [])
+        assert len(merged) == 2
+        texts = [c.text for c in merged]
+        assert "existing text" in texts
+        assert "extra text" in texts
 
     def test_eval_log_writes_log_when_results_exist(self) -> None:
         """--eval-log causes write_eval_log to be called when results exist."""
@@ -231,7 +235,7 @@ class TestMain:
                 "sys.argv",
                 ["eval", "--rule", "violation-detector", "--eval-log", log_path],
             ),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch(
                 "vaudeville.eval.load_test_cases",
@@ -242,9 +246,13 @@ class TestMain:
                 from vaudeville.eval import main
 
                 main()
+        import json
         import os
 
-        assert os.path.getsize(log_path) > 0
+        with open(log_path) as f:
+            entry = json.loads(f.readline())
+        assert entry["model"] == "mlx-community/Phi-4-mini-instruct-4bit"
+        assert "violation-detector" in entry["rules"]
         os.unlink(log_path)
 
     def test_threshold_sweep_flag_calls_sweep(self) -> None:
@@ -258,7 +266,7 @@ class TestMain:
                 "sys.argv",
                 ["eval", "--rule", "violation-detector", "--threshold-sweep"],
             ),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch(
                 "vaudeville.eval.load_test_cases",
@@ -277,7 +285,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=MockBackend())
         with (
             patch("sys.argv", ["eval", "--calibrate", "violation-detector"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch("vaudeville.eval.load_test_cases", return_value={}),
         ):
@@ -294,7 +302,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=MockBackend())
         with (
             patch("sys.argv", ["eval", "--calibrate", "violation-detector"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value={}),
             patch(
                 "vaudeville.eval.load_test_cases",
@@ -314,13 +322,13 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=MockBackend())
         with (
             patch("sys.argv", ["eval", "--calibrate", "violation-detector"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch(
                 "vaudeville.eval.load_test_cases",
                 return_value={"violation-detector": [EvalCase("t", "clean")]},
             ),
-            patch("vaudeville.eval_report.find_rule_file", return_value=None),
+            patch("vaudeville.eval_calibrate.find_rule_file", return_value=None),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 from vaudeville.eval import main
@@ -350,18 +358,18 @@ class TestMain:
 
         with (
             patch("sys.argv", ["eval", "--calibrate", "violation-detector"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
             patch(
                 "vaudeville.eval.load_test_cases",
                 return_value={"violation-detector": [EvalCase("t", "clean")]},
             ),
             patch(
-                "vaudeville.eval_report.find_rule_file",
+                "vaudeville.eval_calibrate.find_rule_file",
                 return_value=rule_file,
             ),
             patch(
-                "vaudeville.eval_report.calibrate_rule",
+                "vaudeville.eval_calibrate.calibrate_rule",
                 return_value=0.5,
             ),
         ):

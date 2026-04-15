@@ -48,7 +48,6 @@ def cmd_stats(args: argparse.Namespace) -> None:
 
 
 def _print_stats_human(result: dict[str, Any]) -> None:
-    """Format stats as human-readable text."""
     total = result["total"]
     if total == 0:
         print("No events recorded yet.")

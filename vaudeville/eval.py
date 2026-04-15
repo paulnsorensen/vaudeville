@@ -14,10 +14,17 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
-from .core.rules import EvalCase, Rule, load_rules, load_rules_layered
-from .server import InferenceBackend, LogprobBackend
-from .server import condense_text
+from .core import (
+    ClassifyResult,
+    EvalCase,
+    Rule,
+    compute_confidence,
+    find_project_root,
+    load_rules,
+    load_rules_layered,
+    parse_verdict,
+)
+from .server import InferenceBackend, LogprobBackend, condense_text
 
 __all__ = [
     "CaseResult",
@@ -28,24 +35,6 @@ __all__ = [
     "load_test_cases",
     "main",
 ]
-
-
-def _find_project_root() -> str | None:
-    """Find the git working tree root, or None if not in a repo."""
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return None
 
 
 @dataclass
@@ -178,16 +167,7 @@ def evaluate_rule(
     return results, case_results
 
 
-def _build_backend(args: argparse.Namespace) -> InferenceBackend:
-    """Initialize the inference backend from CLI args."""
-    from .server import MLXBackend
-
-    print(f"Loading model: {args.model}")
-    return MLXBackend(args.model)
-
-
 def _build_parser() -> argparse.ArgumentParser:
-    """Build CLI argument parser."""
     parser = argparse.ArgumentParser(description="Vaudeville rule eval harness")
     parser.add_argument("--rule", help="Evaluate only this rule")
     parser.add_argument(
@@ -218,9 +198,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Load rules from this directory only (skip layered resolution)",
     )
     parser.add_argument(
-        "--backend", default="mlx", choices=["mlx"], help="Inference backend"
-    )
-    parser.add_argument(
         "--model",
         default="mlx-community/Phi-4-mini-instruct-4bit",
         help="Model path or Hugging Face ID",
@@ -228,36 +205,55 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _inject_extra_test_file(
+    args: argparse.Namespace,
+    test_suites: dict[str, list[EvalCase]],
+) -> None:
+    if not (args.test_file and args.rule):
+        return
+    extra_cases, rule_name = _load_test_file(args.test_file)
+    if rule_name != args.rule:
+        print(
+            f"Error: --test-file specifies rule '{rule_name}' but --rule is '{args.rule}'"
+        )
+        sys.exit(1)
+    existing = test_suites.get(args.rule, [])
+    test_suites[args.rule] = existing + extra_cases
+
+
+def _filter_test_suites(
+    args: argparse.Namespace,
+    test_suites: dict[str, list[EvalCase]],
+) -> dict[str, list[EvalCase]]:
+    if not args.rule:
+        return test_suites
+    filtered = {k: v for k, v in test_suites.items() if k == args.rule}
+    if not filtered:
+        print(f"No test suite found for rule: {args.rule}")
+        sys.exit(1)
+    return filtered
+
+
 def main() -> None:
+    from .server.mlx_backend import MLXBackend
+
     args = _build_parser().parse_args()
 
-    backend = _build_backend(args)
+    print(f"Loading model: {args.model}")
+    backend = MLXBackend(args.model)
     if args.rules_dir:
         rules = load_rules(args.rules_dir)
     else:
-        rules = load_rules_layered(project_root=_find_project_root())
+        rules = load_rules_layered(project_root=find_project_root())
     test_suites = load_test_cases(rules)
-
-    if args.test_file and args.rule:
-        extra_cases, rule_name = _load_test_file(args.test_file)
-        if rule_name != args.rule:
-            print(
-                f"Error: --test-file specifies rule '{rule_name}' but --rule is '{args.rule}'"
-            )
-            sys.exit(1)
-        existing = test_suites.get(args.rule, [])
-        test_suites[args.rule] = existing + extra_cases
+    _inject_extra_test_file(args, test_suites)
 
     if args.calibrate:
-        from .eval_report import run_calibrate
+        from .eval_calibrate import run_calibrate
 
-        run_calibrate(args, rules, test_suites, backend, _find_project_root())
+        run_calibrate(args, rules, test_suites, backend, find_project_root())
 
-    if args.rule:
-        test_suites = {k: v for k, v in test_suites.items() if k == args.rule}
-        if not test_suites:
-            print(f"No test suite found for rule: {args.rule}")
-            sys.exit(1)
+    test_suites = _filter_test_suites(args, test_suites)
 
     from .eval_report import run_evaluations, threshold_sweep, write_eval_log
 

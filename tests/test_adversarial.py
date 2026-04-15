@@ -23,7 +23,8 @@ import time
 from unittest.mock import MagicMock, patch
 
 from vaudeville.core.paths import VERSION_FILE
-from vaudeville.server import DaemonConfig, VaudevilleDaemon, handle_request
+from vaudeville.server import DaemonConfig, VaudevilleDaemon
+from vaudeville.server._handlers import handle_request
 from conftest import MockBackend
 
 

@@ -681,7 +681,7 @@ class TestCalibrateRule:
         )
         cases = [EvalCase(f"text {i}", "violation") for i in range(19)]
         result = calibrate_rule(
-            "violation-detector", cases, rules, MockBackend(), str(rule_file)
+            rules["violation-detector"], cases, MockBackend(), str(rule_file)
         )
         assert result is None
         out = capsys.readouterr().out
@@ -752,7 +752,7 @@ class TestCalibrateRule:
             return_value=(mock_results, case_results),
         ):
             result = calibrate_rule(
-                "violation-detector", cases, rules, MockBackend(), str(rule_file)
+                rules["violation-detector"], cases, MockBackend(), str(rule_file)
             )
 
         assert result == 0.45
@@ -795,7 +795,7 @@ class TestCalibrateRule:
             return_value=(mock_results, case_results),
         ):
             result = calibrate_rule(
-                "violation-detector", cases, rules, MockBackend(), str(rule_file)
+                rules["violation-detector"], cases, MockBackend(), str(rule_file)
             )
 
         assert result is None

@@ -259,13 +259,13 @@ MIN_CALIBRATION_CASES = 20
 
 
 def calibrate_rule(
-    rule_name: str,
+    rule: Rule,
     cases: list[EvalCase],
-    rules: dict[str, Rule],
     backend: InferenceBackend,
     rule_file: str,
 ) -> float | None:
     """Run threshold sweep, pick F1-optimal, write to rule YAML. Returns threshold or None."""
+    rule_name = rule.name
     if len(cases) < MIN_CALIBRATION_CASES:
         print(
             f"ERROR: {rule_name} has {len(cases)} labeled cases"
@@ -275,7 +275,7 @@ def calibrate_rule(
 
     from .eval import evaluate_rule
 
-    _, case_results = evaluate_rule(rule_name, cases, rules, backend)
+    _, case_results = evaluate_rule(rule_name, cases, {rule_name: rule}, backend)
     best_thresh, best_f1 = _find_best_threshold(rule_name, case_results)
 
     if best_thresh == 0.0:

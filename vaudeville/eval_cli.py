@@ -136,7 +136,7 @@ def _run_calibrate(
     if not rule_file:
         print(f"Cannot find YAML file for rule: {cal_rule}")
         sys.exit(1)
-    result = calibrate_rule(cal_rule, test_suites[cal_rule], rules, backend, rule_file)
+    result = calibrate_rule(rules[cal_rule], test_suites[cal_rule], backend, rule_file)
     sys.exit(0 if result is not None else 1)
 
 

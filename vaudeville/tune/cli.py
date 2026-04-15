@@ -10,7 +10,9 @@ import logging
 import os
 import subprocess
 import sys
+import time
 
+from ..core.paths import PID_FILE, SOCKET_PATH
 from ..core.rules import load_rules_layered
 from ..eval import EvalCase, load_test_cases
 from ..server.daemon_backend import DaemonBackend, daemon_is_alive
@@ -19,6 +21,9 @@ from .harness import StudyConfig, _format_verdict, run_study
 from .split import split_cases
 
 logger = logging.getLogger(__name__)
+
+DAEMON_STARTUP_TIMEOUT = 10.0
+DAEMON_POLL_INTERVAL = 0.3
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -75,13 +80,52 @@ def _find_project_root() -> str | None:
     return None
 
 
+def _try_start_daemon() -> bool:
+    """Attempt to spawn the daemon and wait for it to become ready."""
+    plugin_root = os.environ.get(
+        "CLAUDE_PLUGIN_ROOT",
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    )
+    cmd = [
+        sys.executable,
+        "-m",
+        "vaudeville.server",
+        "--socket",
+        SOCKET_PATH,
+        "--pid-file",
+        PID_FILE,
+    ]
+    try:
+        subprocess.Popen(
+            cmd,
+            cwd=plugin_root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        logger.warning("Failed to spawn daemon process")
+        return False
+
+    deadline = time.monotonic() + DAEMON_STARTUP_TIMEOUT
+    while time.monotonic() < deadline:
+        time.sleep(DAEMON_POLL_INTERVAL)
+        if daemon_is_alive():
+            return True
+    logger.warning("Daemon did not become ready within %.0fs", DAEMON_STARTUP_TIMEOUT)
+    return False
+
+
 def _build_backend(no_daemon: bool) -> InferenceBackend:
     """Build inference backend, preferring warm daemon."""
     if not no_daemon and daemon_is_alive():
         print("Using warm daemon for inference")
         return DaemonBackend()
     if not no_daemon:
-        print("Daemon not available — falling back to in-process MLXBackend")
+        print("Daemon not running — attempting auto-start…")
+        if _try_start_daemon():
+            print("Daemon started successfully")
+            return DaemonBackend()
+        print("Auto-start failed — falling back to in-process MLXBackend")
     from ..server import MLXBackend
 
     return MLXBackend("mlx-community/Phi-4-mini-instruct-4bit")

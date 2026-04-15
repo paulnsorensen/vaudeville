@@ -17,6 +17,7 @@ from vaudeville.tune.cli import (
     EXIT_PASS,
     _build_backend,
     _get_test_file_mtime,
+    _try_start_daemon,
     build_parser,
     run_tune,
 )
@@ -116,8 +117,11 @@ class TestBuildBackend:
         mock_cls.assert_called_once()
         assert backend == mock_cls.return_value
 
+    @patch("vaudeville.tune.cli._try_start_daemon", return_value=False)
     @patch("vaudeville.tune.cli.daemon_is_alive", return_value=False)
-    def test_falls_back_to_mlx(self, mock_alive: MagicMock) -> None:
+    def test_falls_back_to_mlx_after_autostart_fails(
+        self, mock_alive: MagicMock, mock_start: MagicMock
+    ) -> None:
         mock_mlx_cls = MagicMock()
         with patch.dict(
             "sys.modules",
@@ -125,8 +129,23 @@ class TestBuildBackend:
         ):
             with patch("vaudeville.server.MLXBackend", mock_mlx_cls):
                 backend = _build_backend(no_daemon=False)
+                mock_start.assert_called_once()
                 mock_mlx_cls.assert_called_once()
                 assert backend == mock_mlx_cls.return_value
+
+    @patch("vaudeville.tune.cli._try_start_daemon", return_value=True)
+    @patch("vaudeville.tune.cli.DaemonBackend")
+    @patch("vaudeville.tune.cli.daemon_is_alive", return_value=False)
+    def test_autostart_success_returns_daemon_backend(
+        self,
+        mock_alive: MagicMock,
+        mock_cls: MagicMock,
+        mock_start: MagicMock,
+    ) -> None:
+        backend = _build_backend(no_daemon=False)
+        mock_start.assert_called_once()
+        mock_cls.assert_called_once()
+        assert backend == mock_cls.return_value
 
     @patch("vaudeville.tune.cli.daemon_is_alive", return_value=True)
     @patch("vaudeville.tune.cli.DaemonBackend")
@@ -141,6 +160,38 @@ class TestBuildBackend:
             except Exception:
                 pass
         mock_cls.assert_not_called()
+
+
+class TestTryStartDaemon:
+    @patch("vaudeville.tune.cli.daemon_is_alive", return_value=True)
+    @patch("vaudeville.tune.cli.subprocess.Popen")
+    @patch("vaudeville.tune.cli.time.sleep")
+    def test_returns_true_when_daemon_comes_alive(
+        self,
+        mock_sleep: MagicMock,
+        mock_popen: MagicMock,
+        mock_alive: MagicMock,
+    ) -> None:
+        assert _try_start_daemon() is True
+        mock_popen.assert_called_once()
+
+    @patch("vaudeville.tune.cli.subprocess.Popen", side_effect=OSError("no such file"))
+    def test_returns_false_on_spawn_failure(self, mock_popen: MagicMock) -> None:
+        assert _try_start_daemon() is False
+
+    @patch("vaudeville.tune.cli.daemon_is_alive", return_value=False)
+    @patch("vaudeville.tune.cli.subprocess.Popen")
+    @patch("vaudeville.tune.cli.time.sleep")
+    @patch("vaudeville.tune.cli.time.monotonic")
+    def test_returns_false_on_timeout(
+        self,
+        mock_monotonic: MagicMock,
+        mock_sleep: MagicMock,
+        mock_popen: MagicMock,
+        mock_alive: MagicMock,
+    ) -> None:
+        mock_monotonic.side_effect = [0.0, 0.0, 5.0, 11.0]
+        assert _try_start_daemon() is False
 
 
 class TestGetTestFileMtime:

@@ -7,7 +7,7 @@ Each iteration picks the first unchecked item, implements it with tests, marks i
 - [x] US-001: Wire LLMSampler as default sampler in `run_study` — import from `sampler.py`, instantiate with optional Anthropic client, pass to `create_study`. TPE remains the fallback when no client is available.
 - [x] US-002: Replace TPESampler default with NSGAIISampler — add `constraints_func` that reads `constraint_violated` user attr already set in `run_trial`. Keep TPE as the independent sampler fallback inside LLMSampler.
 - [x] US-003: Wire `pool.py` authoring into `run_study` loop — re-add `author: bool` to `StudyConfig`, re-add `--author` CLI flag. When enabled, check `should_author()` each trial; on trigger call `author_candidates → inject_candidates`. Update tests.
-- [ ] US-004: Auto-start daemon in `_build_backend` — if `daemon_is_alive()` is false and `--no-daemon` not set, attempt `subprocess.Popen` to start the daemon, wait briefly, retry `daemon_is_alive()`. Fall back to MLXBackend if start fails.
+- [x] US-004: Auto-start daemon in `_build_backend` — if `daemon_is_alive()` is false and `--no-daemon` not set, attempt `subprocess.Popen` to start the daemon, wait briefly, retry `daemon_is_alive()`. Fall back to MLXBackend if start fails.
 
 ## Complexity Extractions
 

@@ -6,10 +6,16 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import optuna
 
 from .sampler import LLMSampler
+
+if TYPE_CHECKING:
+    from ..core.rules import Rule
+    from ..eval import EvalCase
+    from ..server.inference import InferenceBackend
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +48,15 @@ class TuneVerdict:
     best_ids: list[str]
     study_uri: str
     diff_path: str
+
+
+@dataclass
+class TrialContext:
+    rule: Rule
+    tune_cases: list[EvalCase]
+    held_cases: list[EvalCase]
+    backend: InferenceBackend
+    config: StudyConfig
 
 
 def _study_db_path(config: StudyConfig) -> str:

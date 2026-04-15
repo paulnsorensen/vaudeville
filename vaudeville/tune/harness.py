@@ -19,7 +19,7 @@ from .pool import (
     inject_candidates,
     should_author,
 )
-from .study import StudyConfig, TuneVerdict, create_study
+from .study import StudyConfig, TrialContext, TuneVerdict, create_study
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +82,9 @@ def _eval_subset(
 
 def run_trial(
     trial: optuna.Trial,
-    rule: Rule,
-    tune_cases: list[EvalCase],
-    held_cases: list[EvalCase],
-    backend: InferenceBackend,
-    config: StudyConfig,
+    ctx: TrialContext,
 ) -> tuple[float, float]:
-    pool = _pool_ids(rule)
+    pool = _pool_ids(ctx.rule)
     if not pool:
         raise optuna.TrialPruned("No examples in pool")
 
@@ -101,17 +97,17 @@ def run_trial(
     if not selected:
         raise optuna.TrialPruned("Empty selection")
 
-    if not _check_prompt_budget(rule, selected):
+    if not _check_prompt_budget(ctx.rule, selected):
         raise optuna.TrialPruned("Exceeds prompt budget")
 
-    p_tune, r_tune, _ = _eval_subset(rule, selected, tune_cases, backend)
-    p_held, r_held, _ = _eval_subset(rule, selected, held_cases, backend)
+    p_tune, r_tune, _ = _eval_subset(ctx.rule, selected, ctx.tune_cases, ctx.backend)
+    p_held, r_held, _ = _eval_subset(ctx.rule, selected, ctx.held_cases, ctx.backend)
 
     trial.set_user_attr("precision_tune", p_tune)
     trial.set_user_attr("recall_tune", r_tune)
     trial.set_user_attr("example_ids", selected)
 
-    if p_held < config.p_min:
+    if p_held < ctx.config.p_min:
         trial.set_user_attr("constraint_violated", True)
 
     return r_held, p_held
@@ -213,37 +209,41 @@ def _author_and_inject(
     return rule
 
 
-def run_study(
-    rule: Rule,
-    tune_cases: list[EvalCase],
-    held_cases: list[EvalCase],
-    backend: InferenceBackend,
-    config: StudyConfig,
-    sampler: optuna.samplers.BaseSampler | None = None,
-) -> TuneVerdict:
-    """Run the full Optuna study loop. Returns a TuneVerdict."""
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
-    study, db_path = create_study(config, sampler=sampler)
-    original_prompt = render_prompt(rule)
+def _extract_best_result(
+    completed: list[optuna.trial.FrozenTrial],
+    best_ids: list[str],
+) -> tuple[float, float, float, float]:
+    if not completed:
+        return 0.0, 0.0, 0.0, 0.0
+    best = completed[-1]
+    if best_ids:
+        for t in reversed(completed):
+            if t.user_attrs.get("example_ids") == best_ids:
+                best = t
+                break
+    p_tune = best.user_attrs.get("precision_tune", 0.0)
+    r_tune = best.user_attrs.get("recall_tune", 0.0)
+    r_held = p_held = 0.0
+    if best.values and len(best.values) >= 2:
+        r_held, p_held = best.values[0], best.values[1]
+    return p_tune, r_tune, p_held, r_held
 
-    for i in range(config.budget):
+
+def _run_study_loop(
+    study: optuna.Study,
+    ctx: TrialContext,
+) -> None:
+    for i in range(ctx.config.budget):
         trial = study.ask()
         try:
-            values = run_trial(
-                trial,
-                rule,
-                tune_cases,
-                held_cases,
-                backend,
-                config,
-            )
+            values = run_trial(trial, ctx)
             study.tell(trial, values=list(values))
         except optuna.TrialPruned as e:
             study.tell(trial, state=optuna.trial.TrialState.PRUNED)
             logger.debug("Trial %d pruned: %s", i, e)
             continue
 
-        if config.author:
+        if ctx.config.author:
             completed = [
                 t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
             ]
@@ -251,50 +251,45 @@ def run_study(
             stall = compute_stall_count(vals)
             if should_author(i, stall):
                 ids = best_trial_ids(study) or []
-                rule = _author_and_inject(
-                    rule,
-                    tune_cases,
-                    backend,
-                    ids,
+                ctx.rule = _author_and_inject(
+                    ctx.rule, ctx.tune_cases, ctx.backend, ids
                 )
 
-        if _check_consecutive_hits(study, config):
+        if _check_consecutive_hits(study, ctx.config):
             logger.info(
-                "Target hit %dx consecutively — stopping", config.consecutive_target
+                "Target hit %dx consecutively — stopping",
+                ctx.config.consecutive_target,
             )
             break
 
+
+def run_study(
+    ctx: TrialContext,
+    sampler: optuna.samplers.BaseSampler | None = None,
+) -> TuneVerdict:
+    """Run the full Optuna study loop. Returns a TuneVerdict."""
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study, db_path = create_study(ctx.config, sampler=sampler)
+    original_prompt = render_prompt(ctx.rule)
+
+    _run_study_loop(study, ctx)
+
     best_ids = best_trial_ids(study) or []
-    tuned_prompt = render_prompt(rule, best_ids) if best_ids else original_prompt
-    diff_path = _write_prompt_diff(original_prompt, tuned_prompt, config)
+    tuned = render_prompt(ctx.rule, best_ids) if best_ids else original_prompt
+    diff_path = _write_prompt_diff(original_prompt, tuned, ctx.config)
 
-    p_tune = r_tune = p_held = r_held = 0.0
     completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
-    if completed:
-        best = completed[-1]
-        if best_ids:
-            for t in reversed(completed):
-                if t.user_attrs.get("example_ids") == best_ids:
-                    best = t
-                    break
-        p_tune = best.user_attrs.get("precision_tune", 0.0)
-        r_tune = best.user_attrs.get("recall_tune", 0.0)
-        if best.values and len(best.values) >= 2:
-            r_held, p_held = best.values[0], best.values[1]
-
-    passed = p_held >= config.p_min and r_held >= config.r_min
-    pool_size = len(_pool_ids(rule))
-    study_uri = f"sqlite:///{db_path}"
+    p_tune, r_tune, p_held, r_held = _extract_best_result(completed, best_ids)
 
     return TuneVerdict(
-        passed=passed,
+        passed=p_held >= ctx.config.p_min and r_held >= ctx.config.r_min,
         p_tune=p_tune,
         r_tune=r_tune,
         p_held=p_held,
         r_held=r_held,
         trials_run=len(study.trials),
-        pool_size=pool_size,
+        pool_size=len(_pool_ids(ctx.rule)),
         best_ids=best_ids,
-        study_uri=study_uri,
+        study_uri=f"sqlite:///{db_path}",
         diff_path=diff_path,
     )

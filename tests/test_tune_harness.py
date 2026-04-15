@@ -19,9 +19,11 @@ from vaudeville.tune.harness import (
     _check_prompt_budget,
     _compute_metrics,
     _eval_subset,
+    _extract_best_result,
     _format_verdict,
     _make_trial_rule,
     _pool_ids,
+    _run_study_loop,
     _write_prompt_diff,
     best_trial_ids,
     run_study,
@@ -29,6 +31,7 @@ from vaudeville.tune.harness import (
 )
 from vaudeville.tune.study import (
     StudyConfig,
+    TrialContext,
     TuneVerdict,
     _constraints_func,
     _make_default_sampler,
@@ -307,16 +310,10 @@ class TestRunTrial:
                 rule_name="test-rule",
                 study_dir=tmpdir,
             )
+            ctx = TrialContext(simple_rule, eval_cases, eval_cases, mock_backend, cfg)
             study, _ = create_study(cfg, sampler=_AllOneSampler())
             trial = study.ask()
-            r_held, p_held = run_trial(
-                trial,
-                simple_rule,
-                eval_cases,
-                eval_cases,
-                mock_backend,
-                cfg,
-            )
+            r_held, p_held = run_trial(trial, ctx)
             assert isinstance(r_held, float)
             assert isinstance(p_held, float)
 
@@ -335,17 +332,11 @@ class TestRunTrial:
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             cfg = StudyConfig(rule_name="empty", study_dir=tmpdir)
+            ctx = TrialContext(rule, eval_cases, eval_cases, mock_backend, cfg)
             study, _ = create_study(cfg)
             trial = study.ask()
             with pytest.raises(optuna.TrialPruned, match="No examples"):
-                run_trial(
-                    trial,
-                    rule,
-                    eval_cases,
-                    eval_cases,
-                    mock_backend,
-                    cfg,
-                )
+                run_trial(trial, ctx)
 
     def test_prunes_empty_selection(
         self,
@@ -382,17 +373,11 @@ class TestRunTrial:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cfg = StudyConfig(rule_name="test-rule", study_dir=tmpdir)
+            ctx = TrialContext(simple_rule, eval_cases, eval_cases, mock_backend, cfg)
             study, _ = create_study(cfg, sampler=_AllZeroSampler())
             trial = study.ask()
             with pytest.raises(optuna.TrialPruned, match="Empty selection"):
-                run_trial(
-                    trial,
-                    simple_rule,
-                    eval_cases,
-                    eval_cases,
-                    mock_backend,
-                    cfg,
-                )
+                run_trial(trial, ctx)
 
     def test_prunes_over_budget(
         self,
@@ -412,17 +397,11 @@ class TestRunTrial:
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             cfg = StudyConfig(rule_name="big", study_dir=tmpdir)
+            ctx = TrialContext(big_rule, eval_cases, eval_cases, mock_backend, cfg)
             study, _ = create_study(cfg, sampler=_AllOneSampler())
             trial = study.ask()
             with pytest.raises(optuna.TrialPruned, match="Exceeds prompt budget"):
-                run_trial(
-                    trial,
-                    big_rule,
-                    eval_cases,
-                    eval_cases,
-                    mock_backend,
-                    cfg,
-                )
+                run_trial(trial, ctx)
 
 
 class TestBestTrialIds:
@@ -555,6 +534,71 @@ class TestFormatVerdict:
         assert 8 <= len(lines) <= 12
 
 
+class TestExtractBestResult:
+    def test_empty_completed(self) -> None:
+        p_tune, r_tune, p_held, r_held = _extract_best_result([], [])
+        assert (p_tune, r_tune, p_held, r_held) == (0.0, 0.0, 0.0, 0.0)
+
+    def test_uses_last_completed_when_no_best_ids(self) -> None:
+        trial = MagicMock()
+        trial.user_attrs = {"precision_tune": 0.9, "recall_tune": 0.8}
+        trial.values = [0.85, 0.95]
+        p_tune, r_tune, p_held, r_held = _extract_best_result([trial], [])
+        assert p_tune == 0.9
+        assert r_tune == 0.8
+        assert r_held == 0.85
+        assert p_held == 0.95
+
+    def test_matches_best_ids(self) -> None:
+        t1 = MagicMock()
+        t1.user_attrs = {
+            "precision_tune": 0.7,
+            "recall_tune": 0.6,
+            "example_ids": ["ex1"],
+        }
+        t1.values = [0.6, 0.7]
+        t2 = MagicMock()
+        t2.user_attrs = {
+            "precision_tune": 0.9,
+            "recall_tune": 0.85,
+            "example_ids": ["ex2"],
+        }
+        t2.values = [0.88, 0.92]
+        p_tune, r_tune, p_held, r_held = _extract_best_result([t1, t2], ["ex1"])
+        assert p_tune == 0.7
+        assert r_tune == 0.6
+
+    def test_falls_back_to_last_when_ids_not_found(self) -> None:
+        trial = MagicMock()
+        trial.user_attrs = {"precision_tune": 0.9, "recall_tune": 0.8}
+        trial.values = [0.85, 0.95]
+        p_tune, r_tune, _, _ = _extract_best_result([trial], ["nonexistent"])
+        assert p_tune == 0.9
+        assert r_tune == 0.8
+
+
+class TestRunStudyLoop:
+    def test_runs_trials(
+        self,
+        simple_rule: Rule,
+        mock_backend: MagicMock,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(
+                rule_name="test-rule",
+                study_dir=tmpdir,
+                budget=3,
+            )
+            ctx = TrialContext(simple_rule, eval_cases, eval_cases, mock_backend, cfg)
+            study, _ = create_study(cfg, sampler=_AllOneSampler())
+            _run_study_loop(study, ctx)
+            completed = [
+                t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
+            ]
+            assert len(completed) == 3
+
+
 class TestRunStudy:
     def test_runs_study_and_returns_verdict(
         self,
@@ -568,14 +612,8 @@ class TestRunStudy:
                 study_dir=tmpdir,
                 budget=3,
             )
-            verdict = run_study(
-                simple_rule,
-                eval_cases,
-                eval_cases,
-                mock_backend,
-                cfg,
-                sampler=_AllOneSampler(),
-            )
+            ctx = TrialContext(simple_rule, eval_cases, eval_cases, mock_backend, cfg)
+            verdict = run_study(ctx, sampler=_AllOneSampler())
             assert isinstance(verdict, TuneVerdict)
             assert verdict.trials_run > 0
             assert verdict.study_uri.startswith("sqlite:///")
@@ -596,14 +634,8 @@ class TestRunStudy:
                 r_min=0.0,
                 consecutive_target=2,
             )
-            verdict = run_study(
-                simple_rule,
-                eval_cases,
-                eval_cases,
-                mock_backend,
-                cfg,
-                sampler=_AllOneSampler(),
-            )
+            ctx = TrialContext(simple_rule, eval_cases, eval_cases, mock_backend, cfg)
+            verdict = run_study(ctx, sampler=_AllOneSampler())
             assert verdict.trials_run <= 20
             assert verdict.passed is True
 
@@ -713,14 +745,8 @@ class TestRunStudyWithAuthoring:
                 budget=6,
                 author=True,
             )
-            run_study(
-                simple_rule,
-                eval_cases,
-                eval_cases,
-                mock_backend,
-                cfg,
-                sampler=_AllOneSampler(),
-            )
+            ctx = TrialContext(simple_rule, eval_cases, eval_cases, mock_backend, cfg)
+            run_study(ctx, sampler=_AllOneSampler())
             assert mock_author.call_count > 0
 
     def test_authoring_not_called_when_disabled(
@@ -736,15 +762,9 @@ class TestRunStudyWithAuthoring:
                 budget=3,
                 author=False,
             )
+            ctx = TrialContext(simple_rule, eval_cases, eval_cases, mock_backend, cfg)
             with patch(
                 "vaudeville.tune.harness._author_and_inject",
             ) as mock_author:
-                run_study(
-                    simple_rule,
-                    eval_cases,
-                    eval_cases,
-                    mock_backend,
-                    cfg,
-                    sampler=_AllOneSampler(),
-                )
+                run_study(ctx, sampler=_AllOneSampler())
                 mock_author.assert_not_called()

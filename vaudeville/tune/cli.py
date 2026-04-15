@@ -18,7 +18,7 @@ from ..eval import EvalCase, load_test_cases
 from ..server.daemon_backend import DaemonBackend, daemon_is_alive
 from ..server.inference import InferenceBackend
 from .harness import _format_verdict, run_study
-from .study import StudyConfig
+from .study import StudyConfig, TrialContext
 from .split import split_cases
 
 logger = logging.getLogger(__name__)
@@ -184,7 +184,8 @@ def run_tune(args: argparse.Namespace) -> int:
     )
 
     backend = _build_backend(args.no_daemon)
-    verdict = run_study(rule, tune_cases, held_cases, backend, config)
+    ctx = TrialContext(rule, tune_cases, held_cases, backend, config)
+    verdict = run_study(ctx)
     print(_format_verdict(verdict))
 
     return EXIT_PASS if verdict.passed else EXIT_FAIL

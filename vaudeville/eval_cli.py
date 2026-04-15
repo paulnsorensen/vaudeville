@@ -140,6 +140,30 @@ def _run_calibrate(
     sys.exit(0 if result is not None else 1)
 
 
+def _apply_extra_test_file(
+    args: argparse.Namespace, test_suites: dict[str, list[EvalCase]]
+) -> None:
+    """Merge --test-file cases into the matching test suite (mutates in place)."""
+    if not (args.test_file and args.rule):
+        return
+    extra_cases, rule_name = _load_test_file(args.test_file)
+    if rule_name != args.rule:
+        print(
+            f"Error: --test-file specifies rule '{rule_name}' but --rule is '{args.rule}'"
+        )
+        sys.exit(1)
+    existing = test_suites.get(args.rule, [])
+    test_suites[args.rule] = existing + extra_cases
+
+
+def _tests_dir() -> str:
+    plugin_root = os.environ.get(
+        "CLAUDE_PLUGIN_ROOT",
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    return os.path.join(plugin_root, "tests")
+
+
 def _emit_jsonl(case_results: list[CaseResult]) -> None:
     """Write per-case results as JSONL to stdout."""
     import json
@@ -150,26 +174,11 @@ def _emit_jsonl(case_results: list[CaseResult]) -> None:
 
 def main() -> None:
     args = _build_parser().parse_args()
-
-    plugin_root = os.environ.get(
-        "CLAUDE_PLUGIN_ROOT",
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    tests_dir = os.path.join(plugin_root, "tests")
-
     backend = _build_backend(args)
     rules = load_rules_layered(project_root=_find_project_root())
-    test_suites = load_test_cases(tests_dir)
+    test_suites = load_test_cases(_tests_dir())
 
-    if args.test_file and args.rule:
-        extra_cases, rule_name = _load_test_file(args.test_file)
-        if rule_name != args.rule:
-            print(
-                f"Error: --test-file specifies rule '{rule_name}' but --rule is '{args.rule}'"
-            )
-            sys.exit(1)
-        existing = test_suites.get(args.rule, [])
-        test_suites[args.rule] = existing + extra_cases
+    _apply_extra_test_file(args, test_suites)
 
     if args.calibrate:
         _run_calibrate(args, rules, test_suites, backend)

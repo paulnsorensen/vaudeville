@@ -12,8 +12,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
-from .core.rules import Rule
+from .core import ClassifyResult, Rule, compute_confidence, parse_verdict
 from .server import InferenceBackend, LogprobBackend
 
 

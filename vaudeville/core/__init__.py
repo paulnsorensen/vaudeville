@@ -1,5 +1,11 @@
 from .client import VaudevilleClient
-from .protocol import ClassifyRequest, ClassifyResponse, parse_verdict
+from .protocol import (
+    ClassifyRequest,
+    ClassifyResponse,
+    ClassifyResult,
+    compute_confidence,
+    parse_verdict,
+)
 from .rules import (
     Example,
     Rule,
@@ -16,9 +22,11 @@ __all__ = [
     "CHARS_PER_TOKEN",
     "ClassifyRequest",
     "ClassifyResponse",
+    "ClassifyResult",
     "Example",
     "Rule",
     "VaudevilleClient",
+    "compute_confidence",
     "load_rules",
     "load_rules_layered",
     "parse_rule",

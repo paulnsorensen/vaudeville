@@ -133,6 +133,9 @@ class Rule:
         safe_context = sanitize_input(context) if context else ""
         prompt_with_context = base.replace("{context}", safe_context)
 
+        if "{text}" not in prompt_with_context:
+            return prompt_with_context, 0
+
         before, _, after = prompt_with_context.partition("{text}")
         full_prompt = before + safe_text + after
         return full_prompt, len(before)

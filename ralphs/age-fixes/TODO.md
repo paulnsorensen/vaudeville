@@ -31,5 +31,5 @@ Each iteration picks the first unchecked item, implements it with tests, marks i
 
 ## Safety Fixes
 
-- [ ] US-016: Fix `split_prompt` in `core/rules.py:136` — add guard: `if "{text}" not in prompt_with_context: return prompt_with_context, 0` before the `partition` call. Add test for rule without `{text}` placeholder.
+- [x] US-016: Fix `split_prompt` in `core/rules.py:136` — add guard: `if "{text}" not in prompt_with_context: return prompt_with_context, 0` before the `partition` call. Add test for rule without `{text}` placeholder.
 - [ ] US-017: Fix `write_candidates` in `pool.py:143` — log warning and return early (don't overwrite) when existing YAML is non-dict. Add test for corrupt YAML scenario.

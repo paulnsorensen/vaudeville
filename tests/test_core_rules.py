@@ -308,13 +308,11 @@ class TestSplitPrompt:
         text_part = full[prefix_len:]
         assert len(text_part) == max_chars
 
-    def test_no_text_placeholder_returns_zero_prefix(self) -> None:
+    def test_no_text_placeholder_returns_prompt_unchanged(self) -> None:
         rule = self._rule("No placeholder here")
         full, prefix_len = rule.split_prompt("ignored")
-        # partition on missing "{text}" returns (whole_string, "", "")
-        # so prefix_len == len(whole_string) and text is appended with empty after
-        assert full == "No placeholder hereignored"
-        assert prefix_len == len("No placeholder here")
+        assert full == "No placeholder here"
+        assert prefix_len == 0
 
     def test_prefix_len_is_int(self) -> None:
         rule = self._rule("{text}")

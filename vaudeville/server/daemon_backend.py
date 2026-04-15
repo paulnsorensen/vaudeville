@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import socket
 
@@ -55,7 +56,7 @@ class DaemonBackend:
     def __init__(self, socket_path: str = SOCKET_PATH) -> None:
         self._socket_path = socket_path
 
-    def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
+    def classify(self, prompt: str, max_tokens: int = 50) -> str:
         response = self._send_classify(prompt)
         verdict = response.get("verdict", "clean")
         reason = response.get("reason", "")
@@ -64,7 +65,7 @@ class DaemonBackend:
     def classify_with_logprobs(
         self,
         prompt: str,
-        max_tokens: int = 50,  # noqa: ARG002
+        max_tokens: int = 50,
     ) -> ClassifyResult:
         response = self._send_classify(prompt)
         verdict = response.get("verdict", "clean")
@@ -86,8 +87,6 @@ class DaemonBackend:
 
 def _confidence_to_logprobs(verdict: str, confidence: float) -> dict[str, float]:
     """Reconstruct approximate logprobs from daemon confidence."""
-    import math
-
     confidence = max(0.01, min(0.99, confidence))
     other = 1.0 - confidence
     if verdict == "violation":

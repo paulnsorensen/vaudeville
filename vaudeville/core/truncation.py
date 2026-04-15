@@ -6,7 +6,10 @@ Code block stripping reduces token waste on structural noise.
 
 from __future__ import annotations
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 MAX_INPUT_TOKENS = 3000
@@ -78,5 +81,6 @@ def prepare_text(text: str, event: str) -> str:
         return text
     try:
         return _strip_code_blocks(text)
-    except Exception:
+    except Exception as exc:
+        logger.warning("strip_code_blocks failed (%s) — fail open", exc)
         return text

@@ -150,8 +150,8 @@ class LLMSampler(BaseSampler):
             trial.set_user_attr("proposal_source", "llm")
             trial.set_user_attr("hypothesis", hypothesis)
             return config
-        except Exception:
-            logger.warning("LLM sampling failed, falling back to TPE")
+        except Exception as exc:
+            logger.warning("LLM sampling failed (%s), falling back to TPE", exc)
             trial.set_user_attr("proposal_source", "tpe_fallback")
             return self._tpe.sample_relative(study, trial, search_space)
 

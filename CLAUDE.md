@@ -29,7 +29,7 @@ just eval         # run eval harness against bundled rules
 ## Architecture
 
 Vertical slices under `vaudeville/`:
-- `core/` — protocol, client, rules (stdlib-only, safe for hook scripts)
+- `core/` — protocol, client, rules (stdlib + pure-Python deps only, no native/platform-specific imports — safe for hook scripts)
 - `server/` — daemon, inference backends (MLX, GGUF)
 - `eval.py` — eval harness for rule accuracy testing
 

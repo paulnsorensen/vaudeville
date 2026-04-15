@@ -347,25 +347,25 @@ class TestRunnerNoSessionId:
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks"
         )
 
+        if hooks_dir not in sys.path:
+            sys.path.insert(0, hooks_dir)
+        try:
+            runner = importlib.import_module("runner")
+            importlib.reload(runner)
+        finally:
+            if hooks_dir in sys.path:
+                sys.path.remove(hooks_dir)
+
         with (
             patch("sys.stdin", io.StringIO(hook_input)),
             patch("sys.stdout", io.StringIO()),
             patch("sys.argv", ["runner.py", "--event", "Stop"]),
-            patch(
-                "vaudeville.core.client.VaudevilleClient", side_effect=fake_constructor
-            ),
+            patch.object(runner, "VaudevilleClient", side_effect=fake_constructor),
         ):
-            if hooks_dir not in sys.path:
-                sys.path.insert(0, hooks_dir)
             try:
-                runner = importlib.import_module("runner")
-                importlib.reload(runner)
                 runner.main()
             except SystemExit:
                 pass
-            finally:
-                if hooks_dir in sys.path:
-                    sys.path.remove(hooks_dir)
 
         assert len(captured_calls) == 1, "VaudevilleClient should be constructed once"
         args, kwargs = captured_calls[0]

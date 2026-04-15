@@ -14,13 +14,24 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import yaml
 
 
 MAX_INPUT_TOKENS = 3000
+DEFAULT_LABELS: tuple[str, ...] = ("violation", "clean")
+
+
+@dataclass
+class EvalCase:
+    """One labeled example for rule evaluation."""
+
+    text: str
+    label: str
+
+
 CHARS_PER_TOKEN = 4  # conservative English approximation
 
 
@@ -153,6 +164,8 @@ class Rule:
     message: str
     threshold: float = 0.5
     tier: str = "enforce"
+    labels: list[str] = field(default_factory=lambda: list(DEFAULT_LABELS))
+    test_cases: list[EvalCase] = field(default_factory=list)
 
     def format_prompt(self, text: str, context: str = "") -> str:
         safe_text = sanitize_input(
@@ -284,8 +297,16 @@ def parse_rule(data: dict[str, Any]) -> Rule:
     tier = str(data.get("tier", "enforce"))
     if tier not in VALID_TIERS:
         raise ValueError(f"Invalid tier {tier!r}, must be one of {VALID_TIERS}")
+    name = str(data["name"])
+    raw_labels = data.get("labels")
+    labels: list[str] = (
+        [str(label) for label in raw_labels]
+        if isinstance(raw_labels, list) and raw_labels
+        else [str(label) for label in DEFAULT_LABELS]
+    )
+    test_cases = _parse_test_cases(data.get("test_cases", []), name, labels)
     return Rule(
-        name=str(data["name"]),
+        name=name,
         event=str(data.get("event", "")),
         prompt=str(data["prompt"]),
         context=[c for c in data.get("context", []) if isinstance(c, dict)],
@@ -293,4 +314,37 @@ def parse_rule(data: dict[str, Any]) -> Rule:
         message=str(data.get("message", "{reason}")),
         threshold=float(data.get("threshold", 0.5)),
         tier=tier,
+        labels=labels,
+        test_cases=test_cases,
     )
+
+
+def _parse_test_cases(raw: object, rule_name: str, labels: list[str]) -> list[EvalCase]:
+    """Parse and validate test_cases list from rule YAML."""
+    if not raw:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(
+            f"Rule {rule_name!r}: test_cases must be a list, got {type(raw).__name__}"
+        )
+    cases: list[EvalCase] = []
+    label_set = set(labels)
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"Rule {rule_name!r} test_cases[{i}]: expected mapping, got "
+                f"{type(entry).__name__}"
+            )
+        text = entry.get("text")
+        label = entry.get("label")
+        if not isinstance(text, str) or not text:
+            raise ValueError(
+                f"Rule {rule_name!r} test_cases[{i}]: 'text' must be a non-empty string"
+            )
+        if not isinstance(label, str) or label not in label_set:
+            raise ValueError(
+                f"Rule {rule_name!r} test_cases[{i}]: 'label' must be one of "
+                f"{sorted(label_set)}, got {label!r}"
+            )
+        cases.append(EvalCase(text=text, label=label))
+    return cases

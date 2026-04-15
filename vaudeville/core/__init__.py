@@ -2,6 +2,7 @@ from .client import VaudevilleClient
 from .protocol import ClassifyRequest, ClassifyResponse, parse_verdict
 from .rules import (
     CHARS_PER_TOKEN,
+    EvalCase,
     Rule,
     load_rules,
     load_rules_layered,
@@ -15,6 +16,7 @@ __all__ = [
     "CHARS_PER_TOKEN",
     "ClassifyRequest",
     "ClassifyResponse",
+    "EvalCase",
     "Rule",
     "VaudevilleClient",
     "load_rules",

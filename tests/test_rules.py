@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from vaudeville.core.rules import Rule, get_draft_rule_names
+from vaudeville.core.rules import Rule, get_draft_rule_names, load_rules
 from vaudeville.eval import (
     EvalCase,
     EvalResults,
@@ -16,32 +16,39 @@ from vaudeville.eval import (
 from vaudeville.eval_report import print_results
 from conftest import PROJECT_ROOT, MockBackend
 
+EXAMPLES_RULES_DIR = os.path.join(PROJECT_ROOT, "examples", "rules")
+
+
+@pytest.fixture
+def example_rules() -> dict[str, Rule]:
+    return load_rules(EXAMPLES_RULES_DIR)
+
 
 class TestLoadTestCases:
-    def test_loads_all_suites(self, tests_dir: str) -> None:
-        suites = load_test_cases(tests_dir)
+    def test_loads_all_suites(self, example_rules: dict[str, Rule]) -> None:
+        suites = load_test_cases(example_rules)
         assert "violation-detector" in suites
         assert "deferral-detector" in suites
         assert "sycophancy-detector" in suites
         assert "turn-waste-detector" in suites
 
-    def test_cases_have_text_and_label(self, tests_dir: str) -> None:
-        suites = load_test_cases(tests_dir)
+    def test_cases_have_text_and_label(self, example_rules: dict[str, Rule]) -> None:
+        suites = load_test_cases(example_rules)
         for case in suites["violation-detector"]:
             assert isinstance(case.text, str)
             assert case.label in ("violation", "clean")
 
-    def test_sufficient_cases_per_rule(self, tests_dir: str) -> None:
-        suites = load_test_cases(tests_dir)
-        drafts = get_draft_rule_names(os.path.join(PROJECT_ROOT, "examples", "rules"))
+    def test_sufficient_cases_per_rule(self, example_rules: dict[str, Rule]) -> None:
+        suites = load_test_cases(example_rules)
+        drafts = get_draft_rule_names(EXAMPLES_RULES_DIR)
         for rule_name, cases in suites.items():
             minimum = 5 if rule_name in drafts else 10
             assert len(cases) >= minimum, (
                 f"{rule_name}: only {len(cases)} test cases (need {minimum})"
             )
 
-    def test_both_labels_present(self, tests_dir: str) -> None:
-        suites = load_test_cases(tests_dir)
+    def test_both_labels_present(self, example_rules: dict[str, Rule]) -> None:
+        suites = load_test_cases(example_rules)
         for rule_name, cases in suites.items():
             labels = {c.label for c in cases}
             assert "violation" in labels, f"{rule_name}: no violation cases"

@@ -5,7 +5,9 @@ from unittest.mock import MagicMock, patch
 
 
 class TestMLXBackend:
-    def _make_stream_response(self, text: str, finish_reason: str = "stop") -> Any:
+    def _make_stream_response(
+        self, text: str, finish_reason: str | None = "stop"
+    ) -> Any:
         resp = MagicMock()
         resp.text = text
         resp.finish_reason = finish_reason
@@ -53,6 +55,64 @@ class TestMLXBackend:
             result = backend.classify("test prompt")
         assert result == "VERDICT: clean"
 
+    def test_classify_stops_at_second_newline(self) -> None:
+        """Generation halts after REASON line; prompt-echo run-on is dropped."""
+        _, _, mock_load, _, mock_generate_step = self._make_mocks()
+        chunks = [
+            "VERDICT: violation",
+            "\n",
+            "REASON: work done.",
+            "\n",
+            "Classify this response",
+        ]
+        responses = [self._make_stream_response(c, finish_reason=None) for c in chunks]
+        mock_stream_generate = MagicMock(return_value=iter(responses))
+        modules = self._patch_mlx_modules(
+            mock_load, mock_stream_generate, mock_generate_step
+        )
+        with patch.dict("sys.modules", modules):
+            from vaudeville.server.mlx_backend import MLXBackend
+
+            backend = MLXBackend("test-model")
+            result = backend.classify("test prompt")
+        assert result == "VERDICT: violation\nREASON: work done.\n"
+        assert "Classify" not in result
+
+    def test_classify_stops_when_newlines_in_single_chunk(self) -> None:
+        """A single chunk containing both newlines still terminates generation."""
+        _, _, mock_load, _, mock_generate_step = self._make_mocks()
+        responses = [
+            self._make_stream_response(
+                "VERDICT: clean\nREASON: ok.\n", finish_reason=None
+            ),
+            self._make_stream_response("run-on text", finish_reason=None),
+        ]
+        mock_stream_generate = MagicMock(return_value=iter(responses))
+        modules = self._patch_mlx_modules(
+            mock_load, mock_stream_generate, mock_generate_step
+        )
+        with patch.dict("sys.modules", modules):
+            from vaudeville.server.mlx_backend import MLXBackend
+
+            backend = MLXBackend("test-model")
+            result = backend.classify("test prompt")
+        assert result == "VERDICT: clean\nREASON: ok.\n"
+
+    def test_classify_respects_finish_reason_before_newlines(self) -> None:
+        """finish_reason still wins — no artificial wait for two newlines."""
+        _, _, mock_load, _, mock_generate_step = self._make_mocks()
+        responses = [self._make_stream_response("VERDICT: clean", finish_reason="stop")]
+        mock_stream_generate = MagicMock(return_value=iter(responses))
+        modules = self._patch_mlx_modules(
+            mock_load, mock_stream_generate, mock_generate_step
+        )
+        with patch.dict("sys.modules", modules):
+            from vaudeville.server.mlx_backend import MLXBackend
+
+            backend = MLXBackend("test-model")
+            result = backend.classify("test prompt")
+        assert result == "VERDICT: clean"
+
     def test_apply_chat_template_with_tokenizer_method(self) -> None:
         _, mock_tokenizer, mock_load, mock_stream_generate, mock_generate_step = (
             self._make_mocks()
@@ -79,7 +139,8 @@ class TestMLXBackend:
 
     def test_apply_chat_template_fallback_when_no_method(self) -> None:
         class BareTokenizer:
-            pass
+            def encode(self, s: str, **_kw: Any) -> list[int]:
+                return list(range(len(s)))
 
         mock_model = MagicMock()
         mock_load = MagicMock(return_value=(mock_model, BareTokenizer()))
@@ -103,7 +164,9 @@ class TestMLXBackend:
 class TestMLXCachedMethods:
     """Tests for KV cache prefix reuse in MLXBackend."""
 
-    def _make_stream_response(self, text: str, finish_reason: str = "stop") -> Any:
+    def _make_stream_response(
+        self, text: str, finish_reason: str | None = "stop"
+    ) -> Any:
         resp = MagicMock()
         resp.text = text
         resp.finish_reason = finish_reason
@@ -394,6 +457,50 @@ class TestMLXCachedMethods:
 
         # Should have decoded only [42, 2] (stopped at eos)
         assert result.text.startswith("VERDICT:")
+
+    # -- newline stop in classify_cached and _collect_tokens --
+
+    def test_classify_cached_stops_at_second_newline(self) -> None:
+        """classify_cached() stops generation at the REASON newline threshold."""
+        backend, mock_stream_gen, mock_gen_step, _ = self._build_backend()
+        mock_gen_step.return_value = iter([])  # warm returns no tokens
+
+        chunks = [" violation", "\n", "REASON: done.", "\n", "run-on text"]
+        responses = [self._make_stream_response(c, finish_reason=None) for c in chunks]
+        mock_stream_gen.return_value = iter(responses)
+
+        with self._patch_mlx_cache(backend):
+            result = backend.classify_cached("rule prefix text", prefix_len=12)
+
+        assert result == "VERDICT: violation\nREASON: done.\n"
+        assert "run-on" not in result
+
+    def test_collect_tokens_stops_at_newline_threshold(self) -> None:
+        """_collect_tokens halts after REASON_NEWLINE_STOP newline token IDs."""
+
+        def make_token(val: int) -> Any:
+            t = MagicMock()
+            t.item.return_value = val
+            return t
+
+        mock_logprobs = MagicMock()
+        # encode("\n") → [0] via the mock's lambda (len("\n") == 1)
+        # so _newline_token_ids = frozenset({0})
+        # Stream: [42, 0, 43, 0, 44] — stop after second 0, collect [42, 0, 43, 0]
+        token_ids = [42, 0, 43, 0, 44]
+        gen_pairs = [(make_token(tid), mock_logprobs) for tid in token_ids]
+
+        backend, _, mock_gen_step, _ = self._build_backend(
+            generate_step_tokens=gen_pairs,
+        )
+        mock_gen_step.return_value = iter(gen_pairs)
+
+        mock_mx = MagicMock()
+        with patch.dict("sys.modules", {"mlx": MagicMock(), "mlx.core": mock_mx}):
+            result_tokens, _ = backend._collect_tokens(MagicMock(), max_tokens=50)
+
+        assert result_tokens == [42, 0, 43, 0]
+        assert 44 not in result_tokens
 
     # -- helpers --
 

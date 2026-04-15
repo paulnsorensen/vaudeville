@@ -16,9 +16,10 @@ from ..core.protocol import ClassifyResult
 DEFAULT_MODEL = "mlx-community/Phi-4-mini-instruct-4bit"
 TOP_K_LOGPROBS = 10
 MAX_PREFIX_CACHES = 16
-# The system prompt pins output to `VERDICT: x\nREASON: <sentence>` — two
-# newlines mark the end of the reason. mlx_lm has no GBNF/stop-sequence
-# equivalent to the llama.cpp grammar, so we stop the stream ourselves.
+# The system prompt constrains output to `VERDICT: x\nREASON: <sentence>`.
+# We count newlines in generated output and halt after two (one following
+# the VERDICT line, one following the REASON line). mlx_lm has no native
+# stop-sequence or GBNF equivalent to the llama.cpp grammar.
 REASON_NEWLINE_STOP = 2
 SYSTEM_PROMPT = (
     "You are a binary classifier. Respond with exactly `VERDICT: violation` "
@@ -40,6 +41,11 @@ class MLXBackend:
             collections.OrderedDict()
         )
         self._chat_template_parts: tuple[str, str] | None = None
+        # Cache newline token IDs once so _collect_tokens can use a set
+        # membership check instead of per-token decode.
+        self._newline_token_ids: frozenset[int] = frozenset(
+            self._tokenizer.encode("\n", add_special_tokens=False)
+        )
 
     def classify(self, prompt: str, max_tokens: int = 50) -> str:
         """Run inference on prompt, return raw text output."""
@@ -195,7 +201,8 @@ class MLXBackend:
             eos = getattr(self._tokenizer, "eos_token_id", None)
             if eos is not None and token_id == eos:
                 break
-            newlines += self._tokenizer.decode([token_id]).count("\n")
+            if token_id in self._newline_token_ids:
+                newlines += 1
             if newlines >= REASON_NEWLINE_STOP:
                 break
         return tokens, first_logprobs

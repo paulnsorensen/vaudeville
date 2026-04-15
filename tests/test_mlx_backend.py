@@ -139,7 +139,8 @@ class TestMLXBackend:
 
     def test_apply_chat_template_fallback_when_no_method(self) -> None:
         class BareTokenizer:
-            pass
+            def encode(self, s: str, **_kw: Any) -> list[int]:
+                return list(range(len(s)))
 
         mock_model = MagicMock()
         mock_load = MagicMock(return_value=(mock_model, BareTokenizer()))
@@ -163,7 +164,9 @@ class TestMLXBackend:
 class TestMLXCachedMethods:
     """Tests for KV cache prefix reuse in MLXBackend."""
 
-    def _make_stream_response(self, text: str, finish_reason: str = "stop") -> Any:
+    def _make_stream_response(
+        self, text: str, finish_reason: str | None = "stop"
+    ) -> Any:
         resp = MagicMock()
         resp.text = text
         resp.finish_reason = finish_reason
@@ -454,6 +457,50 @@ class TestMLXCachedMethods:
 
         # Should have decoded only [42, 2] (stopped at eos)
         assert result.text.startswith("VERDICT:")
+
+    # -- newline stop in classify_cached and _collect_tokens --
+
+    def test_classify_cached_stops_at_second_newline(self) -> None:
+        """classify_cached() stops generation at the REASON newline threshold."""
+        backend, mock_stream_gen, mock_gen_step, _ = self._build_backend()
+        mock_gen_step.return_value = iter([])  # warm returns no tokens
+
+        chunks = [" violation", "\n", "REASON: done.", "\n", "run-on text"]
+        responses = [self._make_stream_response(c, finish_reason=None) for c in chunks]
+        mock_stream_gen.return_value = iter(responses)
+
+        with self._patch_mlx_cache(backend):
+            result = backend.classify_cached("rule prefix text", prefix_len=12)
+
+        assert result == "VERDICT: violation\nREASON: done.\n"
+        assert "run-on" not in result
+
+    def test_collect_tokens_stops_at_newline_threshold(self) -> None:
+        """_collect_tokens halts after REASON_NEWLINE_STOP newline token IDs."""
+
+        def make_token(val: int) -> Any:
+            t = MagicMock()
+            t.item.return_value = val
+            return t
+
+        mock_logprobs = MagicMock()
+        # encode("\n") → [0] via the mock's lambda (len("\n") == 1)
+        # so _newline_token_ids = frozenset({0})
+        # Stream: [42, 0, 43, 0, 44] — stop after second 0, collect [42, 0, 43, 0]
+        token_ids = [42, 0, 43, 0, 44]
+        gen_pairs = [(make_token(tid), mock_logprobs) for tid in token_ids]
+
+        backend, _, mock_gen_step, _ = self._build_backend(
+            generate_step_tokens=gen_pairs,
+        )
+        mock_gen_step.return_value = iter(gen_pairs)
+
+        mock_mx = MagicMock()
+        with patch.dict("sys.modules", {"mlx": MagicMock(), "mlx.core": mock_mx}):
+            result_tokens, _ = backend._collect_tokens(MagicMock(), max_tokens=50)
+
+        assert result_tokens == [42, 0, 43, 0]
+        assert 44 not in result_tokens
 
     # -- helpers --
 

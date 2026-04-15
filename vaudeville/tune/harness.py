@@ -165,7 +165,7 @@ def _write_prompt_diff(
     return path
 
 
-def _format_verdict(verdict: TuneVerdict) -> str:
+def format_verdict(verdict: TuneVerdict) -> str:
     status = "PASS" if verdict.passed else "FAIL"
     lines = [
         f"=== vaudeville tune: {status} ===",

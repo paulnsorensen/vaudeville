@@ -21,7 +21,7 @@ from vaudeville.tune.harness import (
     _eval_subset,
     _extract_best_result,
     _find_best_completed,
-    _format_verdict,
+    format_verdict,
     _make_trial_rule,
     _pool_ids,
     _run_study_loop,
@@ -493,7 +493,7 @@ class TestFormatVerdict:
             study_uri="sqlite:///test.db",
             diff_path="/tmp/test.diff",
         )
-        output = _format_verdict(verdict)
+        output = format_verdict(verdict)
         assert "PASS" in output
         assert "96.0%" in output
         assert "85.0%" in output
@@ -514,7 +514,7 @@ class TestFormatVerdict:
             study_uri="sqlite:///test.db",
             diff_path="",
         )
-        output = _format_verdict(verdict)
+        output = format_verdict(verdict)
         assert "FAIL" in output
         assert "Diff:" not in output
 
@@ -531,7 +531,7 @@ class TestFormatVerdict:
             study_uri="sqlite:///test.db",
             diff_path="/tmp/t.diff",
         )
-        lines = _format_verdict(verdict).strip().splitlines()
+        lines = format_verdict(verdict).strip().splitlines()
         assert 8 <= len(lines) <= 12
 
 

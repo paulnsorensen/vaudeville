@@ -27,7 +27,7 @@ Each iteration picks the first unchecked item, implements it with tests, marks i
 - [x] US-012: Fix `eval.py:19` — add `ClassifyResult` and `compute_confidence` to `core/__init__.py` exports. Change eval.py to import from `..core` instead of `..core.protocol`.
 - [x] US-013: Fix `tune/cli.py:15-16` — change to `from ..server import DaemonBackend, daemon_is_alive, InferenceBackend`. Verify symbols are in `server/__init__.py`.
 - [x] US-014: Fix `tune/harness.py:18` — change to `from ..server import InferenceBackend`.
-- [ ] US-015: Fix `tune/cli.py:17` private import — rename `_format_verdict` to `format_verdict`, export from `tune/__init__.py`. Populate the barrel file with public API.
+- [x] US-015: Fix `tune/cli.py:17` private import — rename `_format_verdict` to `format_verdict`, export from `tune/__init__.py`. Populate the barrel file with public API.
 
 ## Safety Fixes
 

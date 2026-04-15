@@ -16,7 +16,7 @@ from ..core.paths import PID_FILE, SOCKET_PATH
 from ..core.rules import load_rules_layered
 from ..eval import EvalCase, load_test_cases
 from ..server import DaemonBackend, InferenceBackend, daemon_is_alive
-from .harness import _format_verdict, run_study
+from .harness import format_verdict, run_study
 from .study import StudyConfig, TrialContext
 from .split import split_cases
 
@@ -185,7 +185,7 @@ def run_tune(args: argparse.Namespace) -> int:
     backend = _build_backend(args.no_daemon)
     ctx = TrialContext(rule, tune_cases, held_cases, backend, config)
     verdict = run_study(ctx)
-    print(_format_verdict(verdict))
+    print(format_verdict(verdict))
 
     return EXIT_PASS if verdict.passed else EXIT_FAIL
 

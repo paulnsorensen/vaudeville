@@ -9,8 +9,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import logging
-import os
 import sys
 from dataclasses import dataclass, field
 
@@ -18,6 +16,7 @@ import yaml
 
 from .core import (
     ClassifyResult,
+    EvalCase,
     Rule,
     compute_confidence,
     find_project_root,
@@ -25,14 +24,17 @@ from .core import (
     load_rules_layered,
     parse_verdict,
 )
-from .server import InferenceBackend, LogprobBackend
-from .server import condense_text
+from .server import InferenceBackend, LogprobBackend, condense_text
 
-
-@dataclass
-class EvalCase:
-    text: str
-    label: str
+__all__ = [
+    "CaseResult",
+    "EvalCase",
+    "EvalResults",
+    "classify_case",
+    "evaluate_rule",
+    "load_test_cases",
+    "main",
+]
 
 
 @dataclass
@@ -75,31 +77,13 @@ class EvalResults:
         return 2 * p * r / (p + r) if (p + r) else 0.0
 
 
-def load_test_cases(tests_dir: str) -> dict[str, list[EvalCase]]:
-    suites: dict[str, list[EvalCase]] = {}
-    try:
-        filenames = os.listdir(tests_dir)
-    except OSError:
-        return suites
-
-    for filename in filenames:
-        if not (filename.endswith(".yaml") or filename.endswith(".yml")):
-            continue
-        path = os.path.join(tests_dir, filename)
-        try:
-            cases, rule_name = _load_test_file(path)
-            existing = suites.get(rule_name, [])
-            suites[rule_name] = existing + cases
-        except Exception as exc:
-            logging.warning(
-                "[vaudeville] Failed to load test file %s: %s", filename, exc
-            )
-
-    return suites
+def load_test_cases(rules: dict[str, Rule]) -> dict[str, list[EvalCase]]:
+    """Collect test cases declared inline on each loaded rule."""
+    return {r.name: list(r.test_cases) for r in rules.values() if r.test_cases}
 
 
 def _load_test_file(path: str) -> tuple[list[EvalCase], str]:
-    """Load test cases from a single YAML file. Returns (cases, rule_name)."""
+    """Load test cases from a single --test-file YAML. Returns (cases, rule_name)."""
     with open(path) as f:
         data = yaml.safe_load(f)
     rule_name = str(data["rule"])
@@ -255,19 +239,19 @@ def main() -> None:
 
     args = _build_parser().parse_args()
 
-    plugin_root = os.environ.get(
-        "CLAUDE_PLUGIN_ROOT",
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    tests_dir = os.path.join(plugin_root, "tests")
-
     print(f"Loading model: {args.model}")
     backend = MLXBackend(args.model)
     if args.rules_dir:
         rules = load_rules(args.rules_dir)
     else:
         rules = load_rules_layered(project_root=find_project_root())
-    test_suites = load_test_cases(tests_dir)
+    test_suites = load_test_cases(rules)
+    if not test_suites and not args.test_file:
+        print(
+            "Error: no rules with inline test_cases found. "
+            "Pass --rules-dir examples/rules or install rules into ~/.vaudeville/rules."
+        )
+        sys.exit(1)
     _inject_extra_test_file(args, test_suites)
 
     if args.calibrate:

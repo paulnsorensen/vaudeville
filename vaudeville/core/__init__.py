@@ -9,6 +9,7 @@ from .protocol import (
 )
 from .rules import (
     CHARS_PER_TOKEN,
+    EvalCase,
     Rule,
     load_rules,
     load_rules_layered,
@@ -23,6 +24,7 @@ __all__ = [
     "ClassifyRequest",
     "find_project_root",
     "ClassifyResponse",
+    "EvalCase",
     "ClassifyResult",
     "Rule",
     "VaudevilleClient",

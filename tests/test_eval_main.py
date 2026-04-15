@@ -26,13 +26,27 @@ _STUB_RULES = {"violation-detector": _STUB_RULE}
 
 class TestMain:
     def test_exits_0_on_all_pass(self) -> None:
-        mock_backend = MockBackend(verdict="clean")
+        # threshold=0.0 so confidence=0 doesn't flip "violation" to "clean"
+        stub_rule = Rule(
+            name="violation-detector",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[{"field": "last_assistant_message"}],
+            action="block",
+            message="{reason}",
+            threshold=0.0,
+        )
+        mock_backend = MockBackend(verdict="violation")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
+        stub_suites = {"violation-detector": [EvalCase(text="text", label="violation")]}
         with (
             patch("sys.argv", ["eval"]),
             patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
-            patch("vaudeville.eval.load_rules_layered", return_value=_STUB_RULES),
-            patch("vaudeville.eval.load_test_cases", return_value={}),
+            patch(
+                "vaudeville.eval.load_rules_layered",
+                return_value={"violation-detector": stub_rule},
+            ),
+            patch("vaudeville.eval.load_test_cases", return_value=stub_suites),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 from vaudeville.eval import main
@@ -121,14 +135,30 @@ class TestMain:
                     },
                     f,
                 )
-            mock_backend = MockBackend(verdict="clean")
+            stub_rule = Rule(
+                name="violation-detector",
+                event="Stop",
+                prompt="Classify:\n{text}\nVERDICT:",
+                context=[{"field": "last_assistant_message"}],
+                action="block",
+                message="{reason}",
+                threshold=0.0,
+            )
+            mock_backend = MockBackend(verdict="violation")
             mock_mlx_cls = MagicMock(return_value=mock_backend)
             mock_layered = MagicMock(side_effect=AssertionError("should not be called"))
+            stub_suites = {
+                "violation-detector": [EvalCase(text="text", label="violation")]
+            }
             with (
                 patch("sys.argv", ["eval", "--rules-dir", rules_dir]),
                 patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
                 patch("vaudeville.eval.load_rules_layered", mock_layered),
-                patch("vaudeville.eval.load_test_cases", return_value={}),
+                patch(
+                    "vaudeville.eval.load_rules",
+                    return_value={"violation-detector": stub_rule},
+                ),
+                patch("vaudeville.eval.load_test_cases", return_value=stub_suites),
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     from vaudeville.eval import main

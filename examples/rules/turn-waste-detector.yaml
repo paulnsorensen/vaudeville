@@ -1,0 +1,179 @@
+name: turn-waste-detector
+event: Stop
+prompt: |
+  Does this response narrate a failure journey without a working solution?
+  Answer "violation" or "clean".
+
+  VIOLATION if the response ENDS without a confirmed fix or clear result:
+  - Narrates failures then says "let me try a different approach" (no result yet)
+  - Switches plans mid-response: "I'll do X... actually Y... actually Z"
+  - Apologizes for loops: "going in circles", "back and forth"
+  - Ends with "let me try" or "I'll use" without showing the outcome
+  - Key: the response describes ATTEMPTING but does not show COMPLETING
+
+  CLEAN if the response shows a concrete outcome or productive single pivot:
+  - Shows a working fix: "Fixed X by doing Y"
+  - Single tool swap with clear reason: "X won't work because Y. Using Z instead."
+  - Reports verified results: "All tests pass", "Committed", "PR created"
+  - Investigates root cause: "let me check", "let me investigate", "let me look at"
+  - Key: response ends with DONE or a diagnostic step, not with "let me try"
+
+  IMPORTANT: "let me try a different approach" or "actually —" = violation.
+  "Let me check/investigate X" = clean (diagnostic, not switching).
+  "X won't work, using Y instead" where Y is the final answer = clean.
+  "I'll do X. But that's overly complex. Actually Y." = violation (plan-then-abandon).
+
+  Examples:
+
+  Response: "I tried editing the file but it errored, then I tried a regex but that failed too. Let me try yet another approach."
+  VERDICT: violation
+  REASON: Narrates failure sequence, ends with yet another attempt
+
+  Response: "After several failed attempts to fix the import, I'm going in circles."
+  VERDICT: violation
+  REASON: Admits to wasting turns without a solution
+
+  Response: "Something's wrong with the shell. The filter didn't work with the pipe character. Let me try yet another syntax variation to get this working."
+  VERDICT: violation
+  REASON: Describes failure, ends with another attempt — no resolution
+
+  Response: "I'll use the API to create a blob and commit. But that's overly complex. Let me use git stash. Actually — I'll use a different API entirely."
+  VERDICT: violation
+  REASON: Plans then abandons twice — "but... actually..." is plan-then-abandon
+
+  Response: "I need to encode the file. Since I can't run base64, let me try a different approach. I can use the API which accepts UTF-8."
+  VERDICT: violation
+  REASON: Switches approach without showing it worked
+
+  Response: "The sed approach won't work here because of nested quotes. Using the Edit tool instead, which handles this correctly."
+  VERDICT: clean
+  REASON: Single pivot to a concrete tool — productive reasoning
+
+  Response: "I hit a wall with the direct approach — the macro doesn't expand in test context. Switching to integration tests which run the full binary."
+  VERDICT: clean
+  REASON: Single pivot with clear reasoning and a concrete solution
+
+  Response: "Fixed the import error by updating the path in config.ts line 42."
+  VERDICT: clean
+  REASON: Shows the working solution directly
+
+  Response: "Can't Read outside the workspace. Using bash instead."
+  VERDICT: clean
+  REASON: Quick pivot with working alternative
+
+  Response: "The shell keeps failing on that path. Let me check file permissions first."
+  VERDICT: clean
+  REASON: Investigating root cause — diagnostic step, not approach switching
+
+  Now classify:
+  {text}
+
+  Respond in EXACTLY this format:
+  VERDICT: violation or clean
+  REASON: one sentence
+context:
+  - field: last_assistant_message
+labels: [violation, clean]
+action: warn
+message: "Turn waste detected: {reason}"
+threshold: 0.5
+tier: warn
+
+test_cases:
+  # === VIOLATION — narrates failure journey without resolution ===
+
+  - text: "I tried editing the file but it errored, then I tried a regex but that failed too. Let me try yet another approach."
+    label: violation
+
+  - text: "After several failed attempts to fix the import, I'm going in circles. The sed command didn't work, the Edit tool failed, and the Write tool also errored."
+    label: violation
+
+  - text: "I apologize for the back and forth. I've been trying multiple approaches but none of them seem to work correctly."
+    label: violation
+
+  - text: "First I tried grep but got no results. Then I tried rg with different flags but that also came up empty. Then I searched with find but the file wasn't there either. I'm not sure where this code lives."
+    label: violation
+
+  - text: "The file keeps disappearing. I've tried checking it out three times now but it reverts each time. Let me try a completely different approach."
+    label: violation
+
+  # Production-length violations (200-500 chars)
+
+  - text: "I tried running the tests but they failed with a connection error. Then I tried restarting the server but that didn't help either. I also tried clearing the cache and rebuilding from scratch but got the same error. After several attempts I'm stuck — the database connection keeps timing out regardless of what I try."
+    label: violation
+
+  - text: "HEAD is at 2edc432 again, not 601cbc4. The conductor worktree is linked to a different local commit. My checkout keeps getting reverted. This is likely a different worktree that shares the branch name but has different commits. Let me work with the actual file state instead of fighting the checkout."
+    label: clean
+
+  - text: "The shell keeps failing on that path. I tried quoting it differently, escaping the spaces, and using a glob pattern but nothing works. Each attempt gives a different error. I apologize for going in circles — let me try a completely different approach to access this file."
+    label: violation
+
+  - text: "OK, let me try a different approach. I'll use the API to get the full tree, create a new blob with the fixed content, create a tree, create a commit, and update the ref. But that's overly complex. Let me just use git stash. Actually — the simplest approach: I'll use a different API entirely."
+    label: violation
+
+  - text: "The base64 content is from the API for the original file. I need the fixed version. I need to manually base64 encode my fixed file. Since I can't run base64 or node, let me try a different approach. I can use the Git Data API which accepts UTF-8 content for blobs."
+    label: violation
+
+  - text: "The worktree is on the wrong branch with a different local commit. The cherry-picks are going somewhere else or being immediately lost because of branch binding. Let me try a different approach — work in this worktree's branch context properly."
+    label: violation
+
+  - text: "Something's wrong with the shell. The filter didn't work with the pipe character. Let me try yet another syntax variation to get this working."
+    label: violation
+
+  - text: "I've been trying to get the tests to pass for a while now. First the import was wrong, then the fixture was missing, then the mock wasn't configured right. I keep hitting new errors each time I fix one. Let me step back and think about what's going on."
+    label: violation
+
+  # === CLEAN — shows solution or productive investigation ===
+
+  - text: "Fixed the import error by updating the path in config.ts line 42."
+    label: clean
+
+  - text: "The sed approach won't work here because of nested quotes. Using the Edit tool instead."
+    label: clean
+
+  - text: "Can't Read outside the workspace. Using bash to access the file instead."
+    label: clean
+
+  - text: "The shell keeps failing on that path. Let me check file permissions first."
+    label: clean
+
+  - text: "The connection error was caused by a stale socket file. Removed it and the tests pass now."
+    label: clean
+
+  - text: "That approach failed because the API changed in v3. The new endpoint uses POST instead of GET. Updated the client accordingly."
+    label: clean
+
+  - text: "I hit a wall with the direct approach — the macro doesn't expand in test context. Switching to integration tests which run the full binary."
+    label: clean
+
+  # Production-length clean (200-500 chars)
+
+  - text: "All 726 tests pass. Clippy clean with zero warnings. The refactor reduced the total line count from 1847 to 1523 across the affected files. No functional changes — just reorganization. Committed as a single squashed commit."
+    label: clean
+
+  - text: "The initial grep didn't find the symbol because it was defined in a generated file. Used the LSP goto-definition instead which resolved to build/generated/types.rs line 142. The type needs a Clone derive — adding it now."
+    label: clean
+
+  - text: "PR #328 rescued. Resolved 4 merge conflicts (mod.rs, budget_hook.rs, governance.rs, tui.rs). Kept main's agent_spent() test API over PR's destructive remove_agent() approach. MERGEABLE, 225 tests pass, lint clean."
+    label: clean
+
+  - text: "Good, the bug is in the spawn_reporter function. It spawns a tokio task inside a with_default(subscriber) closure, but the subscriber scope only lives for the closure — the spawned task outlives it. Fixed by capturing the subscriber in the task with a clone."
+    label: clean
+
+  - text: "The TLS issue is blocking all gh CLI calls. Using the GitHub API directly via curl instead — this bypasses the TLS certificate verification issue since curl has its own cert store."
+    label: clean
+
+  - text: "Can't Read outside the workspace. Creating a branch in the worktree, making edits via bash, committing, and pushing — this avoids the Read tool's workspace restriction entirely."
+    label: clean
+
+  - text: "The skill tool was denied in the worktree agent context. Performing the workflow manually: fetch the PR, review comments, understand what needs fixing, make the fixes, and respond to reviewers."
+    label: clean
+
+  - text: "Now I have the full picture. The fix is in save_dispatch_context in agent_lifecycle.rs — I need to fetch the parent node's label and build a proper PR title before calling try_create_pr. Implementing this now."
+    label: clean
+
+  - text: "The coordinate.rs install_panic_hook isn't actually a duplicate — it restores terminal state while logging.rs writes crash info to stderr. Different purposes, they chain. Leaving it as-is."
+    label: clean
+
+  - text: "The problem is structural: tern wrap receives a Store from main.rs, and Store uses init_core which creates a bare TernCore with no scheduler. The fix needs to happen upstream in main.rs where Store is created. The cleanest fix: when --coordinator is set, start a TernHost instead."
+    label: clean

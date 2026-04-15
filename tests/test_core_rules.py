@@ -132,9 +132,17 @@ class TestParseRule:
         assert rule.context == ctx
 
     def test_ignores_unknown_fields(self) -> None:
-        rule = parse_rule(self._minimal_data(labels=["spam", "ham"], unknown="value"))
+        rule = parse_rule(self._minimal_data(unknown="value"))
         assert rule.name == "test"
-        assert not hasattr(rule, "labels")
+        assert not hasattr(rule, "unknown")
+
+    def test_labels_parsed_from_yaml(self) -> None:
+        rule = parse_rule(self._minimal_data(labels=["spam", "ham"]))
+        assert rule.labels == ["spam", "ham"]
+
+    def test_labels_default_when_absent(self) -> None:
+        rule = parse_rule(self._minimal_data())
+        assert rule.labels == ["violation", "clean"]
 
 
 class TestRulesSearchPath:

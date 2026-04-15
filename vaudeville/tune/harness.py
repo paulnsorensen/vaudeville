@@ -209,18 +209,23 @@ def _author_and_inject(
     return rule
 
 
+def _find_best_completed(
+    completed: list[optuna.trial.FrozenTrial],
+    best_ids: list[str],
+) -> optuna.trial.FrozenTrial:
+    for t in reversed(completed):
+        if t.user_attrs.get("example_ids") == best_ids:
+            return t
+    return completed[-1]
+
+
 def _extract_best_result(
     completed: list[optuna.trial.FrozenTrial],
     best_ids: list[str],
 ) -> tuple[float, float, float, float]:
     if not completed:
         return 0.0, 0.0, 0.0, 0.0
-    best = completed[-1]
-    if best_ids:
-        for t in reversed(completed):
-            if t.user_attrs.get("example_ids") == best_ids:
-                best = t
-                break
+    best = _find_best_completed(completed, best_ids) if best_ids else completed[-1]
     p_tune = best.user_attrs.get("precision_tune", 0.0)
     r_tune = best.user_attrs.get("recall_tune", 0.0)
     r_held = p_held = 0.0

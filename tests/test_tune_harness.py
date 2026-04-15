@@ -20,6 +20,7 @@ from vaudeville.tune.harness import (
     _compute_metrics,
     _eval_subset,
     _extract_best_result,
+    _find_best_completed,
     _format_verdict,
     _make_trial_rule,
     _pool_ids,
@@ -532,6 +533,29 @@ class TestFormatVerdict:
         )
         lines = _format_verdict(verdict).strip().splitlines()
         assert 8 <= len(lines) <= 12
+
+
+class TestFindBestCompleted:
+    def test_returns_matching_trial(self) -> None:
+        t1 = MagicMock()
+        t1.user_attrs = {"example_ids": ["a"]}
+        t2 = MagicMock()
+        t2.user_attrs = {"example_ids": ["b"]}
+        assert _find_best_completed([t1, t2], ["a"]) is t1
+
+    def test_returns_last_when_no_match(self) -> None:
+        t1 = MagicMock()
+        t1.user_attrs = {"example_ids": ["a"]}
+        t2 = MagicMock()
+        t2.user_attrs = {"example_ids": ["b"]}
+        assert _find_best_completed([t1, t2], ["z"]) is t2
+
+    def test_prefers_last_match(self) -> None:
+        t1 = MagicMock()
+        t1.user_attrs = {"example_ids": ["a"]}
+        t2 = MagicMock()
+        t2.user_attrs = {"example_ids": ["a"]}
+        assert _find_best_completed([t1, t2], ["a"]) is t2
 
 
 class TestExtractBestResult:

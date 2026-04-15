@@ -19,7 +19,7 @@ Each iteration picks the first unchecked item, implements it with tests, marks i
 
 ## Nesting Fixes
 
-- [ ] US-010: Extract `_find_best_completed(completed, best_ids)` from `harness.py:294` — depth 4 → depth 2.
+- [x] US-010: Extract `_find_best_completed(completed, best_ids)` from `harness.py:294` — depth 4 → depth 2.
 - [ ] US-011: Extract `_bucket_for_latency(lat) -> str` from `stats.py:106` — depth 3 → depth 1.
 
 ## Encapsulation Fixes

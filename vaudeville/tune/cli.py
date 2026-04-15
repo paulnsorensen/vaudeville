@@ -15,8 +15,7 @@ import time
 from ..core.paths import PID_FILE, SOCKET_PATH
 from ..core.rules import load_rules_layered
 from ..eval import EvalCase, load_test_cases
-from ..server.daemon_backend import DaemonBackend, daemon_is_alive
-from ..server.inference import InferenceBackend
+from ..server import DaemonBackend, InferenceBackend, daemon_is_alive
 from .harness import _format_verdict, run_study
 from .study import StudyConfig, TrialContext
 from .split import split_cases

@@ -149,7 +149,13 @@ def write_candidates(path: str, candidates: list[Example]) -> None:
             )
             return
         if isinstance(data, dict):
-            existing = data.get("candidates", [])
+            raw_existing = data.get("candidates", [])
+            if not isinstance(raw_existing, list):
+                logger.warning(
+                    "Corrupt candidates field in %s (expected list), resetting", path
+                )
+                raw_existing = []
+            existing = raw_existing
     except FileNotFoundError:
         pass
 

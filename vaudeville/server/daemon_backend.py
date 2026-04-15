@@ -38,15 +38,18 @@ def daemon_is_alive(socket_path: str = SOCKET_PATH) -> bool:
 
 def _recv_response(sock: socket.socket) -> dict[str, object]:
     data = bytearray()
+    newline_index = -1
     while True:
         scan_from = len(data)
         chunk = sock.recv(RECV_CHUNK)
         if not chunk:
             break
         data.extend(chunk)
-        if data.find(b"\n", scan_from) >= 0:
+        newline_index = data.find(b"\n", scan_from)
+        if newline_index >= 0:
             break
-    result: dict[str, object] = json.loads(bytes(data).decode().strip())
+    message = bytes(data[:newline_index]) if newline_index >= 0 else bytes(data)
+    result: dict[str, object] = json.loads(message.decode().strip())
     return result
 
 

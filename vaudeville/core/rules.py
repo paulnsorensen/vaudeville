@@ -169,18 +169,29 @@ class Rule:
         return "\n".join(p for p in parts if p)
 
 
-def _parse_examples(raw: list[Any]) -> list[Example]:
+def _parse_examples(raw: Any) -> list[Example]:
     """Parse a list of raw YAML example dicts into Example objects."""
-    return [
-        Example(
-            id=str(e["id"]),
-            input=str(e["input"]),
-            label=str(e["label"]),
-            reason=str(e["reason"]),
+    if not isinstance(raw, list):
+        raise ValueError(f"examples must be a list, got {type(raw).__name__}")
+    required = ("id", "input", "label", "reason")
+    examples: list[Example] = []
+    for i, e in enumerate(raw):
+        if not isinstance(e, dict):
+            continue
+        missing = [k for k in required if k not in e]
+        if missing:
+            raise ValueError(
+                f"examples[{i}] missing required keys: {', '.join(missing)}"
+            )
+        examples.append(
+            Example(
+                id=str(e["id"]),
+                input=str(e["input"]),
+                label=str(e["label"]),
+                reason=str(e["reason"]),
+            )
         )
-        for e in raw
-        if isinstance(e, dict)
-    ]
+    return examples
 
 
 def _load_rule_file(path: str) -> Rule | None:

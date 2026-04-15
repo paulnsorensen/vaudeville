@@ -13,11 +13,11 @@ import yaml
 
 from conftest import MockBackend
 from vaudeville.core.rules import Rule
+from vaudeville.core import find_project_root
 from vaudeville.eval import (
     EvalCase,
     EvalResults,
     classify_case,
-    _find_project_root,
     evaluate_rule,
     load_test_cases,
 )
@@ -64,26 +64,26 @@ def two_cases() -> list[EvalCase]:
 
 class TestFindProjectRoot:
     def test_returns_path_in_git_repo(self) -> None:
-        result = _find_project_root()
+        result = find_project_root()
         assert result is not None
         assert os.path.isdir(result)
 
     def test_returns_none_on_oserror(self) -> None:
-        with patch("subprocess.run", side_effect=OSError):
-            assert _find_project_root() is None
+        with patch("vaudeville.core.paths.subprocess.run", side_effect=OSError):
+            assert find_project_root() is None
 
     def test_returns_none_on_timeout(self) -> None:
         with patch(
-            "subprocess.run",
+            "vaudeville.core.paths.subprocess.run",
             side_effect=subprocess.TimeoutExpired("git", 5),
         ):
-            assert _find_project_root() is None
+            assert find_project_root() is None
 
     def test_returns_none_on_nonzero_returncode(self) -> None:
-        with patch("subprocess.run") as mock_run:
+        with patch("vaudeville.core.paths.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 128
             mock_run.return_value.stdout = ""
-            assert _find_project_root() is None
+            assert find_project_root() is None
 
 
 class TestLoadTestCases:
@@ -123,6 +123,8 @@ class TestLoadTestCases:
             result = load_test_cases(tmp)
         assert "test-rule" in result
         assert len(result["test-rule"]) == 1
+        assert result["test-rule"][0].text == "example text"
+        assert result["test-rule"][0].label == "clean"
 
 
 class TestCondenseIntegration:
@@ -298,6 +300,8 @@ class TestCrossValidateRule:
         results = cross_validate_rule("violation-detector", cases, rules, backend)
         assert results.fp == 1
         assert len(results.misclassified) == 1
+        assert results.misclassified[0]["actual"] == "clean"
+        assert results.misclassified[0]["predicted"] == "violation"
 
 
 class TestPrintResults:
@@ -398,21 +402,6 @@ class TestRunInference:
         result = _run_inference(backend, "test prompt")
         assert result.text == "VERDICT: clean\nREASON: ok"
         assert result.logprobs == {}
-
-
-class TestBuildBackend:
-    def test_returns_mlx_backend(self) -> None:
-        import argparse
-
-        from vaudeville.eval import _build_backend
-
-        args = argparse.Namespace(model="test-model")
-        mock_instance = MagicMock()
-        mock_mlx = MagicMock(return_value=mock_instance)
-        with patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx):
-            backend = _build_backend(args)
-        mock_mlx.assert_called_once_with("test-model")
-        assert backend is mock_instance
 
 
 class TestRunEvaluations:

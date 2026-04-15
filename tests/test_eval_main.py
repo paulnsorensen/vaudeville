@@ -184,7 +184,7 @@ class TestMain:
                 f,
             )
             tf = f.name
-        merged_suites: dict[str, list[object]] = {}
+        merged_suites: dict[str, list[EvalCase]] = {}
 
         def capture_suites(args, rules, suites, backend):  # type: ignore[no-untyped-def]
             merged_suites.update(suites)
@@ -217,7 +217,11 @@ class TestMain:
 
                 main()
         # Both the existing case and the extra case should be in the merged suite
-        assert len(merged_suites.get("violation-detector", [])) == 2
+        merged = merged_suites.get("violation-detector", [])
+        assert len(merged) == 2
+        texts = [c.text for c in merged]
+        assert "existing text" in texts
+        assert "extra text" in texts
 
     def test_eval_log_writes_log_when_results_exist(self) -> None:
         """--eval-log causes write_eval_log to be called when results exist."""
@@ -242,9 +246,13 @@ class TestMain:
                 from vaudeville.eval import main
 
                 main()
+        import json
         import os
 
-        assert os.path.getsize(log_path) > 0
+        with open(log_path) as f:
+            entry = json.loads(f.readline())
+        assert entry["model"] == "mlx-community/Phi-4-mini-instruct-4bit"
+        assert "violation-detector" in entry["rules"]
         os.unlink(log_path)
 
     def test_threshold_sweep_flag_calls_sweep(self) -> None:

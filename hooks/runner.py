@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 
 PLUGIN_ROOT = os.environ.get(
@@ -27,7 +26,13 @@ if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
 try:
-    from vaudeville.core import ClassifyResponse, Rule, VaudevilleClient, prepare_text  # noqa: E402
+    from vaudeville.core import (
+        ClassifyResponse,
+        Rule,
+        VaudevilleClient,
+        find_project_root,
+        prepare_text,
+    )  # noqa: E402
 except ImportError as _exc:
     print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
     print("{}")
@@ -42,25 +47,9 @@ def _dbg(msg: str, *args: object) -> None:
         print(f"[vaudeville:debug] {msg % args if args else msg}", file=sys.stderr)
 
 
-def _find_project_root() -> str | None:
-    """Find the git working tree root, or None if not in a repo."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return None
-
-
-def extract_field(data: dict, dotted_path: str) -> str:
+def extract_field(data: dict[str, object], dotted_path: str) -> str:
     """Walk a dotted path like 'tool_input.body' into nested dicts."""
-    current = data
+    current: object = data
     for key in dotted_path.split("."):
         if not isinstance(current, dict):
             return ""
@@ -124,7 +113,7 @@ def _load_rules_for_event(event: str) -> list:
     """Auto-discover all rules matching an event via layered resolution."""
     from vaudeville.core import load_rules_layered  # noqa: E402
 
-    project_root = _find_project_root()
+    project_root = find_project_root()
     all_rules = load_rules_layered(project_root)
     matching = [r for r in all_rules.values() if r.event == event]
     return sorted(matching, key=lambda r: r.name)
@@ -227,10 +216,10 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
         )
         if result is None:
             continue
-
-        if result.verdict == "violation" and result.confidence >= rule.threshold:
-            if _dispatch_violation(rule, result):
-                continue
+        if result.verdict != "violation" or result.confidence < rule.threshold:
+            continue
+        if _dispatch_violation(rule, result):
+            continue
 
     print("{}")
     sys.exit(0)

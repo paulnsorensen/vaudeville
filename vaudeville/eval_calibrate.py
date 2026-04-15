@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from .core import Rule, rules_search_path
-from .eval_report import _score_at_threshold
+from .eval_report import score_at_threshold
 from .server import InferenceBackend
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ def _find_best_threshold(
     best_thresh = 0.0
     for pct in range(30, 95, 5):
         thresh = pct / 100.0
-        r = _score_at_threshold(rule_name, case_results, thresh)
+        r = score_at_threshold(rule_name, case_results, thresh)
         if r.f1 > best_f1 and r.precision >= 0.95:
             best_f1 = r.f1
             best_thresh = thresh
@@ -59,7 +59,6 @@ def find_rule_file(rule_name: str, search_dirs: list[str]) -> str | None:
 
 
 def _scan_dir(directory: str, rule_name: str) -> str | None:
-    """Scan a single directory for a YAML rule matching rule_name."""
     try:
         filenames = os.listdir(directory)
     except OSError:

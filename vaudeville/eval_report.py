@@ -139,7 +139,7 @@ def threshold_sweep(
         best_thresh = 0.0
         for pct in range(30, 95, 5):
             thresh = pct / 100.0
-            r = _score_at_threshold(rule_name, case_results, thresh)
+            r = score_at_threshold(rule_name, case_results, thresh)
             marker = ""
             if r.f1 > best_f1 and r.precision >= 0.95:
                 best_f1 = r.f1
@@ -193,7 +193,7 @@ def write_eval_log(
         f.write(json.dumps(entry) + "\n")
 
 
-def _score_at_threshold(
+def score_at_threshold(
     rule_name: str,
     case_results: list[CaseResult],
     thresh: float,

@@ -1,4 +1,5 @@
 from .client import VaudevilleClient
+from .paths import find_project_root
 from .protocol import (
     ClassifyRequest,
     ClassifyResponse,
@@ -20,6 +21,7 @@ from .rules import (
 __all__ = [
     "CHARS_PER_TOKEN",
     "ClassifyRequest",
+    "find_project_root",
     "ClassifyResponse",
     "ClassifyResult",
     "Rule",

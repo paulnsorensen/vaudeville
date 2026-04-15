@@ -16,6 +16,7 @@ from vaudeville.tune.harness import (
     PROMPT_BUDGET,
     StudyConfig,
     TuneVerdict,
+    _author_and_inject,
     _check_consecutive_hits,
     _check_prompt_budget,
     _compute_metrics,
@@ -603,3 +604,145 @@ class TestRunStudy:
             )
             assert verdict.trials_run <= 20
             assert verdict.passed is True
+
+
+class TestAuthorAndInject:
+    def test_returns_rule_unchanged_when_no_best_ids(
+        self,
+        simple_rule: Rule,
+        mock_backend: MagicMock,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        result = _author_and_inject(simple_rule, eval_cases, mock_backend, [])
+        assert result is simple_rule
+
+    def test_returns_rule_unchanged_when_no_fn_texts(
+        self,
+        simple_rule: Rule,
+        mock_backend: MagicMock,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        result = _author_and_inject(
+            simple_rule,
+            eval_cases,
+            mock_backend,
+            ["ex1"],
+        )
+        assert result is simple_rule
+
+    @patch("vaudeville.tune.harness.author_candidates")
+    def test_injects_authored_candidates(
+        self,
+        mock_author: MagicMock,
+        simple_rule: Rule,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        backend = MagicMock()
+        backend.classify.return_value = "VERDICT: clean\nREASON: missed"
+        backend.classify_with_logprobs.return_value = ClassifyResult(
+            text="VERDICT: clean\nREASON: missed",
+            logprobs={},
+        )
+        from vaudeville.core.rules import Example
+
+        new_ex = Example(
+            id="authored-1",
+            input="new",
+            label="violation",
+            reason="authored",
+        )
+        mock_author.return_value = [new_ex]
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            result = _author_and_inject(
+                simple_rule,
+                eval_cases,
+                backend,
+                ["ex1"],
+            )
+        assert len(result.candidates) == len(simple_rule.candidates) + 1
+        assert result.candidates[-1].id == "authored-1"
+
+    def test_skips_when_anthropic_unavailable(
+        self,
+        simple_rule: Rule,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        backend = MagicMock()
+        backend.classify.return_value = "VERDICT: clean\nREASON: missed"
+        backend.classify_with_logprobs.return_value = ClassifyResult(
+            text="VERDICT: clean\nREASON: missed",
+            logprobs={},
+        )
+        with patch.dict("sys.modules", {"anthropic": None}):
+            result = _author_and_inject(
+                simple_rule,
+                eval_cases,
+                backend,
+                ["ex1"],
+            )
+        assert result is simple_rule
+
+
+class TestStudyConfigAuthor:
+    def test_default_author_false(self) -> None:
+        cfg = StudyConfig(rule_name="test")
+        assert cfg.author is False
+
+    def test_author_flag(self) -> None:
+        cfg = StudyConfig(rule_name="test", author=True)
+        assert cfg.author is True
+
+
+class TestRunStudyWithAuthoring:
+    @patch("vaudeville.tune.harness._author_and_inject")
+    def test_authoring_called_when_enabled(
+        self,
+        mock_author: MagicMock,
+        simple_rule: Rule,
+        mock_backend: MagicMock,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        mock_author.side_effect = lambda rule, *a, **kw: rule
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(
+                rule_name="test-rule",
+                study_dir=tmpdir,
+                budget=6,
+                author=True,
+            )
+            run_study(
+                simple_rule,
+                eval_cases,
+                eval_cases,
+                mock_backend,
+                cfg,
+                sampler=_AllOneSampler(),
+            )
+            assert mock_author.call_count > 0
+
+    def test_authoring_not_called_when_disabled(
+        self,
+        simple_rule: Rule,
+        mock_backend: MagicMock,
+        eval_cases: list[EvalCase],
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cfg = StudyConfig(
+                rule_name="test-rule",
+                study_dir=tmpdir,
+                budget=3,
+                author=False,
+            )
+            with patch(
+                "vaudeville.tune.harness._author_and_inject",
+            ) as mock_author:
+                run_study(
+                    simple_rule,
+                    eval_cases,
+                    eval_cases,
+                    mock_backend,
+                    cfg,
+                    sampler=_AllOneSampler(),
+                )
+                mock_author.assert_not_called()

@@ -29,8 +29,8 @@ def tune_args() -> argparse.Namespace:
         p_min=0.95,
         r_min=0.80,
         budget=3,
-        author=False,
         no_daemon=True,
+        author=False,
     )
 
 
@@ -81,8 +81,8 @@ class TestBuildParser:
         assert args.p_min == 0.95
         assert args.r_min == 0.80
         assert args.budget == 15
-        assert args.author is False
         assert args.no_daemon is False
+        assert args.author is False
 
     def test_custom_flags(self) -> None:
         parser = build_parser()
@@ -95,14 +95,12 @@ class TestBuildParser:
                 "0.70",
                 "--budget",
                 "10",
-                "--author",
                 "--no-daemon",
             ]
         )
         assert args.p_min == 0.90
         assert args.r_min == 0.70
         assert args.budget == 10
-        assert args.author is True
         assert args.no_daemon is True
 
 

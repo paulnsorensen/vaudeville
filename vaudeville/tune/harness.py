@@ -17,6 +17,13 @@ import optuna
 from ..core.rules import Rule, render_prompt
 from ..eval import CaseResult, EvalCase, evaluate_rule
 from ..server.inference import InferenceBackend
+from .pool import (
+    author_candidates,
+    collect_fn_texts,
+    compute_stall_count,
+    inject_candidates,
+    should_author,
+)
 from .sampler import LLMSampler
 
 logger = logging.getLogger(__name__)
@@ -32,6 +39,7 @@ class StudyConfig:
     budget: int = 15
     study_dir: str = ""
     consecutive_target: int = 2
+    author: bool = False
 
     def resolve_study_dir(self) -> str:
         if self.study_dir:
@@ -269,6 +277,34 @@ def _format_verdict(verdict: TuneVerdict) -> str:
     return "\n".join(lines)
 
 
+def _author_and_inject(
+    rule: Rule,
+    tune_cases: list[EvalCase],
+    backend: InferenceBackend,
+    best_ids: list[str],
+) -> Rule:
+    """Eval best selection for FNs, author new candidates, inject."""
+    if not best_ids:
+        return rule
+    _, _, case_results = _eval_subset(rule, best_ids, tune_cases, backend)
+    fn_texts = collect_fn_texts(case_results)
+    if not fn_texts:
+        return rule
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic()
+    except Exception:
+        logger.debug("Anthropic unavailable, skipping authoring")
+        return rule
+    existing_ids = _pool_ids(rule)
+    new = author_candidates(client, rule.name, fn_texts, existing_ids)
+    if new:
+        logger.info("Authored %d new candidates", len(new))
+        rule = inject_candidates(rule, new)
+    return rule
+
+
 def run_study(
     rule: Rule,
     tune_cases: list[EvalCase],
@@ -298,6 +334,21 @@ def run_study(
             study.tell(trial, state=optuna.trial.TrialState.PRUNED)
             logger.debug("Trial %d pruned: %s", i, e)
             continue
+
+        if config.author:
+            completed = [
+                t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
+            ]
+            vals = [list(t.values) for t in completed if t.values]
+            stall = compute_stall_count(vals)
+            if should_author(i, stall):
+                ids = best_trial_ids(study) or []
+                rule = _author_and_inject(
+                    rule,
+                    tune_cases,
+                    backend,
+                    ids,
+                )
 
         if _check_consecutive_hits(study, config):
             logger.info(

@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import subprocess
 import sys
 
 from ..core.rules import load_rules_layered
@@ -49,17 +50,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Max trials (default: 15)",
     )
     parser.add_argument(
-        "--author", action="store_true", help="Enable candidate authoring"
+        "--no-daemon", action="store_true", help="Force in-process backend"
     )
     parser.add_argument(
-        "--no-daemon", action="store_true", help="Force in-process backend"
+        "--author",
+        action="store_true",
+        help="Enable LLM candidate authoring during study",
     )
     return parser
 
 
 def _find_project_root() -> str | None:
-    import subprocess
-
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],

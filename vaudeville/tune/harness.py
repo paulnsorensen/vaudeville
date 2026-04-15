@@ -11,7 +11,7 @@ import optuna
 
 from ..core.rules import Rule, render_prompt
 from ..eval import CaseResult, EvalCase, evaluate_rule
-from ..server.inference import InferenceBackend
+from ..server import InferenceBackend
 from .pool import (
     author_candidates,
     collect_fn_texts,

@@ -266,6 +266,15 @@ class TestWriteAndLoadCandidates:
                 data = yaml.safe_load(f)
             assert "authored_at" in data["candidates"][0]
 
+    def test_write_skips_corrupt_yaml(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = str(Path(tmpdir) / "bad.yaml")
+            Path(path).write_text("just a string")
+            candidates = [Example("a-1", "x", "violation", "r")]
+            write_candidates(path, candidates)
+            # File should be unchanged — not overwritten
+            assert Path(path).read_text() == "just a string"
+
     def test_load_skips_incomplete_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = str(Path(tmpdir) / "candidates.yaml")

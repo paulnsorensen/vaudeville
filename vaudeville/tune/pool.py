@@ -132,8 +132,8 @@ def author_candidates(
         )
         raw = str(response.content[0].text)
         return _parse_authored(raw, start_id)
-    except Exception:
-        logger.warning("Candidate authoring failed")
+    except Exception as exc:
+        logger.warning("Candidate authoring failed: %s", exc)
         return []
 
 
@@ -143,6 +143,11 @@ def write_candidates(path: str, candidates: list[Example]) -> None:
     try:
         with open(path) as f:
             data = yaml.safe_load(f)
+        if data is not None and not isinstance(data, dict):
+            logger.warning(
+                "Corrupt candidates file %s (not a dict), skipping write", path
+            )
+            return
         if isinstance(data, dict):
             existing = data.get("candidates", [])
     except FileNotFoundError:

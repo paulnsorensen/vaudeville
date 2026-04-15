@@ -42,10 +42,14 @@ case "$arch" in
 esac
 ```
 
-3. **Download the model** (~2.4 GB, one-time):
+3. **Download the model** (~2.4 GB, one-time) — prefer the installed CLI shim, fall back to the module:
 
 ```bash
-uv run --project "${CLAUDE_PLUGIN_ROOT}" python -m vaudeville.setup
+if command -v vaudeville &>/dev/null; then
+  vaudeville setup
+else
+  uv run --project "${CLAUDE_PLUGIN_ROOT}" python -m vaudeville setup
+fi
 ```
 
 4. **Verify the daemon starts** — restart the session or run the session-start hook manually:

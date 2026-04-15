@@ -55,6 +55,18 @@ class TestCmdStats:
         assert "No events recorded" in out
 
 
+class TestCmdSetup:
+    def test_setup_calls_setup_main(self) -> None:
+        from argparse import Namespace
+
+        with patch("vaudeville.setup.main") as mock_setup:
+            from vaudeville.__main__ import cmd_setup
+
+            cmd_setup(Namespace())
+
+        mock_setup.assert_called_once_with()
+
+
 class TestMain:
     def test_no_command_prints_help_and_exits(self) -> None:
         with patch("sys.argv", ["vaudeville"]):
@@ -62,3 +74,14 @@ class TestMain:
 
             with pytest.raises(SystemExit, match="1"):
                 main()
+
+    def test_setup_command_dispatches(self) -> None:
+        with (
+            patch("sys.argv", ["vaudeville", "setup"]),
+            patch("vaudeville.setup.main") as mock_setup,
+        ):
+            from vaudeville.__main__ import main
+
+            main()
+
+        mock_setup.assert_called_once_with()

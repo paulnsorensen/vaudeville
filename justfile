@@ -55,6 +55,42 @@ fmt-check:
 type-check:
     uv run mypy --strict vaudeville/ tests/
 
+# Install `vaudeville` CLI to ~/.local/bin (via uv tool). Does NOT modify shell rc files.
+install-cli:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    arch=$(uname -m)
+    case "$arch" in
+        arm64|aarch64)
+            backend="mlx"
+            with_args=(--with "mlx-lm>=0.31.0,<0.32")
+            ;;
+        *)
+            backend="gguf"
+            with_args=(--with "llama-cpp-python>=0.3.4" --with "huggingface-hub>=0.24.0")
+            ;;
+    esac
+    echo "Installing vaudeville CLI (backend: $backend)..."
+    uv tool install --force "${with_args[@]}" .
+    bin_dir="${HOME}/.local/bin"
+    if [[ ":${PATH}:" == *":${bin_dir}:"* ]]; then
+        echo "✓ vaudeville installed. ${bin_dir} is already on PATH."
+        exit 0
+    fi
+    echo ""
+    echo "⚠  ${bin_dir} is NOT on your PATH."
+    echo "   Add it to your shell rc yourself (we don't touch dotfiles):"
+    echo ""
+    shell_name=$(basename "${SHELL:-}")
+    case "$shell_name" in
+        zsh)  echo "     echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc" ;;
+        bash) echo "     echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc" ;;
+        fish) echo "     fish_add_path ~/.local/bin" ;;
+        *)    echo "     export PATH=\"\$HOME/.local/bin:\$PATH\"   # add to your shell rc" ;;
+    esac
+    echo ""
+    echo "   Or run \`uv tool update-shell\` to let uv patch it for you."
+
 # Download the inference model (one-time setup, ~2.4 GB, arch-aware backend)
 setup:
     #!/usr/bin/env bash

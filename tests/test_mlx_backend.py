@@ -5,7 +5,9 @@ from unittest.mock import MagicMock, patch
 
 
 class TestMLXBackend:
-    def _make_stream_response(self, text: str, finish_reason: str = "stop") -> Any:
+    def _make_stream_response(
+        self, text: str, finish_reason: str | None = "stop"
+    ) -> Any:
         resp = MagicMock()
         resp.text = text
         resp.finish_reason = finish_reason
@@ -43,6 +45,64 @@ class TestMLXBackend:
         _, _, mock_load, mock_stream_generate, mock_generate_step = self._make_mocks(
             "VERDICT: clean"
         )
+        modules = self._patch_mlx_modules(
+            mock_load, mock_stream_generate, mock_generate_step
+        )
+        with patch.dict("sys.modules", modules):
+            from vaudeville.server.mlx_backend import MLXBackend
+
+            backend = MLXBackend("test-model")
+            result = backend.classify("test prompt")
+        assert result == "VERDICT: clean"
+
+    def test_classify_stops_at_second_newline(self) -> None:
+        """Generation halts after REASON line; prompt-echo run-on is dropped."""
+        _, _, mock_load, _, mock_generate_step = self._make_mocks()
+        chunks = [
+            "VERDICT: violation",
+            "\n",
+            "REASON: work done.",
+            "\n",
+            "Classify this response",
+        ]
+        responses = [self._make_stream_response(c, finish_reason=None) for c in chunks]
+        mock_stream_generate = MagicMock(return_value=iter(responses))
+        modules = self._patch_mlx_modules(
+            mock_load, mock_stream_generate, mock_generate_step
+        )
+        with patch.dict("sys.modules", modules):
+            from vaudeville.server.mlx_backend import MLXBackend
+
+            backend = MLXBackend("test-model")
+            result = backend.classify("test prompt")
+        assert result == "VERDICT: violation\nREASON: work done.\n"
+        assert "Classify" not in result
+
+    def test_classify_stops_when_newlines_in_single_chunk(self) -> None:
+        """A single chunk containing both newlines still terminates generation."""
+        _, _, mock_load, _, mock_generate_step = self._make_mocks()
+        responses = [
+            self._make_stream_response(
+                "VERDICT: clean\nREASON: ok.\n", finish_reason=None
+            ),
+            self._make_stream_response("run-on text", finish_reason=None),
+        ]
+        mock_stream_generate = MagicMock(return_value=iter(responses))
+        modules = self._patch_mlx_modules(
+            mock_load, mock_stream_generate, mock_generate_step
+        )
+        with patch.dict("sys.modules", modules):
+            from vaudeville.server.mlx_backend import MLXBackend
+
+            backend = MLXBackend("test-model")
+            result = backend.classify("test prompt")
+        assert result == "VERDICT: clean\nREASON: ok.\n"
+
+    def test_classify_respects_finish_reason_before_newlines(self) -> None:
+        """finish_reason still wins — no artificial wait for two newlines."""
+        _, _, mock_load, _, mock_generate_step = self._make_mocks()
+        responses = [self._make_stream_response("VERDICT: clean", finish_reason="stop")]
+        mock_stream_generate = MagicMock(return_value=iter(responses))
         modules = self._patch_mlx_modules(
             mock_load, mock_stream_generate, mock_generate_step
         )

@@ -16,6 +16,10 @@ from ..core.protocol import ClassifyResult
 DEFAULT_MODEL = "mlx-community/Phi-4-mini-instruct-4bit"
 TOP_K_LOGPROBS = 10
 MAX_PREFIX_CACHES = 16
+# The system prompt pins output to `VERDICT: x\nREASON: <sentence>` — two
+# newlines mark the end of the reason. mlx_lm has no GBNF/stop-sequence
+# equivalent to the llama.cpp grammar, so we stop the stream ourselves.
+REASON_NEWLINE_STOP = 2
 SYSTEM_PROMPT = (
     "You are a binary classifier. Respond with exactly `VERDICT: violation` "
     "or `VERDICT: clean` followed by `REASON: <one sentence>`. No other text."
@@ -41,6 +45,7 @@ class MLXBackend:
         """Run inference on prompt, return raw text output."""
         formatted = self._apply_chat_template(prompt)
         parts: list[str] = []
+        newlines = 0
         for response in self._stream_generate(
             self._model,
             self._tokenizer,
@@ -48,7 +53,8 @@ class MLXBackend:
             max_tokens=max_tokens,
         ):
             parts.append(response.text)
-            if response.finish_reason is not None:
+            newlines += response.text.count("\n")
+            if response.finish_reason is not None or newlines >= REASON_NEWLINE_STOP:
                 break
         return "".join(parts)
 
@@ -85,6 +91,7 @@ class MLXBackend:
             add_special_tokens=False,
         )
         parts: list[str] = []
+        newlines = 0
         for response in self._stream_generate(
             self._model,
             self._tokenizer,
@@ -93,7 +100,8 @@ class MLXBackend:
             prompt_cache=request_cache,
         ):
             parts.append(response.text)
-            if response.finish_reason is not None:
+            newlines += response.text.count("\n")
+            if response.finish_reason is not None or newlines >= REASON_NEWLINE_STOP:
                 break
         return "VERDICT:" + "".join(parts)
 
@@ -168,6 +176,7 @@ class MLXBackend:
         """Run generate_step collecting token IDs and first-token logprobs."""
         tokens: list[int] = []
         first_logprobs: dict[str, float] = {}
+        newlines = 0
         kwargs: dict[str, Any] = {"max_tokens": max_tokens}
         if cache is not None:
             kwargs["prompt_cache"] = cache
@@ -185,6 +194,9 @@ class MLXBackend:
                 break
             eos = getattr(self._tokenizer, "eos_token_id", None)
             if eos is not None and token_id == eos:
+                break
+            newlines += self._tokenizer.decode([token_id]).count("\n")
+            if newlines >= REASON_NEWLINE_STOP:
                 break
         return tokens, first_logprobs
 

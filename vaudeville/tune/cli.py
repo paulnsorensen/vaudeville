@@ -17,7 +17,8 @@ from ..core.rules import load_rules_layered
 from ..eval import EvalCase, load_test_cases
 from ..server.daemon_backend import DaemonBackend, daemon_is_alive
 from ..server.inference import InferenceBackend
-from .harness import StudyConfig, _format_verdict, run_study
+from .harness import _format_verdict, run_study
+from .study import StudyConfig
 from .split import split_cases
 
 logger = logging.getLogger(__name__)

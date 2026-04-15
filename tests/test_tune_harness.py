@@ -14,24 +14,26 @@ from vaudeville.core.rules import Example, Rule
 from vaudeville.eval import CaseResult, EvalCase
 from vaudeville.tune.harness import (
     PROMPT_BUDGET,
-    StudyConfig,
-    TuneVerdict,
     _author_and_inject,
     _check_consecutive_hits,
     _check_prompt_budget,
     _compute_metrics,
-    _constraints_func,
     _eval_subset,
     _format_verdict,
-    _make_default_sampler,
     _make_trial_rule,
     _pool_ids,
-    _study_db_path,
     _write_prompt_diff,
     best_trial_ids,
-    create_study,
     run_study,
     run_trial,
+)
+from vaudeville.tune.study import (
+    StudyConfig,
+    TuneVerdict,
+    _constraints_func,
+    _make_default_sampler,
+    _study_db_path,
+    create_study,
 )
 
 
@@ -196,7 +198,7 @@ class TestConstraintsFunc:
 
 
 class TestMakeDefaultSampler:
-    @patch("vaudeville.tune.harness.LLMSampler")
+    @patch("vaudeville.tune.study.LLMSampler")
     def test_uses_llm_sampler_when_anthropic_available(
         self,
         mock_llm_cls: MagicMock,
@@ -214,7 +216,7 @@ class TestMakeDefaultSampler:
             sampler = _make_default_sampler()
         assert isinstance(sampler, optuna.samplers.NSGAIISampler)
 
-    @patch("vaudeville.tune.harness.LLMSampler")
+    @patch("vaudeville.tune.study.LLMSampler")
     def test_falls_back_to_nsgaii_on_client_error(
         self,
         mock_llm_cls: MagicMock,

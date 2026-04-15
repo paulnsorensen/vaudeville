@@ -12,7 +12,7 @@ Each iteration picks the first unchecked item, implements it with tests, marks i
 ## Complexity Extractions
 
 - [x] US-005: Split `eval.py` (379→<300 lines) — extract `_build_parser`, `main`, and CLI entrypoint into `vaudeville/eval_cli.py`. Keep `classify_case`, `evaluate_rule`, `load_test_cases` in `eval.py`. Update `__main__.py` and `pyproject.toml` entry points. Fix all test imports.
-- [ ] US-006: Split `harness.py` (332→<300 lines) — move `StudyConfig`, `TuneVerdict` dataclasses and `create_study` into `vaudeville/tune/study.py`. `harness.py` becomes a thin coordinator. Fix all imports.
+- [x] US-006: Split `harness.py` (332→<300 lines) — move `StudyConfig`, `TuneVerdict` dataclasses and `create_study` into `vaudeville/tune/study.py`. `harness.py` becomes a thin coordinator. Fix all imports.
 - [ ] US-007: Shrink `run_study` (70→<40 lines) — extract `_extract_best_result(completed, best_ids)` (~16 lines) and `_run_study_loop(study, rule, ...)` (~22 lines). Introduce `TrialContext` dataclass to bundle `rule, tune_cases, held_cases, backend, config` — fixes the 6-param `run_trial` and 7-param `run_study` violations simultaneously.
 - [ ] US-008: Shrink `eval_cli.py:main` (50→<40 lines) — extract `_apply_extra_test_file(args, test_suites)` helper for the `if args.test_file and args.rule` block.
 - [ ] US-009: Fix `eval_report.py:calibrate_rule` 5 params — merge `rule_name` + `rules` since caller already has the Rule object; accept `(rule: Rule, cases, backend, rule_file)`.

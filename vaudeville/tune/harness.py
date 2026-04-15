@@ -1,15 +1,10 @@
-"""Optuna study orchestration for rule tuning.
-
-Creates and runs a multi-objective study that toggles example IDs
-to optimize precision and recall on a held-out set.
-"""
+"""Optuna study orchestration for rule tuning."""
 
 from __future__ import annotations
 
 import difflib
 import logging
 import os
-from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import optuna
@@ -24,59 +19,20 @@ from .pool import (
     inject_candidates,
     should_author,
 )
-from .sampler import LLMSampler
+from .study import StudyConfig, TuneVerdict, create_study
 
 logger = logging.getLogger(__name__)
 
 PROMPT_BUDGET = 2000
 
 
-@dataclass
-class StudyConfig:
-    rule_name: str
-    p_min: float = 0.95
-    r_min: float = 0.80
-    budget: int = 15
-    study_dir: str = ""
-    consecutive_target: int = 2
-    author: bool = False
-
-    def resolve_study_dir(self) -> str:
-        if self.study_dir:
-            return self.study_dir
-        return os.path.join(os.path.expanduser("~"), ".vaudeville", "tunes")
-
-
-@dataclass
-class TuneVerdict:
-    passed: bool
-    p_tune: float
-    r_tune: float
-    p_held: float
-    r_held: float
-    trials_run: int
-    pool_size: int
-    best_ids: list[str]
-    study_uri: str
-    diff_path: str
-
-
-def _study_db_path(config: StudyConfig) -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    d = config.resolve_study_dir()
-    os.makedirs(d, exist_ok=True)
-    return os.path.join(d, f"{config.rule_name}-{ts}.db")
-
-
 def _pool_ids(rule: Rule) -> list[str]:
-    """All available example + candidate IDs."""
     return [ex.id for ex in rule.examples + rule.candidates]
 
 
 def _compute_metrics(
     case_results: list[CaseResult],
 ) -> tuple[float, float]:
-    """Compute (precision, recall) from case results."""
     tp = sum(
         1 for c in case_results if c.label == "violation" and c.predicted == "violation"
     )
@@ -92,13 +48,11 @@ def _compute_metrics(
 
 
 def _check_prompt_budget(rule: Rule, ids: list[str]) -> bool:
-    """Check rendered prompt fits within the budget."""
     rendered = render_prompt(rule, ids)
     return len(rendered) <= PROMPT_BUDGET
 
 
 def _make_trial_rule(rule: Rule, selected_ids: list[str]) -> Rule:
-    """Create a Rule copy with prompt pre-rendered for selected IDs."""
     rendered = render_prompt(rule, selected_ids)
     return Rule(
         name=rule.name,
@@ -119,50 +73,11 @@ def _eval_subset(
     cases: list[EvalCase],
     backend: InferenceBackend,
 ) -> tuple[float, float, list[CaseResult]]:
-    """Evaluate rule with a specific example selection on cases."""
     trial_rule = _make_trial_rule(rule, selected_ids)
     rules_map = {rule.name: trial_rule}
     _, case_results = evaluate_rule(rule.name, cases, rules_map, backend)
     precision, recall = _compute_metrics(case_results)
     return precision, recall, case_results
-
-
-def _constraints_func(trial: optuna.trial.FrozenTrial) -> list[float]:
-    """Return constraint violations for NSGA-II feasibility sorting."""
-    violated = trial.user_attrs.get("constraint_violated", False)
-    return [1.0 if violated else 0.0]
-
-
-def _make_default_sampler() -> optuna.samplers.BaseSampler:
-    """Build LLMSampler with Anthropic client, or NSGA-II if unavailable."""
-    try:
-        import anthropic
-
-        client = anthropic.Anthropic()
-        return LLMSampler(anthropic_client=client)
-    except Exception:
-        logger.debug("Anthropic client unavailable, using NSGA-II sampler")
-        return optuna.samplers.NSGAIISampler(
-            constraints_func=_constraints_func,
-        )
-
-
-def create_study(
-    config: StudyConfig,
-    sampler: optuna.samplers.BaseSampler | None = None,
-) -> tuple[optuna.Study, str]:
-    """Create a multi-objective Optuna study persisted to sqlite."""
-    db_path = _study_db_path(config)
-    storage = f"sqlite:///{db_path}"
-    if sampler is None:
-        sampler = _make_default_sampler()
-    study = optuna.create_study(
-        study_name=config.rule_name,
-        storage=storage,
-        sampler=sampler,
-        directions=["maximize", "maximize"],
-    )
-    return study, db_path
 
 
 def run_trial(
@@ -173,7 +88,6 @@ def run_trial(
     backend: InferenceBackend,
     config: StudyConfig,
 ) -> tuple[float, float]:
-    """Execute one Optuna trial. Returns (recall_held, precision_held)."""
     pool = _pool_ids(rule)
     if not pool:
         raise optuna.TrialPruned("No examples in pool")
@@ -204,7 +118,6 @@ def run_trial(
 
 
 def best_trial_ids(study: optuna.Study) -> list[str] | None:
-    """Extract example IDs from the best feasible trial."""
     try:
         best = study.best_trials
     except ValueError:
@@ -218,7 +131,6 @@ def _check_consecutive_hits(
     study: optuna.Study,
     config: StudyConfig,
 ) -> bool:
-    """Check if the last N consecutive trials hit targets on held-out."""
     completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
     if len(completed) < config.consecutive_target:
         return False
@@ -230,7 +142,6 @@ def _trial_hits_targets(
     trial: optuna.trial.FrozenTrial,
     config: StudyConfig,
 ) -> bool:
-    """Check if a single trial meets precision and recall targets."""
     if not trial.values or len(trial.values) < 2:
         return False
     r_held, p_held = float(trial.values[0]), float(trial.values[1])
@@ -242,7 +153,6 @@ def _write_prompt_diff(
     tuned: str,
     config: StudyConfig,
 ) -> str:
-    """Write a prompt diff file. Returns the file path."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     d = config.resolve_study_dir()
     os.makedirs(d, exist_ok=True)
@@ -260,7 +170,6 @@ def _write_prompt_diff(
 
 
 def _format_verdict(verdict: TuneVerdict) -> str:
-    """Format the 8-12 line final verdict."""
     status = "PASS" if verdict.passed else "FAIL"
     lines = [
         f"=== vaudeville tune: {status} ===",
@@ -283,7 +192,6 @@ def _author_and_inject(
     backend: InferenceBackend,
     best_ids: list[str],
 ) -> Rule:
-    """Eval best selection for FNs, author new candidates, inject."""
     if not best_ids:
         return rule
     _, _, case_results = _eval_subset(rule, best_ids, tune_cases, backend)

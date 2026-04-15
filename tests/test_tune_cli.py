@@ -258,7 +258,7 @@ class TestRunTune:
         simple_rule: Rule,
         eval_cases: list[EvalCase],
     ) -> None:
-        from vaudeville.tune.harness import TuneVerdict
+        from vaudeville.tune.study import TuneVerdict
 
         mock_load.return_value = {"test-rule": simple_rule}
         mock_cases.return_value = eval_cases
@@ -293,7 +293,7 @@ class TestRunTune:
         simple_rule: Rule,
         eval_cases: list[EvalCase],
     ) -> None:
-        from vaudeville.tune.harness import TuneVerdict
+        from vaudeville.tune.study import TuneVerdict
 
         mock_load.return_value = {"test-rule": simple_rule}
         mock_cases.return_value = eval_cases

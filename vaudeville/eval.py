@@ -246,6 +246,12 @@ def main() -> None:
     else:
         rules = load_rules_layered(project_root=find_project_root())
     test_suites = load_test_cases(rules)
+    if not test_suites and not args.test_file:
+        print(
+            "Error: no rules with inline test_cases found. "
+            "Pass --rules-dir examples/rules or install rules into ~/.vaudeville/rules."
+        )
+        sys.exit(1)
     _inject_extra_test_file(args, test_suites)
 
     if args.calibrate:

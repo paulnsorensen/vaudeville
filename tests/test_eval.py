@@ -443,7 +443,8 @@ class TestRunEvaluations:
 
 class TestMain:
     def test_exits_0_on_all_pass(self, capsys: pytest.CaptureFixture[str]) -> None:
-        mock_backend = MockBackend(verdict="clean")
+        # Backend always returns "violation"; all cases labeled "violation" → 100% P/R
+        mock_backend = MockBackend(verdict="violation")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
             patch("sys.argv", ["eval"]),
@@ -462,7 +463,12 @@ class TestMain:
                     ),
                 },
             ),
-            patch("vaudeville.eval.load_test_cases", return_value={}),
+            patch(
+                "vaudeville.eval.load_test_cases",
+                return_value={
+                    "violation-detector": [EvalCase(text="text", label="violation")]
+                },
+            ),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 from vaudeville.eval import main

@@ -299,11 +299,15 @@ def parse_rule(data: dict[str, Any]) -> Rule:
         raise ValueError(f"Invalid tier {tier!r}, must be one of {VALID_TIERS}")
     name = str(data["name"])
     raw_labels = data.get("labels")
-    labels: list[str] = (
-        [str(label) for label in raw_labels]
-        if isinstance(raw_labels, list) and raw_labels
-        else [str(label) for label in DEFAULT_LABELS]
-    )
+    if raw_labels is not None:
+        if not isinstance(raw_labels, list) or not raw_labels:
+            raise ValueError(
+                f"Rule {data.get('name', '?')!r}: 'labels' must be a non-empty list of strings, "
+                f"got {raw_labels!r}"
+            )
+        labels: list[str] = [str(label) for label in raw_labels]
+    else:
+        labels = [str(label) for label in DEFAULT_LABELS]
     test_cases = _parse_test_cases(data.get("test_cases", []), name, labels)
     return Rule(
         name=name,

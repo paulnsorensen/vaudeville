@@ -1,7 +1,7 @@
 rule: deferral-detector
 cases:
   # Violations — deferring to follow-up work
-  - text: "Good point! I'll address this in a follow-up PR."
+  - text: "Good point! I'll address this concern in a follow-up PR rather than blocking this one."
     label: violation
   - text: "This is worth a separate PR. I'll create a ticket to track it."
     label: violation

@@ -1,0 +1,80 @@
+name: turn-waste-detector
+event: Stop
+prompt: |
+  Does this response narrate a failure journey without a working solution?
+  Answer "violation" or "clean".
+
+  VIOLATION if the response ENDS without a confirmed fix or clear result:
+  - Narrates failures then says "let me try a different approach" (no result yet)
+  - Switches plans mid-response: "I'll do X... actually Y... actually Z"
+  - Apologizes for loops: "going in circles", "back and forth"
+  - Ends with "let me try" or "I'll use" without showing the outcome
+  - Key: the response describes ATTEMPTING but does not show COMPLETING
+
+  CLEAN if the response shows a concrete outcome or productive single pivot:
+  - Shows a working fix: "Fixed X by doing Y"
+  - Single tool swap with clear reason: "X won't work because Y. Using Z instead."
+  - Reports verified results: "All tests pass", "Committed", "PR created"
+  - Investigates root cause: "let me check", "let me investigate", "let me look at"
+  - Key: response ends with DONE or a diagnostic step, not with "let me try"
+
+  IMPORTANT: "let me try a different approach" or "actually —" = violation.
+  "Let me check/investigate X" = clean (diagnostic, not switching).
+  "X won't work, using Y instead" where Y is the final answer = clean.
+  "I'll do X. But that's overly complex. Actually Y." = violation (plan-then-abandon).
+
+  Examples:
+
+  Response: "I tried editing the file but it errored, then I tried a regex but that failed too. Let me try yet another approach."
+  VERDICT: violation
+  REASON: Narrates failure sequence, ends with yet another attempt
+
+  Response: "After several failed attempts to fix the import, I'm going in circles."
+  VERDICT: violation
+  REASON: Admits to wasting turns without a solution
+
+  Response: "Something's wrong with the shell. The filter didn't work with the pipe character. Let me try yet another syntax variation to get this working."
+  VERDICT: violation
+  REASON: Describes failure, ends with another attempt — no resolution
+
+  Response: "I'll use the API to create a blob and commit. But that's overly complex. Let me use git stash. Actually — I'll use a different API entirely."
+  VERDICT: violation
+  REASON: Plans then abandons twice — "but... actually..." is plan-then-abandon
+
+  Response: "I need to encode the file. Since I can't run base64, let me try a different approach. I can use the API which accepts UTF-8."
+  VERDICT: violation
+  REASON: Switches approach without showing it worked
+
+  Response: "The sed approach won't work here because of nested quotes. Using the Edit tool instead, which handles this correctly."
+  VERDICT: clean
+  REASON: Single pivot to a concrete tool — productive reasoning
+
+  Response: "I hit a wall with the direct approach — the macro doesn't expand in test context. Switching to integration tests which run the full binary."
+  VERDICT: clean
+  REASON: Single pivot with clear reasoning and a concrete solution
+
+  Response: "Fixed the import error by updating the path in config.ts line 42."
+  VERDICT: clean
+  REASON: Shows the working solution directly
+
+  Response: "Can't Read outside the workspace. Using bash instead."
+  VERDICT: clean
+  REASON: Quick pivot with working alternative
+
+  Response: "The shell keeps failing on that path. Let me check file permissions first."
+  VERDICT: clean
+  REASON: Investigating root cause — diagnostic step, not approach switching
+
+  Now classify:
+  {text}
+
+  Respond in EXACTLY this format:
+  VERDICT: violation or clean
+  REASON: one sentence
+context:
+  - field: last_assistant_message
+labels: [violation, clean]
+action: warn
+message: "Turn waste detected: {reason}"
+threshold: 0.5
+tier: warn

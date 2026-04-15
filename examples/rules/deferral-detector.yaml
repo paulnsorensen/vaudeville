@@ -3,35 +3,40 @@ event: PreToolUse
 prompt: |
   Does this PR reply defer the reviewer's concern to future work? Answer "violation" or "clean".
 
-  Examples:
+  VIOLATION if the reply:
+  - Promises to address it later ("follow-up PR", "next iteration", "future commit")
+  - Creates a ticket/issue INSTEAD of fixing now ("I'll create a ticket", "I'll open an issue to track it")
+  - Uses "circle back", "revisit", "leave it for now", "future pass"
+  - Says the PR is too large to include the fix
+
+  CRITICAL: Technical reasoning about WHY something is hard to fix is still deferral if the conclusion is "later" or "not now". Only classify as clean if the reasoning explains why the CURRENT approach is correct.
+
+  CLEAN if the reply:
+  - Describes a fix already applied ("Fixed in latest commit", "Added null check")
+  - Pushes back: argues the current approach is correct/intentional ("I disagree because...")
+  - Explains why something is already covered or not a problem
+  - Creates a ticket AND explains with evidence why it's genuinely out of scope (different service, requires migration, etc.) with specific technical justification
 
   Reply: "Good point! I'll address this in a follow-up PR."
   VERDICT: violation
-  REASON: Defers to follow-up PR
 
-  Reply: "Good catch! Fixed in the latest commit — added null check before dereferencing."
-  VERDICT: clean
-  REASON: Describes fix already applied
+  Reply: "This is worth a separate PR. I'll create a ticket to track it."
+  VERDICT: violation
 
   Reply: "Will handle in a separate commit. The current PR is already large enough."
   VERDICT: violation
-  REASON: Defers to separate commit
 
-  Reply: "I disagree — the current approach is intentional. We need backward compatibility."
-  VERDICT: clean
-  REASON: Pushes back with technical reasoning
-
-  Reply: "I'll circle back to this. For now this is good enough to ship."
+  Reply: "Fair point. Fixing it requires touching the settings module and a migration. I'll handle it in a future pass."
   VERDICT: violation
-  REASON: Defers with "circle back" language
 
-  Reply: "Good point about the N+1 query. I've added eager loading for the relationship."
+  Reply: "Good catch! Fixed in the latest commit — added null check."
   VERDICT: clean
-  REASON: Describes fix already applied
 
-  Reply: "The test coverage looks thin but these code paths are covered by integration tests."
+  Reply: "I disagree — the current approach is intentional."
   VERDICT: clean
-  REASON: Explains existing coverage, not deferring
+
+  Reply: "Out of scope (requires API contract change + migration), tracked in #456."
+  VERDICT: clean
 
   Now classify this reply:
   {text}
@@ -43,5 +48,6 @@ context:
   - field: tool_input.body
 labels: [violation, clean]
 action: block
+threshold: 0.3
 message: "Deferral detected in PR reply: {reason}"
-threshold: 0.7
+tier: warn

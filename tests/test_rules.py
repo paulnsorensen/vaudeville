@@ -21,8 +21,9 @@ class TestLoadTestCases:
     def test_loads_all_suites(self, tests_dir: str) -> None:
         suites = load_test_cases(tests_dir)
         assert "violation-detector" in suites
-        assert "dismissal-detector" in suites
         assert "deferral-detector" in suites
+        assert "sycophancy-detector" in suites
+        assert "turn-waste-detector" in suites
 
     def test_cases_have_text_and_label(self, tests_dir: str) -> None:
         suites = load_test_cases(tests_dir)

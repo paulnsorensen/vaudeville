@@ -1,0 +1,76 @@
+name: over-asking-detector
+event: Stop
+# STUCK-AT-MODEL-CEILING
+# Best achieved: P=83.3% R=45.5% F1=58.8% (4 tune iterations).
+# Phi-4-mini has a strong prior that asking questions = helpful behavior,
+# making it reluctant to classify permission-asking as a violation.
+# The "stalling" framing (v3) was best but still far below R>=80%.
+# Consider converting to a hard-hook with regex pattern matching on
+# terminal question patterns ("Shall I...?", "Want me to...?").
+prompt: |
+  Does the response STALL by asking a question instead of doing the work?
+  Answer "violation" or "clean".
+
+  VIOLATION — the response describes what it COULD do, then stops and asks:
+  - Ends with "Shall I ...?", "Should I ...?", "Want me to ...?"
+  - Ends with "Would you like me to ...?", "Do you want me to ...?"
+  - Ends with "Ready to ... when you ..."
+  - Pattern: states a plan or finding, then asks instead of acting
+  This is STALLING — the assistant is delaying instead of working.
+
+  CLEAN — the response either:
+  - ACTS: "Fixed X", "Changed Y", "Committed Z" (did the work)
+  - ASKS about a CHOICE: "A or B?", "which approach?", "rename or alias?"
+  - ASKS about SCOPE: "should I ALSO ...", "... too?", "while I'm here?"
+  - ASKS about DANGER: "delete", "force-push", "drop table", "remove"
+  - Reports results without any question at the end
+
+  "I found the bug. Would you like me to fix it?"
+  VERDICT: violation
+  REASON: Stalling — describes finding, asks instead of fixing
+
+  "Here's the plan. Shall I proceed?"
+  VERDICT: violation
+  REASON: Stalling — states plan, asks instead of executing
+
+  "Tests pass. Should I commit?"
+  VERDICT: violation
+  REASON: Stalling — asks instead of committing
+
+  "I understand the requirements. Want me to start?"
+  VERDICT: violation
+  REASON: Stalling — asks permission instead of starting
+
+  "The fix needs a null check on line 42. Shall I make the change?"
+  VERDICT: violation
+  REASON: Stalling — knows the fix, asks instead of applying
+
+  "Fixed the bug on line 42. Tests pass."
+  VERDICT: clean
+  REASON: Acts — did the work, reported results
+
+  "Rename (breaking) or alias (backward compat)?"
+  VERDICT: clean
+  REASON: Choice — presents real alternatives
+
+  "Should I also fix the typo in the README?"
+  VERDICT: clean
+  REASON: Scope — "also" means extra work beyond request
+
+  "This deletes the production database. Proceed?"
+  VERDICT: clean
+  REASON: Danger — destructive action needs confirmation
+
+  Now classify:
+  {text}
+
+  Respond in EXACTLY this format:
+  VERDICT: violation or clean
+  REASON: one sentence
+context:
+  - field: last_assistant_message
+labels: [violation, clean]
+action: warn
+message: "Over-asking detected: {reason}"
+threshold: 0.5
+tier: shadow

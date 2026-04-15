@@ -127,7 +127,7 @@ def main() -> None:
 
 def _load_rules_for_event(event: str) -> list:
     """Auto-discover all rules matching an event via layered resolution."""
-    from vaudeville.core.rules import load_rules_layered  # noqa: E402
+    from vaudeville.core import load_rules_layered  # noqa: E402
 
     project_root = _find_project_root()
     all_rules = load_rules_layered(project_root)
@@ -189,6 +189,29 @@ def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
     return client.condense(text)
 
 
+def _dispatch_violation(rule, result) -> bool:  # type: ignore[no-untyped-def]
+    """Handle a tier-aware violation. Returns True if the rule loop should continue."""
+    if rule.tier == "shadow":
+        _dbg(
+            "shadow %s: %s (%.2f)",
+            rule.name,
+            result.verdict,
+            result.confidence,
+        )
+        return True
+
+    if rule.tier == "warn":
+        response = verdict_to_hook_response(
+            rule.name, rule.message, result.reason, "warn"
+        )
+    else:  # enforce (default)
+        response = verdict_to_hook_response(
+            rule.name, rule.message, result.reason, rule.action
+        )
+    print(json.dumps(response))
+    sys.exit(0)
+
+
 def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> None:
     rules = _load_rules_for_event(event)
     condensed: dict[str, str] = {}
@@ -204,16 +227,15 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
         context_str = rule.resolve_context(hook_input, PLUGIN_ROOT)
         prompt, prefix_len = rule.split_prompt(text, context_str)
 
-        result = client.classify(prompt, rule=rule.name, prefix_len=prefix_len)
+        result = client.classify(
+            prompt, rule=rule.name, prefix_len=prefix_len, tier=rule.tier
+        )
         if result is None:
             continue
 
         if result.verdict == "violation" and result.confidence >= rule.threshold:
-            response = verdict_to_hook_response(
-                rule.name, rule.message, result.reason, rule.action
-            )
-            print(json.dumps(response))
-            sys.exit(0)
+            if _dispatch_violation(rule, result):
+                continue
 
     print("{}")
     sys.exit(0)

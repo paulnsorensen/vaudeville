@@ -206,6 +206,50 @@ def test_confidence_rounded(tmp_path: pathlib.Path) -> None:
         logger.close()
 
 
+def test_tier_included_in_event(tmp_path: pathlib.Path) -> None:
+    """Tier field is written to events.jsonl."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="test-shadow",
+                verdict="violation",
+                confidence=0.85,
+                latency_ms=20.0,
+                prompt_chars=100,
+                reason="hedging",
+                tier="shadow",
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        assert events[0]["tier"] == "shadow"
+    finally:
+        logger.close()
+
+
+def test_tier_defaults_to_enforce(tmp_path: pathlib.Path) -> None:
+    """Tier defaults to enforce when not specified."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="test",
+                verdict="clean",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        assert events[0]["tier"] == "enforce"
+    finally:
+        logger.close()
+
+
 def test_latency_rounded(tmp_path: pathlib.Path) -> None:
     """Latency is rounded to 1 decimal place."""
     logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))

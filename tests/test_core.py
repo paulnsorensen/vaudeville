@@ -6,6 +6,8 @@ import json
 import os
 import tempfile
 
+import pytest
+
 from vaudeville.core.client import VaudevilleClient
 from vaudeville.core.protocol import (
     ClassifyRequest,
@@ -82,6 +84,15 @@ class TestParseVerdict:
         assert rule.name == "test"
         assert rule.action == "block"
         assert rule.threshold == 0.5
+        assert rule.tier == "enforce"
+
+    def test_parse_rule_with_tier(self) -> None:
+        rule = parse_rule({"name": "test", "prompt": "{text}", "tier": "shadow"})
+        assert rule.tier == "shadow"
+
+    def test_parse_rule_invalid_tier_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid tier"):
+            parse_rule({"name": "test", "prompt": "{text}", "tier": "yolo"})
 
     def test_violation_keyword_word_boundary(self) -> None:
         """'violation' substring should not create false positives."""
@@ -147,6 +158,14 @@ class TestClassifyRequest:
         req = ClassifyRequest(prompt="test", rule="some-rule")
         d = json.loads(json.dumps(req.to_json_dict()))
         assert d["rule"] == "some-rule"
+
+    def test_to_json_dict_tier_omitted_when_enforce(self) -> None:
+        req = ClassifyRequest(prompt="test")
+        assert "tier" not in req.to_json_dict()
+
+    def test_to_json_dict_tier_included_when_not_enforce(self) -> None:
+        req = ClassifyRequest(prompt="test", tier="shadow")
+        assert req.to_json_dict()["tier"] == "shadow"
 
 
 # --- load_rules ---

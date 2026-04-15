@@ -103,7 +103,7 @@ def main() -> None:
     backend = _init_backend(backend_name, args.model)
     logging.info("Backend ready")
 
-    from .daemon import VaudevilleDaemon
+    from .daemon import DaemonConfig, VaudevilleDaemon
     from .event_log import EventLogger
 
     try:
@@ -114,11 +114,14 @@ def main() -> None:
         )
         event_logger = None
 
-    daemon = VaudevilleDaemon(
+    config = DaemonConfig(
         socket_path=args.socket,
         pid_file=args.pid_file,
         plugin_root=plugin_root,
+    )
+    daemon = VaudevilleDaemon(
         backend=backend,
+        config=config,
         pid_fd=pid_fd,
         event_logger=event_logger,
     )

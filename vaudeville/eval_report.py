@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from typing import TYPE_CHECKING
@@ -243,29 +244,87 @@ def find_rule_file(rule_name: str, search_dirs: list[str]) -> str | None:
     for d in search_dirs:
         try:
             for filename in os.listdir(d):
-                if not (filename.endswith(".yaml") or filename.endswith(".yml")):
-                    continue
-                path = os.path.join(d, filename)
-                with open(path) as f:
-                    data = yaml.safe_load(f)
-                if isinstance(data, dict) and data.get("name") == rule_name:
-                    return path
+                match = _check_file_for_rule(os.path.join(d, filename), rule_name)
+                if match:
+                    return match
         except OSError:
             continue
     return None
 
 
+def _check_file_for_rule(path: str, rule_name: str) -> str | None:
+    """Return path if the file is a YAML rule matching rule_name, else None."""
+    if not (path.endswith(".yaml") or path.endswith(".yml")):
+        return None
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    if isinstance(data, dict) and data.get("name") == rule_name:
+        return path
+    return None
+
+
+def run_calibrate(
+    args: argparse.Namespace,
+    rules: dict[str, Rule],
+    test_suites: dict[str, list["EvalCase"]],
+    backend: InferenceBackend,
+    project_root: str | None,
+) -> None:
+    """Run --calibrate subcommand and exit."""
+    import sys
+
+    from .core.rules import rules_search_path
+
+    cal_rule = args.calibrate
+    if cal_rule not in test_suites:
+        print(f"No test suite found for rule: {cal_rule}")
+        sys.exit(1)
+    if cal_rule not in rules:
+        print(f"Rule not found: {cal_rule}")
+        sys.exit(1)
+
+    plugin_root = os.environ.get(
+        "CLAUDE_PLUGIN_ROOT",
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    if args.rules_dir:
+        search_dirs = [args.rules_dir]
+    else:
+        search_dirs = rules_search_path(project_root=project_root)
+        for subdir in ("rules", "examples/rules"):
+            d = os.path.join(plugin_root, subdir)
+            if os.path.isdir(d) and d not in search_dirs:
+                search_dirs.append(d)
+    rule_file = find_rule_file(cal_rule, search_dirs)
+    if not rule_file:
+        print(f"Cannot find YAML file for rule: {cal_rule}")
+        sys.exit(1)
+    target = CalibrateTarget(rule_name=cal_rule, rule_file=rule_file)
+    result = calibrate_rule(target, test_suites[cal_rule], rules, backend)
+    sys.exit(0 if result is not None else 1)
+
+
 MIN_CALIBRATION_CASES = 20
 
 
+@dataclass
+class CalibrateTarget:
+    """Bundle identifying a rule to calibrate and where its YAML lives."""
+
+    rule_name: str
+    rule_file: str
+
+
 def calibrate_rule(
-    rule: Rule,
+    target: CalibrateTarget,
     cases: list[EvalCase],
+    rules: dict[str, Rule],
     backend: InferenceBackend,
-    rule_file: str,
 ) -> float | None:
     """Run threshold sweep, pick F1-optimal, write to rule YAML. Returns threshold or None."""
-    rule_name = rule.name
+    rule_name = target.rule_name
+    rule_file = target.rule_file
+    rule = rules[rule_name]
     if len(cases) < MIN_CALIBRATION_CASES:
         print(
             f"ERROR: {rule_name} has {len(cases)} labeled cases"

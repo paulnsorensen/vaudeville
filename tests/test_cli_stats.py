@@ -122,24 +122,24 @@ class TestPrintStatsHuman:
 class TestCmdWatch:
     def test_calls_watch_with_log_path(self) -> None:
         args = Namespace(log_path="/fake/events.jsonl")
-        with patch("vaudeville.server.watch.watch") as mock_watch:
+        with patch("vaudeville.server.watch") as mock_watch:
             cmd_watch(args)
         mock_watch.assert_called_once_with(log_path="/fake/events.jsonl")
 
     def test_catches_keyboard_interrupt(self) -> None:
         args = Namespace(log_path="/fake/events.jsonl")
-        with patch("vaudeville.server.watch.watch", side_effect=KeyboardInterrupt):
+        with patch("vaudeville.server.watch", side_effect=KeyboardInterrupt):
             cmd_watch(args)  # should not raise
 
     def test_main_dispatches_watch(self) -> None:
         with patch("sys.argv", ["vaudeville", "watch"]):
-            with patch("vaudeville.server.watch.watch") as mock_watch:
+            with patch("vaudeville.server.watch") as mock_watch:
                 mock_watch.side_effect = KeyboardInterrupt
                 main()
                 mock_watch.assert_called_once()
 
     def test_main_watch_custom_log_path(self) -> None:
         with patch("sys.argv", ["vaudeville", "watch", "--log-path", "/custom.jsonl"]):
-            with patch("vaudeville.server.watch.watch") as mock_watch:
+            with patch("vaudeville.server.watch") as mock_watch:
                 main()
                 mock_watch.assert_called_once_with(log_path="/custom.jsonl")

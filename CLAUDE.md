@@ -38,6 +38,6 @@ Hook entry point: `hooks/runner.py` (thin, stdlib-only, fail-open)
 ## Key Patterns
 
 - **Fail-open everywhere**: daemon down → allow, inference error → allow, unknown rule → allow
-- **Back-truncation**: input text is truncated to last 1500 tokens (violations cluster at end)
+- **Event-aware truncation**: input text is condensed to fit within token budget, preserving structure boundaries (tool calls, assistant turns)
 - **Prompt injection defense**: VERDICT:/REASON: markers are neutralized with zero-width spaces before interpolation
 - **Deterministic inference**: both backends use temp=0.0

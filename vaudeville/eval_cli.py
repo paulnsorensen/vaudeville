@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 
-from .core.rules import Rule, load_rules_layered
+from .core.rules import load_rules, load_rules_layered
 from .eval import (
     CaseResult,
     EvalCase,
@@ -90,6 +90,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Emit per-case JSONL output instead of summary text",
     )
     parser.add_argument(
+        "--rules-dir",
+        help="Load rules from this directory only (skip layered resolution)",
+    )
+    parser.add_argument(
         "--no-daemon",
         action="store_true",
         help="Force in-process backend, skip daemon check",
@@ -103,41 +107,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Model path or Hugging Face ID",
     )
     return parser
-
-
-def _run_calibrate(
-    args: argparse.Namespace,
-    rules: dict[str, Rule],
-    test_suites: dict[str, list[EvalCase]],
-    backend: InferenceBackend,
-) -> None:
-    """Run --calibrate subcommand and exit."""
-    from .core.rules import rules_search_path
-    from .eval_report import calibrate_rule, find_rule_file
-
-    cal_rule = args.calibrate
-    if cal_rule not in test_suites:
-        print(f"No test suite found for rule: {cal_rule}")
-        sys.exit(1)
-    if cal_rule not in rules:
-        print(f"Rule not found: {cal_rule}")
-        sys.exit(1)
-
-    plugin_root = os.environ.get(
-        "CLAUDE_PLUGIN_ROOT",
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    search_dirs = rules_search_path(project_root=_find_project_root())
-    for subdir in ("rules", "examples/rules"):
-        d = os.path.join(plugin_root, subdir)
-        if os.path.isdir(d) and d not in search_dirs:
-            search_dirs.append(d)
-    rule_file = find_rule_file(cal_rule, search_dirs)
-    if not rule_file:
-        print(f"Cannot find YAML file for rule: {cal_rule}")
-        sys.exit(1)
-    result = calibrate_rule(rules[cal_rule], test_suites[cal_rule], backend, rule_file)
-    sys.exit(0 if result is not None else 1)
 
 
 def _apply_extra_test_file(
@@ -175,13 +144,18 @@ def _emit_jsonl(case_results: list[CaseResult]) -> None:
 def main() -> None:
     args = _build_parser().parse_args()
     backend = _build_backend(args)
-    rules = load_rules_layered(project_root=_find_project_root())
+    if getattr(args, "rules_dir", None):
+        rules = load_rules(args.rules_dir)
+    else:
+        rules = load_rules_layered(project_root=_find_project_root())
     test_suites = load_test_cases(_tests_dir())
 
     _apply_extra_test_file(args, test_suites)
 
     if args.calibrate:
-        _run_calibrate(args, rules, test_suites, backend)
+        from .eval_report import run_calibrate
+
+        run_calibrate(args, rules, test_suites, backend, _find_project_root())
 
     if args.rule:
         test_suites = {k: v for k, v in test_suites.items() if k == args.rule}

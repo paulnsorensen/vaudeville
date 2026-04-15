@@ -1,5 +1,6 @@
 from .condense import condense_text
-from .daemon import VaudevilleDaemon
+from ._handlers import handle_request
+from .daemon import DaemonConfig, VaudevilleDaemon
 from .daemon_backend import DaemonBackend, daemon_is_alive
 from .event_log import ClassificationEvent, EventLogger
 from .inference import InferenceBackend, LogprobBackend
@@ -11,6 +12,7 @@ from .watch import watch
 __all__ = [
     "ClassificationEvent",
     "DaemonBackend",
+    "DaemonConfig",
     "EventLogger",
     "InferenceBackend",
     "LogConfig",
@@ -21,6 +23,7 @@ __all__ = [
     "condense_text",
     "daemon_is_alive",
     "empty_result",
+    "handle_request",
     "load_log_config",
     "watch",
 ]

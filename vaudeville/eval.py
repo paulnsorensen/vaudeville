@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 import yaml
 
 from .core import ClassifyResult, Rule, compute_confidence, parse_verdict
-from .server import InferenceBackend, LogprobBackend
+from .server import InferenceBackend, LogprobBackend, condense_text
 
 
 @dataclass
@@ -117,22 +117,8 @@ def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
     return ClassifyResult(text=text)
 
 
-def classify_case(
-    case: EvalCase,
-    rule: Rule,
-    backend: InferenceBackend,
-    results: EvalResults,
-) -> CaseResult:
-    """Classify a single case and update results. Returns CaseResult."""
+def _update_results(results: EvalResults, case: EvalCase, predicted: str) -> None:
     positive, negative = "violation", "clean"
-    prompt = rule.format_prompt(case.text)
-    result = _run_inference(backend, prompt)
-    response = parse_verdict(result.text)
-    predicted = response.verdict
-    confidence = compute_confidence(result.logprobs, predicted)
-
-    results.confidences.append(confidence)
-
     if case.label == positive and predicted == positive:
         results.tp += 1
     elif case.label == negative and predicted == negative:
@@ -140,21 +126,36 @@ def classify_case(
     elif case.label == negative and predicted == positive:
         results.fp += 1
         results.misclassified.append(
-            {
-                "text": case.text,
-                "actual": negative,
-                "predicted": positive,
-            }
+            {"text": case.text, "actual": negative, "predicted": positive}
         )
     else:
         results.fn += 1
         results.misclassified.append(
-            {
-                "text": case.text,
-                "actual": positive,
-                "predicted": negative,
-            }
+            {"text": case.text, "actual": positive, "predicted": negative}
         )
+
+
+def classify_case(
+    case: EvalCase,
+    rule: Rule,
+    backend: InferenceBackend,
+    results: EvalResults,
+) -> CaseResult:
+    """Classify a single case and update results. Returns CaseResult."""
+    text = case.text
+    if rule.event == "Stop" and len(text) >= 200:
+        text = condense_text(text, backend)
+    prompt = rule.format_prompt(text)
+    result = _run_inference(backend, prompt)
+    response = parse_verdict(result.text)
+    predicted = response.verdict
+    confidence = compute_confidence(result.logprobs, predicted)
+
+    if predicted == "violation" and rule.threshold > 0 and confidence < rule.threshold:
+        predicted = "clean"
+
+    results.confidences.append(confidence)
+    _update_results(results, case, predicted)
 
     return CaseResult(
         rule="",

@@ -57,6 +57,7 @@ class MLXBackend:
             self._tokenizer,
             prompt=formatted,
             max_tokens=max_tokens,
+            temp=0.0,
         ):
             parts.append(response.text)
             newlines += response.text.count("\n")
@@ -104,6 +105,7 @@ class MLXBackend:
             prompt=suffix_tokens,
             max_tokens=max_tokens,
             prompt_cache=request_cache,
+            temp=0.0,
         ):
             parts.append(response.text)
             newlines += response.text.count("\n")

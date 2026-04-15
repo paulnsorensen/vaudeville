@@ -15,7 +15,8 @@ from unittest.mock import patch
 import pytest
 
 from vaudeville.core.protocol import ClassifyResult
-from vaudeville.server import DaemonConfig, VaudevilleDaemon, handle_request
+from vaudeville.server import DaemonConfig, VaudevilleDaemon
+from vaudeville.server._handlers import handle_request
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.log_config import LogConfig
 from vaudeville.server.inference import LogprobBackend

@@ -27,8 +27,7 @@ if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
 try:
-    from vaudeville.core.client import VaudevilleClient  # noqa: E402
-    from vaudeville.core import prepare_text  # noqa: E402
+    from vaudeville.core import ClassifyResponse, Rule, VaudevilleClient, prepare_text  # noqa: E402
 except ImportError as _exc:
     print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
     print("{}")
@@ -79,10 +78,6 @@ def extract_text_from_dict(hook_input: dict, context: list) -> str:
     for entry in context:
         if isinstance(entry, dict) and "field" in entry:
             text = extract_field(hook_input, entry["field"])
-            if text:
-                return text
-        elif isinstance(entry, str):
-            text = extract_field(hook_input, entry)
             if text:
                 return text
 
@@ -189,7 +184,7 @@ def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
     return client.condense(text)
 
 
-def _dispatch_violation(rule, result) -> bool:  # type: ignore[no-untyped-def]
+def _dispatch_violation(rule: Rule, result: ClassifyResponse) -> bool:
     """Handle a tier-aware violation. Returns True if the rule loop should continue."""
     if rule.tier == "shadow":
         _dbg(

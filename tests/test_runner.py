@@ -79,12 +79,6 @@ class TestExtractText:
             runner.extract_text_from_dict({"body": "some text"}, context) == "some text"
         )
 
-    def test_string_context(self) -> None:
-        context = ["body"]
-        assert (
-            runner.extract_text_from_dict({"body": "some text"}, context) == "some text"
-        )
-
     def test_empty_context_returns_empty(self) -> None:
         assert runner.extract_text_from_dict({}, []) == ""
 

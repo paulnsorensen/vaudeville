@@ -405,12 +405,6 @@ class TestRunnerHelpers:
         runner = self._get_runner()
         assert runner.extract_field({"a": {"b": "val"}}, "a.b") == "val"
 
-    def test_extract_text_string_context_entry(self) -> None:
-        runner = self._get_runner()
-        context = ["last_assistant_message"]
-        hook_input = {"last_assistant_message": "hello"}
-        assert runner.extract_text_from_dict(hook_input, context) == "hello"
-
     def test_extract_text_no_context(self) -> None:
         runner = self._get_runner()
         assert runner.extract_text_from_dict({}, []) == ""

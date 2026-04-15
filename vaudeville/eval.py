@@ -16,8 +16,14 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from .core.protocol import ClassifyResult, compute_confidence, parse_verdict
-from .core.rules import Rule, load_rules, load_rules_layered
+from .core import (
+    ClassifyResult,
+    Rule,
+    compute_confidence,
+    load_rules,
+    load_rules_layered,
+    parse_verdict,
+)
 from .server import InferenceBackend, LogprobBackend
 from .server import condense_text
 
@@ -196,7 +202,7 @@ def evaluate_rule(
 
 def _build_backend(args: argparse.Namespace) -> InferenceBackend:
     """Initialize the inference backend from CLI args."""
-    from .server import MLXBackend
+    from .server.mlx_backend import MLXBackend
 
     print(f"Loading model: {args.model}")
     return MLXBackend(args.model)
@@ -271,7 +277,7 @@ def main() -> None:
         test_suites[args.rule] = existing + extra_cases
 
     if args.calibrate:
-        from .eval_report import run_calibrate
+        from .eval_calibrate import run_calibrate
 
         run_calibrate(args, rules, test_suites, backend, _find_project_root())
 

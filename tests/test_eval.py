@@ -21,14 +21,16 @@ from vaudeville.eval import (
     evaluate_rule,
     load_test_cases,
 )
-from vaudeville.eval_report import (
+from vaudeville.eval_calibrate import (
     MIN_CALIBRATION_CASES,
-    _find_best_threshold,
-    _git_head,
     CalibrateTarget,
+    _find_best_threshold,
     calibrate_rule,
-    cross_validate_rule,
     find_rule_file,
+)
+from vaudeville.eval_report import (
+    _git_head,
+    cross_validate_rule,
     print_results,
     run_evaluations,
     write_eval_log,
@@ -407,7 +409,7 @@ class TestBuildBackend:
         args = argparse.Namespace(model="test-model")
         mock_instance = MagicMock()
         mock_mlx = MagicMock(return_value=mock_instance)
-        with patch("vaudeville.server.MLXBackend", mock_mlx):
+        with patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx):
             backend = _build_backend(args)
         mock_mlx.assert_called_once_with("test-model")
         assert backend is mock_instance
@@ -459,7 +461,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
             patch("sys.argv", ["eval"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
                 return_value={
@@ -489,7 +491,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
             patch("sys.argv", ["eval", "--rule", "violation-detector"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
                 return_value={
@@ -521,7 +523,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=MockBackend())
         with (
             patch("sys.argv", ["eval", "--rule", "nonexistent-rule"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
                 return_value={
@@ -557,7 +559,7 @@ class TestMain:
                 "sys.argv",
                 ["eval", "--rule", "violation-detector", "--test-file", tf],
             ),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval.load_rules_layered",
                 return_value={

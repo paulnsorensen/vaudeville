@@ -6,13 +6,14 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
-import optuna
 import pytest
 
-from vaudeville.core.protocol import ClassifyResult
-from vaudeville.core.rules import Example, Rule
-from vaudeville.eval import CaseResult, EvalCase
-from vaudeville.tune.harness import (
+optuna = pytest.importorskip("optuna")
+
+from vaudeville.core.protocol import ClassifyResult  # noqa: E402
+from vaudeville.core.rules import Example, Rule  # noqa: E402
+from vaudeville.eval import CaseResult, EvalCase  # noqa: E402
+from vaudeville.tune.harness import (  # noqa: E402
     PROMPT_BUDGET,
     _author_and_inject,
     _check_consecutive_hits,
@@ -30,7 +31,7 @@ from vaudeville.tune.harness import (
     run_study,
     run_trial,
 )
-from vaudeville.tune.study import (
+from vaudeville.tune.study import (  # noqa: E402
     StudyConfig,
     TrialContext,
     TuneVerdict,

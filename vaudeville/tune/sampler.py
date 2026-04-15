@@ -93,7 +93,7 @@ def _call_llm(
     return str(response.content[0].text)
 
 
-class LLMSampler(BaseSampler):
+class LLMSampler(BaseSampler):  # type: ignore[misc]
     """Optuna sampler that uses an LLM to propose example toggles.
 
     Cold-starts with random trials, then switches to LLM-guided
@@ -115,7 +115,7 @@ class LLMSampler(BaseSampler):
         study: Study,
         trial: FrozenTrial,
     ) -> dict[str, BaseDistribution]:
-        return optuna.search_space.intersection_search_space(study.trials)
+        return optuna.search_space.intersection_search_space(study.trials)  # type: ignore[no-any-return]
 
     def sample_relative(
         self,
@@ -129,11 +129,11 @@ class LLMSampler(BaseSampler):
         n_complete = len(_recent_completed(study))
         if n_complete < COLD_START_TRIALS:
             trial.set_user_attr("proposal_source", "random_seed")
-            return self._random.sample_relative(study, trial, search_space)
+            return self._random.sample_relative(study, trial, search_space)  # type: ignore[no-any-return]
 
         if self._client is None:
             trial.set_user_attr("proposal_source", "tpe_fallback")
-            return self._tpe.sample_relative(study, trial, search_space)
+            return self._tpe.sample_relative(study, trial, search_space)  # type: ignore[no-any-return]
 
         return self._sample_via_llm(study, trial, search_space)
 
@@ -153,7 +153,7 @@ class LLMSampler(BaseSampler):
         except Exception as exc:
             logger.warning("LLM sampling failed (%s), falling back to TPE", exc)
             trial.set_user_attr("proposal_source", "tpe_fallback")
-            return self._tpe.sample_relative(study, trial, search_space)
+            return self._tpe.sample_relative(study, trial, search_space)  # type: ignore[no-any-return]
 
     def sample_independent(
         self,

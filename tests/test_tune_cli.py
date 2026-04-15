@@ -8,10 +8,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vaudeville.core.protocol import ClassifyResult
-from vaudeville.core.rules import Example, Rule
-from vaudeville.eval import EvalCase
-from vaudeville.tune.cli import (
+pytest.importorskip("optuna")
+
+from vaudeville.core.protocol import ClassifyResult  # noqa: E402
+from vaudeville.core.rules import Example, Rule  # noqa: E402
+from vaudeville.eval import EvalCase  # noqa: E402
+from vaudeville.tune.cli import (  # noqa: E402
     EXIT_ERROR,
     EXIT_FAIL,
     EXIT_PASS,

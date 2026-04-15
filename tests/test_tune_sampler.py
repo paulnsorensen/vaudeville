@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
-import optuna
 import pytest
-from optuna.distributions import BaseDistribution, CategoricalDistribution
 
-from vaudeville.tune.sampler import (
+optuna = pytest.importorskip("optuna")
+from optuna.distributions import BaseDistribution, CategoricalDistribution  # noqa: E402
+
+from vaudeville.tune.sampler import (  # noqa: E402
     COLD_START_TRIALS,
     LLMSampler,
     _build_llm_prompt,

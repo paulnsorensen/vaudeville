@@ -120,7 +120,7 @@ def best_trial_ids(study: optuna.Study) -> list[str] | None:
         return None
     if not best:
         return None
-    return best[0].user_attrs.get("example_ids")
+    return best[0].user_attrs.get("example_ids")  # type: ignore[no-any-return]
 
 
 def _check_consecutive_hits(

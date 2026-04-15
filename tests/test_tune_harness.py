@@ -19,6 +19,7 @@ from vaudeville.tune.harness import (
     _check_consecutive_hits,
     _check_prompt_budget,
     _compute_metrics,
+    _constraints_func,
     _eval_subset,
     _format_verdict,
     _make_default_sampler,
@@ -176,6 +177,23 @@ class TestStudyDbPath:
             assert path.endswith(".db")
 
 
+class TestConstraintsFunc:
+    def test_returns_zero_when_not_violated(self) -> None:
+        trial = MagicMock()
+        trial.user_attrs = {}
+        assert _constraints_func(trial) == [0.0]
+
+    def test_returns_one_when_violated(self) -> None:
+        trial = MagicMock()
+        trial.user_attrs = {"constraint_violated": True}
+        assert _constraints_func(trial) == [1.0]
+
+    def test_returns_zero_when_explicitly_false(self) -> None:
+        trial = MagicMock()
+        trial.user_attrs = {"constraint_violated": False}
+        assert _constraints_func(trial) == [0.0]
+
+
 class TestMakeDefaultSampler:
     @patch("vaudeville.tune.harness.LLMSampler")
     def test_uses_llm_sampler_when_anthropic_available(
@@ -190,13 +208,13 @@ class TestMakeDefaultSampler:
         mock_llm_cls.assert_called_once_with(anthropic_client=mock_client)
         assert sampler == mock_llm_cls.return_value
 
-    def test_falls_back_to_tpe_when_anthropic_missing(self) -> None:
+    def test_falls_back_to_nsgaii_when_anthropic_missing(self) -> None:
         with patch.dict("sys.modules", {"anthropic": None}):
             sampler = _make_default_sampler()
-        assert isinstance(sampler, optuna.samplers.TPESampler)
+        assert isinstance(sampler, optuna.samplers.NSGAIISampler)
 
     @patch("vaudeville.tune.harness.LLMSampler")
-    def test_falls_back_to_tpe_on_client_error(
+    def test_falls_back_to_nsgaii_on_client_error(
         self,
         mock_llm_cls: MagicMock,
     ) -> None:
@@ -205,7 +223,7 @@ class TestMakeDefaultSampler:
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             sampler = _make_default_sampler()
         mock_llm_cls.assert_not_called()
-        assert isinstance(sampler, optuna.samplers.TPESampler)
+        assert isinstance(sampler, optuna.samplers.NSGAIISampler)
 
 
 class TestCreateStudy:

@@ -119,16 +119,24 @@ def _eval_subset(
     return precision, recall, case_results
 
 
+def _constraints_func(trial: optuna.trial.FrozenTrial) -> list[float]:
+    """Return constraint violations for NSGA-II feasibility sorting."""
+    violated = trial.user_attrs.get("constraint_violated", False)
+    return [1.0 if violated else 0.0]
+
+
 def _make_default_sampler() -> optuna.samplers.BaseSampler:
-    """Build LLMSampler with Anthropic client, or TPE if unavailable."""
+    """Build LLMSampler with Anthropic client, or NSGA-II if unavailable."""
     try:
         import anthropic
 
         client = anthropic.Anthropic()
         return LLMSampler(anthropic_client=client)
     except Exception:
-        logger.debug("Anthropic client unavailable, using TPE sampler")
-        return optuna.samplers.TPESampler()
+        logger.debug("Anthropic client unavailable, using NSGA-II sampler")
+        return optuna.samplers.NSGAIISampler(
+            constraints_func=_constraints_func,
+        )
 
 
 def create_study(

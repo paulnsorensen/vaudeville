@@ -46,8 +46,3 @@ class MockBackend:
 @pytest.fixture
 def rules_dir() -> str:
     return os.path.join(PROJECT_ROOT, "rules")
-
-
-@pytest.fixture
-def tests_dir() -> str:
-    return os.path.join(PROJECT_ROOT, "tests")

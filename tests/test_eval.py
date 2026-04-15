@@ -13,6 +13,7 @@ import yaml
 
 from conftest import MockBackend
 from vaudeville.core.rules import Rule
+from vaudeville.core import find_project_root
 from vaudeville.eval import (
     CaseResult,
     EvalCase,
@@ -23,16 +24,17 @@ from vaudeville.eval import (
 )
 from vaudeville.eval_cli import (
     _emit_jsonl,
-    _find_project_root,
+)
+from vaudeville.eval_calibrate import (
+    MIN_CALIBRATION_CASES,
+    CalibrateTarget,
+    _find_best_threshold,
+    calibrate_rule,
+    find_rule_file,
 )
 from vaudeville.eval_report import (
-    MIN_CALIBRATION_CASES,
-    _find_best_threshold,
     _git_head,
-    CalibrateTarget,
-    calibrate_rule,
     cross_validate_rule,
-    find_rule_file,
     print_results,
     run_evaluations,
     write_eval_log,
@@ -66,65 +68,64 @@ def two_cases() -> list[EvalCase]:
 
 class TestFindProjectRoot:
     def test_returns_path_in_git_repo(self) -> None:
-        result = _find_project_root()
+        result = find_project_root()
         assert result is not None
         assert os.path.isdir(result)
 
     def test_returns_none_on_oserror(self) -> None:
-        with patch("subprocess.run", side_effect=OSError):
-            assert _find_project_root() is None
+        with patch("vaudeville.core.paths.subprocess.run", side_effect=OSError):
+            assert find_project_root() is None
 
     def test_returns_none_on_timeout(self) -> None:
         with patch(
-            "subprocess.run",
+            "vaudeville.core.paths.subprocess.run",
             side_effect=subprocess.TimeoutExpired("git", 5),
         ):
-            assert _find_project_root() is None
+            assert find_project_root() is None
 
     def test_returns_none_on_nonzero_returncode(self) -> None:
-        with patch("subprocess.run") as mock_run:
+        with patch("vaudeville.core.paths.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 128
             mock_run.return_value.stdout = ""
-            assert _find_project_root() is None
+            assert find_project_root() is None
 
 
 class TestLoadTestCases:
-    def test_oserror_on_listdir_returns_empty(self) -> None:
-        with patch("vaudeville.eval.os.listdir", side_effect=OSError):
-            assert load_test_cases("/nonexistent/dir") == {}
+    def _rule(self, name: str, test_cases: list[EvalCase]) -> Rule:
+        return Rule(
+            name=name,
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[{"field": "last_assistant_message"}],
+            action="block",
+            message="{reason}",
+            test_cases=test_cases,
+        )
 
-    def test_skips_non_yaml_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            open(os.path.join(tmp, "readme.txt"), "w").close()
-            assert load_test_cases(tmp) == {}
+    def test_empty_rules_dict_returns_empty(self) -> None:
+        assert load_test_cases({}) == {}
 
-    def test_warns_on_bad_yaml(self, caplog: pytest.LogCaptureFixture) -> None:
-        import logging
+    def test_rules_without_test_cases_are_omitted(self) -> None:
+        rules = {"r": self._rule("r", [])}
+        assert load_test_cases(rules) == {}
 
-        with tempfile.TemporaryDirectory() as tmp:
-            bad_file = os.path.join(tmp, "bad.yaml")
-            with open(bad_file, "w") as f:
-                f.write(": invalid: yaml: {{{")
-            with caplog.at_level(logging.WARNING):
-                result = load_test_cases(tmp)
-        assert result == {}
-
-    def test_loads_valid_test_file(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "test.yaml")
-            with open(path, "w") as f:
-                yaml.dump(
-                    {
-                        "rule": "test-rule",
-                        "cases": [
-                            {"text": "example text", "label": "clean"},
-                        ],
-                    },
-                    f,
-                )
-            result = load_test_cases(tmp)
+    def test_returns_cases_keyed_by_rule_name(self) -> None:
+        cases = [EvalCase(text="example text", label="clean")]
+        rules = {"test-rule": self._rule("test-rule", cases)}
+        result = load_test_cases(rules)
         assert "test-rule" in result
         assert len(result["test-rule"]) == 1
+        assert result["test-rule"][0].text == "example text"
+        assert result["test-rule"][0].label == "clean"
+
+    def test_mixed_rules_only_returns_populated(self) -> None:
+        cases = [EvalCase(text="t", label="clean")]
+        rules = {
+            "with-cases": self._rule("with-cases", cases),
+            "empty-cases": self._rule("empty-cases", []),
+        }
+        result = load_test_cases(rules)
+        assert set(result.keys()) == {"with-cases"}
 
 
 class TestCondenseIntegration:
@@ -300,6 +301,8 @@ class TestCrossValidateRule:
         results = cross_validate_rule("violation-detector", cases, rules, backend)
         assert results.fp == 1
         assert len(results.misclassified) == 1
+        assert results.misclassified[0]["actual"] == "clean"
+        assert results.misclassified[0]["predicted"] == "violation"
 
 
 class TestPrintResults:
@@ -411,7 +414,7 @@ class TestBuildBackend:
         args = argparse.Namespace(model="test-model", no_daemon=True)
         mock_instance = MagicMock()
         mock_mlx = MagicMock(return_value=mock_instance)
-        with patch("vaudeville.server.MLXBackend", mock_mlx):
+        with patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx):
             backend = _build_backend(args)
         mock_mlx.assert_called_once_with("test-model")
         assert backend is mock_instance
@@ -429,7 +432,7 @@ class TestBuildBackend:
                 "vaudeville.server.daemon_backend.daemon_is_alive",
                 return_value=False,
             ),
-            patch("vaudeville.server.MLXBackend", mock_mlx),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx),
         ):
             backend = _build_backend(args)
         mock_mlx.assert_called_once_with("test-model")
@@ -480,11 +483,12 @@ class TestRunEvaluations:
 
 class TestMain:
     def test_exits_0_on_all_pass(self, capsys: pytest.CaptureFixture[str]) -> None:
-        mock_backend = MockBackend(verdict="clean")
+        # Backend always returns "violation"; all cases labeled "violation" → 100% P/R
+        mock_backend = MockBackend(verdict="violation")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
             patch("sys.argv", ["eval", "--no-daemon"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval_cli.load_rules_layered",
                 return_value={
@@ -499,7 +503,12 @@ class TestMain:
                     ),
                 },
             ),
-            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
+            patch(
+                "vaudeville.eval_cli.load_test_cases",
+                return_value={
+                    "violation-detector": [EvalCase(text="text", label="violation")]
+                },
+            ),
         ):
             with pytest.raises(SystemExit) as exc_info:
                 from vaudeville.eval_cli import main
@@ -514,7 +523,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
             patch("sys.argv", ["eval", "--no-daemon", "--rule", "violation-detector"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval_cli.load_rules_layered",
                 return_value={
@@ -546,7 +555,7 @@ class TestMain:
         mock_mlx_cls = MagicMock(return_value=MockBackend())
         with (
             patch("sys.argv", ["eval", "--no-daemon", "--rule", "nonexistent-rule"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval_cli.load_rules_layered",
                 return_value={
@@ -589,7 +598,7 @@ class TestMain:
                     tf,
                 ],
             ),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval_cli.load_rules_layered",
                 return_value={
@@ -1049,7 +1058,7 @@ class TestJsonFlag:
                 "sys.argv",
                 ["eval", "--no-daemon", "--rule", "violation-detector", "--json"],
             ),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval_cli.load_rules_layered",
                 return_value={
@@ -1106,7 +1115,7 @@ class TestJsonFlag:
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
             patch("sys.argv", ["eval", "--no-daemon"]),
-            patch("vaudeville.server.MLXBackend", mock_mlx_cls),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
                 "vaudeville.eval_cli.load_rules_layered",
                 return_value={

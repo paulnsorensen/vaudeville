@@ -6,20 +6,21 @@ CLI entrypoint is in eval_cli.py.
 
 from __future__ import annotations
 
-import logging
-import os
 from dataclasses import dataclass, field
 
 import yaml
 
-from .core import ClassifyResult, Rule, compute_confidence, parse_verdict
+from .core import ClassifyResult, EvalCase, Rule, compute_confidence, parse_verdict
 from .server import InferenceBackend, LogprobBackend, condense_text
 
-
-@dataclass
-class EvalCase:
-    text: str
-    label: str
+__all__ = [
+    "CaseResult",
+    "EvalCase",
+    "EvalResults",
+    "classify_case",
+    "evaluate_rule",
+    "load_test_cases",
+]
 
 
 @dataclass
@@ -74,31 +75,13 @@ class EvalResults:
         return 2 * p * r / (p + r) if (p + r) else 0.0
 
 
-def load_test_cases(tests_dir: str) -> dict[str, list[EvalCase]]:
-    suites: dict[str, list[EvalCase]] = {}
-    try:
-        filenames = os.listdir(tests_dir)
-    except OSError:
-        return suites
-
-    for filename in filenames:
-        if not (filename.endswith(".yaml") or filename.endswith(".yml")):
-            continue
-        path = os.path.join(tests_dir, filename)
-        try:
-            cases, rule_name = _load_test_file(path)
-            existing = suites.get(rule_name, [])
-            suites[rule_name] = existing + cases
-        except Exception as exc:
-            logging.warning(
-                "[vaudeville] Failed to load test file %s: %s", filename, exc
-            )
-
-    return suites
+def load_test_cases(rules: dict[str, Rule]) -> dict[str, list[EvalCase]]:
+    """Collect test cases declared inline on each loaded rule."""
+    return {r.name: list(r.test_cases) for r in rules.values() if r.test_cases}
 
 
 def _load_test_file(path: str) -> tuple[list[EvalCase], str]:
-    """Load test cases from a single YAML file. Returns (cases, rule_name)."""
+    """Load test cases from a single --test-file YAML. Returns (cases, rule_name)."""
     with open(path) as f:
         data = yaml.safe_load(f)
     rule_name = str(data["rule"])

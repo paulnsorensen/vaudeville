@@ -217,7 +217,7 @@ class TestBuildBackendDaemonPreference:
             patch(
                 "vaudeville.server.daemon_backend.daemon_is_alive", return_value=False
             ),
-            patch("vaudeville.server.MLXBackend", return_value=mock_mlx),
+            patch("vaudeville.server.mlx_backend.MLXBackend", return_value=mock_mlx),
         ):
             result = _build_backend(args)
         assert result is mock_mlx
@@ -229,7 +229,7 @@ class TestBuildBackendDaemonPreference:
 
         args = argparse.Namespace(model="test-model", no_daemon=True)
         mock_mlx = object()
-        with patch("vaudeville.server.MLXBackend", return_value=mock_mlx):
+        with patch("vaudeville.server.mlx_backend.MLXBackend", return_value=mock_mlx):
             result = _build_backend(args)
         assert result is mock_mlx
 

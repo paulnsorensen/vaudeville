@@ -1,4 +1,5 @@
 from .client import VaudevilleClient
+from .paths import find_project_root
 from .protocol import (
     ClassifyRequest,
     ClassifyResponse,
@@ -8,6 +9,7 @@ from .protocol import (
 )
 from .rules import (
     Example,
+    EvalCase,
     Rule,
     load_rules,
     load_rules_layered,
@@ -21,9 +23,11 @@ from .truncation import CHARS_PER_TOKEN, prepare_text
 __all__ = [
     "CHARS_PER_TOKEN",
     "ClassifyRequest",
+    "find_project_root",
     "ClassifyResponse",
     "ClassifyResult",
     "Example",
+    "EvalCase",
     "Rule",
     "VaudevilleClient",
     "compute_confidence",

@@ -40,7 +40,10 @@ class TestCmdStats:
             cmd_stats(Namespace(log_path="/tmp/test.jsonl", json=True))
 
         out = capsys.readouterr().out
-        assert '"total": 1' in out
+        import json
+
+        data = json.loads(out)
+        assert data["total"] == 1
 
     def test_stats_no_events(self, capsys: pytest.CaptureFixture[str]) -> None:
         from argparse import Namespace

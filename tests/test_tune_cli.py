@@ -129,7 +129,7 @@ class TestBuildBackend:
             "sys.modules",
             {"vaudeville.server.mlx_backend": MagicMock(MLXBackend=mock_mlx_cls)},
         ):
-            with patch("vaudeville.server.MLXBackend", mock_mlx_cls):
+            with patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls):
                 backend = _build_backend(no_daemon=False)
                 mock_start.assert_called_once()
                 mock_mlx_cls.assert_called_once()
@@ -356,30 +356,25 @@ class TestLoadCasesForRule:
     def test_returns_empty_for_unknown_rule(self) -> None:
         from vaudeville.tune.cli import _load_cases_for_rule
 
-        cases = _load_cases_for_rule("nonexistent-rule-xyz-123")
+        cases = _load_cases_for_rule("nonexistent-rule-xyz-123", {})
         assert cases == []
 
     def test_loads_existing_rule_cases(self) -> None:
-        import os
-
-        import yaml
-
+        from vaudeville.core.rules import EvalCase, Rule
         from vaudeville.tune.cli import _load_cases_for_rule
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tests_dir = os.path.join(tmpdir, "tests")
-            os.makedirs(tests_dir)
-            test_data = {
-                "rule": "my-test-rule",
-                "cases": [
-                    {"text": "bad text", "label": "violation"},
-                    {"text": "good text", "label": "clean"},
-                ],
-            }
-            with open(os.path.join(tests_dir, "my-test-rule.yaml"), "w") as f:
-                yaml.dump(test_data, f)
-
-            with patch.dict(os.environ, {"CLAUDE_PLUGIN_ROOT": tmpdir}):
-                cases = _load_cases_for_rule("my-test-rule")
-                assert len(cases) == 2
-                assert cases[0].label == "violation"
+        rule = Rule(
+            name="my-test-rule",
+            event="Stop",
+            prompt="Classify:\n{text}\nVERDICT:",
+            context=[],
+            action="block",
+            message="{reason}",
+            test_cases=[
+                EvalCase(text="bad text", label="violation"),
+                EvalCase(text="good text", label="clean"),
+            ],
+        )
+        cases = _load_cases_for_rule("my-test-rule", {"my-test-rule": rule})
+        assert len(cases) == 2
+        assert cases[0].label == "violation"

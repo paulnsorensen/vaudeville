@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 
-from .core.rules import load_rules, load_rules_layered
+from .core.rules import EvalCase, load_rules, load_rules_layered
 from .eval import (
     CaseResult,
-    EvalCase,
     _load_test_file,
     load_test_cases,
 )
@@ -51,7 +49,7 @@ def _build_backend(args: argparse.Namespace) -> InferenceBackend:
             "[vaudeville] Daemon not available — falling back to in-process MLXBackend"
         )
 
-    from .server import MLXBackend
+    from .server.mlx_backend import MLXBackend
 
     print(f"Loading model: {args.model}")
     return MLXBackend(args.model)
@@ -125,14 +123,6 @@ def _apply_extra_test_file(
     test_suites[args.rule] = existing + extra_cases
 
 
-def _tests_dir() -> str:
-    plugin_root = os.environ.get(
-        "CLAUDE_PLUGIN_ROOT",
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    return os.path.join(plugin_root, "tests")
-
-
 def _emit_jsonl(case_results: list[CaseResult]) -> None:
     """Write per-case results as JSONL to stdout."""
     import json
@@ -148,12 +138,12 @@ def main() -> None:
         rules = load_rules(args.rules_dir)
     else:
         rules = load_rules_layered(project_root=_find_project_root())
-    test_suites = load_test_cases(_tests_dir())
+    test_suites = load_test_cases(rules)
 
     _apply_extra_test_file(args, test_suites)
 
     if args.calibrate:
-        from .eval_report import run_calibrate
+        from .eval_calibrate import run_calibrate
 
         run_calibrate(args, rules, test_suites, backend, _find_project_root())
 

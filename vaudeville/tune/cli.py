@@ -13,7 +13,7 @@ import sys
 import time
 
 from ..core.paths import PID_FILE, SOCKET_PATH
-from ..core.rules import load_rules_layered
+from ..core.rules import Rule, load_rules_layered
 from ..eval import EvalCase, load_test_cases
 from ..server import DaemonBackend, InferenceBackend, daemon_is_alive
 from .harness import format_verdict, run_study
@@ -126,19 +126,14 @@ def _build_backend(no_daemon: bool) -> InferenceBackend:
             print("Daemon started successfully")
             return DaemonBackend()
         print("Auto-start failed — falling back to in-process MLXBackend")
-    from ..server import MLXBackend
+    from ..server.mlx_backend import MLXBackend
 
     return MLXBackend("mlx-community/Phi-4-mini-instruct-4bit")
 
 
-def _load_cases_for_rule(rule_name: str) -> list[EvalCase]:
-    """Load test cases for a specific rule from the tests directory."""
-    plugin_root = os.environ.get(
-        "CLAUDE_PLUGIN_ROOT",
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    )
-    tests_dir = os.path.join(plugin_root, "tests")
-    suites = load_test_cases(tests_dir)
+def _load_cases_for_rule(rule_name: str, rules: dict[str, Rule]) -> list[EvalCase]:
+    """Load test cases for a specific rule from inline rule definitions."""
+    suites = load_test_cases(rules)
     return suites.get(rule_name, [])
 
 
@@ -166,7 +161,7 @@ def run_tune(args: argparse.Namespace) -> int:
         return EXIT_ERROR
 
     rule = rules[rule_name]
-    cases = _load_cases_for_rule(rule_name)
+    cases = _load_cases_for_rule(rule_name, rules)
     if not cases:
         print(f"No test cases for rule: {rule_name}", file=sys.stderr)
         return EXIT_ERROR

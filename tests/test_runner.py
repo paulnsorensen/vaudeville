@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import subprocess
 import sys
 from unittest.mock import patch
 
@@ -17,29 +16,6 @@ if HOOKS_DIR not in sys.path:
     sys.path.insert(0, HOOKS_DIR)
 
 import runner  # noqa: E402
-
-
-class TestFindProjectRoot:
-    def test_returns_path_in_git_repo(self) -> None:
-        result = runner._find_project_root()
-        assert result is not None
-        assert os.path.isdir(result)
-
-    def test_returns_none_on_oserror(self) -> None:
-        with patch("runner.subprocess.run", side_effect=OSError):
-            assert runner._find_project_root() is None
-
-    def test_returns_none_on_timeout(self) -> None:
-        with patch(
-            "runner.subprocess.run",
-            side_effect=subprocess.TimeoutExpired("git", 5),
-        ):
-            assert runner._find_project_root() is None
-
-    def test_returns_none_on_nonzero_exit(self) -> None:
-        with patch("runner.subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 1
-            assert runner._find_project_root() is None
 
 
 class TestExtractField:
@@ -75,12 +51,6 @@ class TestExtractField:
 class TestExtractText:
     def test_field_context_dict(self) -> None:
         context = [{"field": "body"}]
-        assert (
-            runner.extract_text_from_dict({"body": "some text"}, context) == "some text"
-        )
-
-    def test_string_context(self) -> None:
-        context = ["body"]
         assert (
             runner.extract_text_from_dict({"body": "some text"}, context) == "some text"
         )

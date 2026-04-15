@@ -4,22 +4,21 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 
-class TestMLXBackend:
-    def _make_stream_response(
-        self, text: str, finish_reason: str | None = "stop"
-    ) -> Any:
-        resp = MagicMock()
-        resp.text = text
-        resp.finish_reason = finish_reason
-        return resp
+def _make_stream_response(text: str, finish_reason: str | None = "stop") -> Any:
+    resp = MagicMock()
+    resp.text = text
+    resp.finish_reason = finish_reason
+    return resp
 
+
+class TestMLXBackend:
     def _make_mocks(
         self, output: str = "VERDICT: clean"
     ) -> tuple[Any, Any, Any, Any, Any]:
         mock_model = MagicMock()
         mock_tokenizer = MagicMock()
         mock_load = MagicMock(return_value=(mock_model, mock_tokenizer))
-        response = self._make_stream_response(output)
+        response = _make_stream_response(output)
         mock_stream_generate = MagicMock(return_value=iter([response]))
         mock_generate_step = MagicMock()
         return (
@@ -65,7 +64,7 @@ class TestMLXBackend:
             "\n",
             "Classify this response",
         ]
-        responses = [self._make_stream_response(c, finish_reason=None) for c in chunks]
+        responses = [_make_stream_response(c, finish_reason=None) for c in chunks]
         mock_stream_generate = MagicMock(return_value=iter(responses))
         modules = self._patch_mlx_modules(
             mock_load, mock_stream_generate, mock_generate_step
@@ -82,10 +81,8 @@ class TestMLXBackend:
         """A single chunk containing both newlines still terminates generation."""
         _, _, mock_load, _, mock_generate_step = self._make_mocks()
         responses = [
-            self._make_stream_response(
-                "VERDICT: clean\nREASON: ok.\n", finish_reason=None
-            ),
-            self._make_stream_response("run-on text", finish_reason=None),
+            _make_stream_response("VERDICT: clean\nREASON: ok.\n", finish_reason=None),
+            _make_stream_response("run-on text", finish_reason=None),
         ]
         mock_stream_generate = MagicMock(return_value=iter(responses))
         modules = self._patch_mlx_modules(
@@ -101,7 +98,7 @@ class TestMLXBackend:
     def test_classify_respects_finish_reason_before_newlines(self) -> None:
         """finish_reason still wins — no artificial wait for two newlines."""
         _, _, mock_load, _, mock_generate_step = self._make_mocks()
-        responses = [self._make_stream_response("VERDICT: clean", finish_reason="stop")]
+        responses = [_make_stream_response("VERDICT: clean", finish_reason="stop")]
         mock_stream_generate = MagicMock(return_value=iter(responses))
         modules = self._patch_mlx_modules(
             mock_load, mock_stream_generate, mock_generate_step
@@ -164,14 +161,6 @@ class TestMLXBackend:
 class TestMLXCachedMethods:
     """Tests for KV cache prefix reuse in MLXBackend."""
 
-    def _make_stream_response(
-        self, text: str, finish_reason: str | None = "stop"
-    ) -> Any:
-        resp = MagicMock()
-        resp.text = text
-        resp.finish_reason = finish_reason
-        return resp
-
     def _build_backend(
         self,
         output: str = "VERDICT: clean",
@@ -200,7 +189,7 @@ class TestMLXCachedMethods:
         mock_tokenizer.decode.side_effect = lambda ids: output
 
         mock_load = MagicMock(return_value=(mock_model, mock_tokenizer))
-        response = self._make_stream_response(output)
+        response = _make_stream_response(output)
         mock_stream_generate = MagicMock(return_value=iter([response]))
 
         if generate_step_tokens is None:
@@ -298,7 +287,7 @@ class TestMLXCachedMethods:
         )
         # _warm_prefix uses generate_step, then classify_cached uses stream_generate
         mock_gen_step.return_value = iter([])
-        response = self._make_stream_response(" clean")
+        response = _make_stream_response(" clean")
         mock_stream_gen.return_value = iter([response])
 
         with self._patch_mlx_cache(backend):
@@ -312,14 +301,14 @@ class TestMLXCachedMethods:
 
         with self._patch_mlx_cache(backend):
             # First call warms the cache
-            resp1 = self._make_stream_response("VERDICT: clean")
+            resp1 = _make_stream_response("VERDICT: clean")
             mock_stream_gen.return_value = iter([resp1])
             backend.classify_cached("rule prefix text1", prefix_len=12)
 
             warm_call_count = mock_gen_step.call_count
 
             # Second call with same prefix should reuse cache
-            resp2 = self._make_stream_response("VERDICT: violation")
+            resp2 = _make_stream_response("VERDICT: violation")
             mock_stream_gen.return_value = iter([resp2])
             mock_gen_step.return_value = iter([])
             backend.classify_cached("rule prefix text2", prefix_len=12)
@@ -332,13 +321,13 @@ class TestMLXCachedMethods:
         mock_gen_step.return_value = iter([])
 
         with self._patch_mlx_cache(backend):
-            resp1 = self._make_stream_response("VERDICT: clean")
+            resp1 = _make_stream_response("VERDICT: clean")
             mock_stream_gen.return_value = iter([resp1])
             backend.classify_cached("prefix_A user text", prefix_len=9)
 
             first_warm_count = mock_gen_step.call_count
 
-            resp2 = self._make_stream_response("VERDICT: clean")
+            resp2 = _make_stream_response("VERDICT: clean")
             mock_stream_gen.return_value = iter([resp2])
             mock_gen_step.return_value = iter([])
             backend.classify_cached("prefix_B user text", prefix_len=9)
@@ -356,7 +345,7 @@ class TestMLXCachedMethods:
         def capture_cache(*args: Any, **kwargs: Any) -> Any:
             if "prompt_cache" in kwargs:
                 captured_caches.append(id(kwargs["prompt_cache"]))
-            return iter([self._make_stream_response("VERDICT: clean")])
+            return iter([_make_stream_response("VERDICT: clean")])
 
         mock_stream_gen.side_effect = capture_cache
 
@@ -377,7 +366,7 @@ class TestMLXCachedMethods:
 
         with self._patch_mlx_cache(backend):
             for i in range(MAX_PREFIX_CACHES + 2):
-                resp = self._make_stream_response("VERDICT: clean")
+                resp = _make_stream_response("VERDICT: clean")
                 mock_stream_gen.return_value = iter([resp])
                 mock_gen_step.return_value = iter([])
                 backend.classify_cached(f"prefix_{i:03d} user text", prefix_len=11)
@@ -466,7 +455,7 @@ class TestMLXCachedMethods:
         mock_gen_step.return_value = iter([])  # warm returns no tokens
 
         chunks = [" violation", "\n", "REASON: done.", "\n", "run-on text"]
-        responses = [self._make_stream_response(c, finish_reason=None) for c in chunks]
+        responses = [_make_stream_response(c, finish_reason=None) for c in chunks]
         mock_stream_gen.return_value = iter(responses)
 
         with self._patch_mlx_cache(backend):

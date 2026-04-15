@@ -407,12 +407,6 @@ class TestRunnerHelpers:
         runner = self._get_runner()
         assert runner.extract_field({"a": {"b": "val"}}, "a.b") == "val"
 
-    def test_extract_text_string_context_entry(self) -> None:
-        runner = self._get_runner()
-        context = ["last_assistant_message"]
-        hook_input = {"last_assistant_message": "hello"}
-        assert runner.extract_text_from_dict(hook_input, context) == "hello"
-
     def test_extract_text_no_context(self) -> None:
         runner = self._get_runner()
         assert runner.extract_text_from_dict({}, []) == ""
@@ -457,18 +451,6 @@ class TestRunnerHelpers:
                 runner.main()
             assert exc_info.value.code == 0
         assert json.loads(stdout.getvalue()) == {}
-
-    def test_find_project_root_no_git(self) -> None:
-        runner = self._get_runner()
-        with patch("subprocess.run", side_effect=OSError("no git")):
-            assert runner._find_project_root() is None
-
-    def test_find_project_root_timeout(self) -> None:
-        runner = self._get_runner()
-        import subprocess as sp
-
-        with patch("subprocess.run", side_effect=sp.TimeoutExpired("git", 5)):
-            assert runner._find_project_root() is None
 
     def test_invalid_json_stdin(self) -> None:
         runner = self._get_runner()

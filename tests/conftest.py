@@ -50,4 +50,4 @@ def rules_dir() -> str:
 
 @pytest.fixture
 def tests_dir() -> str:
-    return os.path.join(PROJECT_ROOT, "tests")
+    return os.path.join(PROJECT_ROOT, "examples", "tests")

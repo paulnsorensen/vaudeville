@@ -251,7 +251,7 @@ def main() -> None:
         "CLAUDE_PLUGIN_ROOT",
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
-    tests_dir = os.path.join(plugin_root, "tests")
+    tests_dir = os.path.join(plugin_root, "examples", "tests")
 
     backend = _build_backend(args)
     if args.rules_dir:

@@ -18,7 +18,7 @@ from loguru import logger as _loguru
 from .log_config import LogConfig, load_log_config
 
 _LOGS_DIR = os.path.join(os.path.expanduser("~"), ".vaudeville", "logs")
-_MAX_INPUT_SNIPPET_LOG_CHARS = 500
+_MAX_SNIPPET_LOG_CHARS = 500
 
 
 @dataclass(frozen=True)
@@ -96,7 +96,7 @@ class EventLogger:
             "prompt_chars": event.prompt_chars,
             "tier": event.tier,
             "reason": event.reason,
-            "input_snippet": event.input_snippet[:_MAX_INPUT_SNIPPET_LOG_CHARS],
+            "input_snippet": (event.input_snippet or "")[:_MAX_SNIPPET_LOG_CHARS],
         }
 
         self._logger.bind(_sink="events").info(json.dumps(common, default=str))

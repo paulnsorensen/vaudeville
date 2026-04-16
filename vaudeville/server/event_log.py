@@ -18,6 +18,7 @@ from loguru import logger as _loguru
 from .log_config import LogConfig, load_log_config
 
 _LOGS_DIR = os.path.join(os.path.expanduser("~"), ".vaudeville", "logs")
+# Keep event rows lightweight for fast tail/read operations in watch mode.
 _MAX_SNIPPET_LOG_CHARS = 500
 
 
@@ -95,7 +96,7 @@ class EventLogger:
             "latency_ms": round(event.latency_ms, 1),
             "prompt_chars": event.prompt_chars,
             "tier": event.tier,
-            "reason": event.reason,
+            "reason": event.reason or "",
             "input_snippet": (event.input_snippet or "")[:_MAX_SNIPPET_LOG_CHARS],
         }
 

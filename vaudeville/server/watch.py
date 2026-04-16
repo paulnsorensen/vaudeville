@@ -23,6 +23,7 @@ _MAX_ROWS = 20
 _POLL_INTERVAL = 0.2
 _REASON_DISPLAY_CHARS = 50
 _SNIPPET_DISPLAY_CHARS = 50
+# Rich adds horizontal padding around cell content; reserve a little extra width.
 _REASON_COLUMN_WIDTH = _REASON_DISPLAY_CHARS + 2
 _SNIPPET_COLUMN_WIDTH = _SNIPPET_DISPLAY_CHARS + 2
 

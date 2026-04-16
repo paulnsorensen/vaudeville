@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from typing import Any
 
@@ -47,12 +48,117 @@ def cmd_stats(args: argparse.Namespace) -> None:
     _print_stats_human(result)
 
 
-def cmd_tune(args: argparse.Namespace) -> None:
-    """Run the rule tuning harness."""
-    from vaudeville.tune.cli import run_tune
+def _find_project_root() -> str:
+    """Find the project root via git."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return os.getcwd()
 
-    code = run_tune(args)
-    sys.exit(code)
+
+def cmd_tune(args: argparse.Namespace) -> None:
+    """Run the rule tuning agent via ralphify pattern.
+
+    Launches an autonomous agent loop to iteratively improve a rule's
+    prompt until it meets precision/recall/f1 thresholds.
+    """
+    project_root = _find_project_root()
+    ralph_dir = os.path.join(project_root, "commands", "tune")
+
+    if not os.path.exists(os.path.join(ralph_dir, "RALPH.md")):
+        print(f"Error: RALPH.md not found in {ralph_dir}", file=sys.stderr)
+        sys.exit(2)
+
+    # Build the ralph command with args
+    cmd = [
+        "claude",
+        "-p",
+        "--allowedTools",
+        "Read,Edit,Write,Bash",
+        "--disallowedTools",
+        "mcp",
+        "--print",
+        f"Run the tune ralph for rule '{args.rule}' with thresholds: "
+        f"p_min={args.p_min}, r_min={args.r_min}, f1_min={args.f1_min}. "
+        f"Read commands/tune/RALPH.md for instructions.",
+    ]
+
+    print(f"Starting tune agent for rule: {args.rule}")
+    print(
+        f"Thresholds: precision>={args.p_min}, recall>={args.r_min}, f1>={args.f1_min}"
+    )
+    print()
+
+    try:
+        result = subprocess.run(cmd, cwd=project_root)
+        sys.exit(result.returncode)
+    except FileNotFoundError:
+        print(
+            "Error: 'claude' CLI not found. Install Claude Code first.", file=sys.stderr
+        )
+        sys.exit(2)
+    except KeyboardInterrupt:
+        print("\nTuning interrupted.")
+        sys.exit(1)
+
+
+def cmd_generate(args: argparse.Namespace) -> None:
+    """Run the rule generation agent via ralphify pattern.
+
+    Launches an autonomous agent loop to create a new rule from
+    user instructions, iterating until it meets metric thresholds.
+    """
+    project_root = _find_project_root()
+    ralph_dir = os.path.join(project_root, "commands", "generate")
+
+    if not os.path.exists(os.path.join(ralph_dir, "RALPH.md")):
+        print(f"Error: RALPH.md not found in {ralph_dir}", file=sys.stderr)
+        sys.exit(2)
+
+    mode = "live" if args.live else "shadow"
+
+    # Build the ralph command with args
+    cmd = [
+        "claude",
+        "-p",
+        "--allowedTools",
+        "Read,Edit,Write,Bash,Glob,Grep",
+        "--disallowedTools",
+        "mcp",
+        "--print",
+        f"Run the generate ralph with instructions: '{args.instructions}'. "
+        f"Thresholds: p_min={args.p_min}, r_min={args.r_min}, f1_min={args.f1_min}. "
+        f"Mode: {mode}. "
+        f"Read commands/generate/RALPH.md for instructions.",
+    ]
+
+    print("Starting generate agent")
+    print(f"Instructions: {args.instructions}")
+    print(
+        f"Thresholds: precision>={args.p_min}, recall>={args.r_min}, f1>={args.f1_min}"
+    )
+    print(f"Mode: {mode}")
+    print()
+
+    try:
+        result = subprocess.run(cmd, cwd=project_root)
+        sys.exit(result.returncode)
+    except FileNotFoundError:
+        print(
+            "Error: 'claude' CLI not found. Install Claude Code first.", file=sys.stderr
+        )
+        sys.exit(2)
+    except KeyboardInterrupt:
+        print("\nGeneration interrupted.")
+        sys.exit(1)
 
 
 def _print_stats_human(result: dict[str, Any]) -> None:
@@ -118,35 +224,62 @@ def main() -> None:
         help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
     )
 
-    tune_parser = sub.add_parser("tune", help="Tune a rule via Optuna study")
+    # tune command - ralphify-based rule tuning
+    tune_parser = sub.add_parser(
+        "tune",
+        help="Tune a rule to meet precision/recall/f1 thresholds (autonomous agent)",
+    )
     tune_parser.add_argument("rule", help="Rule name to tune")
     tune_parser.add_argument(
         "--p-min",
         type=float,
         default=0.95,
-        help="Minimum precision",
+        help="Minimum precision threshold (default: 0.95)",
     )
     tune_parser.add_argument(
         "--r-min",
         type=float,
         default=0.80,
-        help="Minimum recall",
+        help="Minimum recall threshold (default: 0.80)",
     )
     tune_parser.add_argument(
-        "--budget",
-        type=int,
-        default=15,
-        help="Max trials",
+        "--f1-min",
+        type=float,
+        default=0.85,
+        help="Minimum F1 threshold (default: 0.85)",
     )
-    tune_parser.add_argument(
-        "--author",
+
+    # generate command - ralphify-based rule generation
+    generate_parser = sub.add_parser(
+        "generate",
+        help="Generate a new rule from instructions (autonomous agent)",
+    )
+    generate_parser.add_argument(
+        "instructions",
+        help="Description of what the rule should detect",
+    )
+    generate_parser.add_argument(
+        "--p-min",
+        type=float,
+        default=0.95,
+        help="Minimum precision threshold (default: 0.95)",
+    )
+    generate_parser.add_argument(
+        "--r-min",
+        type=float,
+        default=0.80,
+        help="Minimum recall threshold (default: 0.80)",
+    )
+    generate_parser.add_argument(
+        "--f1-min",
+        type=float,
+        default=0.85,
+        help="Minimum F1 threshold (default: 0.85)",
+    )
+    generate_parser.add_argument(
+        "--live",
         action="store_true",
-        help="Enable candidate authoring",
-    )
-    tune_parser.add_argument(
-        "--no-daemon",
-        action="store_true",
-        help="Force in-process backend",
+        help="Commit the rule when thresholds are met (default: shadow mode)",
     )
 
     args = parser.parse_args()
@@ -162,6 +295,8 @@ def main() -> None:
         cmd_stats(args)
     elif args.command == "tune":
         cmd_tune(args)
+    elif args.command == "generate":
+        cmd_generate(args)
 
 
 if __name__ == "__main__":

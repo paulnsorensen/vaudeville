@@ -144,6 +144,11 @@ def test_truncate_display_sanitizes_newlines() -> None:
     assert _truncate_display("line1\nline2\rline3", 100) == "line1 line2 line3"
 
 
+def test_truncate_display_handles_tiny_widths() -> None:
+    assert _truncate_display("abc", 1) == "…"
+    assert _truncate_display("abc", 0) == ""
+
+
 def test_build_table_missing_fields() -> None:
     events: list[dict[str, Any]] = [{}]
     table = _build_table(events, (1, 0))

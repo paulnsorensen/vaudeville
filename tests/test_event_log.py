@@ -40,6 +40,8 @@ def test_log_event_writes_events_jsonl(tmp_path: pathlib.Path) -> None:
         assert evt["confidence"] == 0.92
         assert evt["latency_ms"] == 42.3
         assert evt["prompt_chars"] == 150
+        assert evt["reason"] == ""
+        assert evt["input_snippet"] == ""
         assert "ts" in evt
     finally:
         logger.close()
@@ -86,9 +88,8 @@ def test_violation_written_to_both_files(tmp_path: pathlib.Path) -> None:
         events = _read_jsonl(tmp_path / "events.jsonl")
         assert len(events) == 1
         assert events[0]["verdict"] == "violation"
-        # events.jsonl should NOT have reason/input_snippet
-        assert "reason" not in events[0]
-        assert "input_snippet" not in events[0]
+        assert events[0]["reason"] == "Unearned praise detected"
+        assert events[0]["input_snippet"] == "Great question! That's a really smart approach."
 
         violations = _read_jsonl(tmp_path / "violations.jsonl")
         assert len(violations) == 1

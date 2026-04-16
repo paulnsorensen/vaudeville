@@ -94,16 +94,14 @@ class EventLogger:
             "latency_ms": round(event.latency_ms, 1),
             "prompt_chars": event.prompt_chars,
             "tier": event.tier,
+            "reason": event.reason,
+            "input_snippet": event.input_snippet[:500],
         }
 
         self._logger.bind(_sink="events").info(json.dumps(common, default=str))
 
         if event.verdict == "violation":
-            violation = {
-                **common,
-                "reason": event.reason,
-                "input_snippet": event.input_snippet[:500],
-            }
+            violation = {**common}
             self._logger.bind(_sink="violations").info(
                 json.dumps(violation, default=str)
             )

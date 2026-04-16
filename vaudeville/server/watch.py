@@ -21,6 +21,8 @@ _EVENTS_LOG = os.path.join(
 
 _MAX_ROWS = 20
 _POLL_INTERVAL = 0.2
+_REASON_DISPLAY_CHARS = 50
+_SNIPPET_DISPLAY_CHARS = 50
 
 
 def _parse_ts_display(ts: str) -> str:
@@ -54,6 +56,13 @@ def _tier_text(tier: str) -> Text:
     return Text(tier, style="bold green")
 
 
+def _truncate_display(value: object, max_chars: int) -> str:
+    text = str(value or "").replace("\n", " ").replace("\r", " ").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1] + "…"
+
+
 def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table:
     total_seen, violations = totals
     table = Table(
@@ -66,6 +75,8 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
     table.add_column("Verdict", width=12)
     table.add_column("Confidence", justify="right", width=12)
     table.add_column("Latency ms", justify="right", width=12)
+    table.add_column("Reason", width=52)
+    table.add_column("Text", width=52)
 
     for evt in events[-_MAX_ROWS:]:
         table.add_row(
@@ -75,6 +86,8 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
             _verdict_text(evt.get("verdict", "?")),
             f"{_to_float(evt.get('confidence', 0)):.2f}",
             f"{_to_float(evt.get('latency_ms', 0)):.1f}",
+            _truncate_display(evt.get("reason", ""), _REASON_DISPLAY_CHARS),
+            _truncate_display(evt.get("input_snippet", ""), _SNIPPET_DISPLAY_CHARS),
         )
     return table
 

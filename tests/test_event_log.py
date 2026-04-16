@@ -129,6 +129,30 @@ def test_input_snippet_truncated_at_500(tmp_path: pathlib.Path) -> None:
         logger.close()
 
 
+def test_event_input_snippet_truncated_at_500(tmp_path: pathlib.Path) -> None:
+    """events.jsonl also truncates input snippet to 500 characters."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        long_snippet = "y" * 1000
+        logger.log_event(
+            ClassificationEvent(
+                rule="test-rule",
+                verdict="clean",
+                confidence=0.75,
+                latency_ms=30.0,
+                prompt_chars=1000,
+                reason="long",
+                input_snippet=long_snippet,
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        assert len(events[0]["input_snippet"]) == 500  # type: ignore[arg-type]
+    finally:
+        logger.close()
+
+
 def test_multiple_events(tmp_path: pathlib.Path) -> None:
     """Multiple events are appended correctly."""
     logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))

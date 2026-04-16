@@ -23,6 +23,8 @@ _MAX_ROWS = 20
 _POLL_INTERVAL = 0.2
 _REASON_DISPLAY_CHARS = 50
 _SNIPPET_DISPLAY_CHARS = 50
+_REASON_COLUMN_WIDTH = _REASON_DISPLAY_CHARS + 2
+_SNIPPET_COLUMN_WIDTH = _SNIPPET_DISPLAY_CHARS + 2
 
 
 def _parse_ts_display(ts: str) -> str:
@@ -79,8 +81,8 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
     table.add_column("Verdict", width=12)
     table.add_column("Confidence", justify="right", width=12)
     table.add_column("Latency ms", justify="right", width=12)
-    table.add_column("Reason", width=52)
-    table.add_column("Text", width=52)
+    table.add_column("Reason", width=_REASON_COLUMN_WIDTH)
+    table.add_column("Text", width=_SNIPPET_COLUMN_WIDTH)
 
     for evt in events[-_MAX_ROWS:]:
         table.add_row(

@@ -89,7 +89,10 @@ def test_violation_written_to_both_files(tmp_path: pathlib.Path) -> None:
         assert len(events) == 1
         assert events[0]["verdict"] == "violation"
         assert events[0]["reason"] == "Unearned praise detected"
-        assert events[0]["input_snippet"] == "Great question! That's a really smart approach."
+        assert (
+            events[0]["input_snippet"]
+            == "Great question! That's a really smart approach."
+        )
 
         violations = _read_jsonl(tmp_path / "violations.jsonl")
         assert len(violations) == 1

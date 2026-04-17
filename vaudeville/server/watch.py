@@ -59,15 +59,15 @@ def _tier_text(tier: str) -> Text:
     return Text(tier, style="bold green")
 
 
-def _truncate_display(value: object, max_chars: int) -> str:
-    text = str(value or "").replace("\n", " ").replace("\r", " ").strip()
+def _truncate_display(value: object, max_chars: int) -> Text:
+    text = ("" if value is None else str(value)).replace("\n", " ").replace("\r", " ").strip()
     if max_chars <= 0:
-        return ""
+        return Text("")
     if len(text) <= max_chars:
-        return text
+        return Text(text)
     if max_chars == 1:
-        return "…"
-    return text[: max_chars - 1] + "…"
+        return Text("…")
+    return Text(text[: max_chars - 1] + "…")
 
 
 def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table:

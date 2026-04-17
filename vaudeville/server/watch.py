@@ -60,7 +60,12 @@ def _tier_text(tier: str) -> Text:
 
 
 def _truncate_display(value: object, max_chars: int) -> Text:
-    text = ("" if value is None else str(value)).replace("\n", " ").replace("\r", " ").strip()
+    text = (
+        ("" if value is None else str(value))
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .strip()
+    )
     if max_chars <= 0:
         return Text("")
     if len(text) <= max_chars:

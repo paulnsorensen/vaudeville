@@ -133,20 +133,20 @@ def test_build_table_has_reason_and_text_columns() -> None:
 
 
 def test_truncate_display_short_text() -> None:
-    assert _truncate_display("short", 10) == "short"
+    assert _truncate_display("short", 10).plain == "short"
 
 
 def test_truncate_display_long_text() -> None:
-    assert _truncate_display("x" * 20, 10) == ("x" * 9) + "…"
+    assert _truncate_display("x" * 20, 10).plain == ("x" * 9) + "…"
 
 
 def test_truncate_display_sanitizes_newlines() -> None:
-    assert _truncate_display("line1\nline2\rline3", 100) == "line1 line2 line3"
+    assert _truncate_display("line1\nline2\rline3", 100).plain == "line1 line2 line3"
 
 
 def test_truncate_display_handles_tiny_widths() -> None:
-    assert _truncate_display("abc", 1) == "…"
-    assert _truncate_display("abc", 0) == ""
+    assert _truncate_display("abc", 1).plain == "…"
+    assert _truncate_display("abc", 0).plain == ""
 
 
 def test_build_table_missing_fields() -> None:

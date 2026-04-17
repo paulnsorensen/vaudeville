@@ -21,11 +21,17 @@ _EVENTS_LOG = os.path.join(
 
 _MAX_ROWS = 20
 _POLL_INTERVAL = 0.2
-_REASON_DISPLAY_CHARS = 50
-_SNIPPET_DISPLAY_CHARS = 50
-# Rich adds horizontal padding around cell content; reserve a little extra width.
-_REASON_COLUMN_WIDTH = _REASON_DISPLAY_CHARS + 2
-_SNIPPET_COLUMN_WIDTH = _SNIPPET_DISPLAY_CHARS + 2
+
+# Minimum column widths keep fixed-content columns readable on narrow terminals.
+# Reason and Text flex to fill remaining space (and wrap) via `ratio`.
+_TIME_MIN_WIDTH = 8
+_RULE_MIN_WIDTH = 15
+_TIER_MIN_WIDTH = 7
+_VERDICT_MIN_WIDTH = 9
+_CONFIDENCE_MIN_WIDTH = 10
+_LATENCY_MIN_WIDTH = 10
+_REASON_MIN_WIDTH = 20
+_SNIPPET_MIN_WIDTH = 20
 
 
 def _parse_ts_display(ts: str) -> str:
@@ -59,20 +65,29 @@ def _tier_text(tier: str) -> Text:
     return Text(tier, style="bold green")
 
 
-def _truncate_display(value: object, max_chars: int) -> Text:
+# Confidence heat-map thresholds. Red is reserved for violation verdicts.
+_CONFIDENCE_HIGH = 0.8
+_CONFIDENCE_MEH = 0.5
+
+
+def _confidence_text(confidence: float) -> Text:
+    formatted = f"{confidence:.2f}"
+    if confidence >= _CONFIDENCE_HIGH:
+        return Text(formatted, style="green")
+    if confidence >= _CONFIDENCE_MEH:
+        return Text(formatted, style="yellow")
+    return Text(formatted, style="dim")
+
+
+def _sanitize_display(value: object) -> Text:
+    """Return *value* as single-line Text, with newlines flattened to spaces."""
     text = (
         ("" if value is None else str(value))
         .replace("\n", " ")
         .replace("\r", " ")
         .strip()
     )
-    if max_chars <= 0:
-        return Text("")
-    if len(text) <= max_chars:
-        return Text(text)
-    if max_chars == 1:
-        return Text("…")
-    return Text(text[: max_chars - 1] + "…")
+    return Text(text)
 
 
 def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table:
@@ -80,15 +95,26 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
     table = Table(
         title="Vaudeville \u2014 Live Rule Firings",
         caption=f"Session: {total_seen} events, {violations} violations",
+        expand=True,
     )
-    table.add_column("Time", style="dim", width=10)
-    table.add_column("Rule", width=30)
-    table.add_column("Tier", width=10)
-    table.add_column("Verdict", width=12)
-    table.add_column("Confidence", justify="right", width=12)
-    table.add_column("Latency ms", justify="right", width=12)
-    table.add_column("Reason", width=_REASON_COLUMN_WIDTH)
-    table.add_column("Text", width=_SNIPPET_COLUMN_WIDTH)
+    table.add_column("Time", style="dim", min_width=_TIME_MIN_WIDTH, no_wrap=True)
+    table.add_column("Rule", min_width=_RULE_MIN_WIDTH, overflow="fold")
+    table.add_column("Tier", min_width=_TIER_MIN_WIDTH, no_wrap=True)
+    table.add_column("Verdict", min_width=_VERDICT_MIN_WIDTH, no_wrap=True)
+    table.add_column(
+        "Confidence",
+        justify="right",
+        min_width=_CONFIDENCE_MIN_WIDTH,
+        no_wrap=True,
+    )
+    table.add_column(
+        "Latency ms",
+        justify="right",
+        min_width=_LATENCY_MIN_WIDTH,
+        no_wrap=True,
+    )
+    table.add_column("Reason", min_width=_REASON_MIN_WIDTH, ratio=1, overflow="fold")
+    table.add_column("Text", min_width=_SNIPPET_MIN_WIDTH, ratio=1, overflow="fold")
 
     for evt in events[-_MAX_ROWS:]:
         table.add_row(
@@ -96,10 +122,10 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
             evt.get("rule", "<unknown>"),
             _tier_text(evt.get("tier", "enforce")),
             _verdict_text(evt.get("verdict", "?")),
-            f"{_to_float(evt.get('confidence', 0)):.2f}",
+            _confidence_text(_to_float(evt.get("confidence", 0))),
             f"{_to_float(evt.get('latency_ms', 0)):.1f}",
-            _truncate_display(evt.get("reason", ""), _REASON_DISPLAY_CHARS),
-            _truncate_display(evt.get("input_snippet", ""), _SNIPPET_DISPLAY_CHARS),
+            _sanitize_display(evt.get("reason", "")),
+            _sanitize_display(evt.get("input_snippet", "")),
         )
     return table
 

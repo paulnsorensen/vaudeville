@@ -89,7 +89,9 @@ class TestHandleRequestEventLogging:
         el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
         try:
             backend = MockBackend(verdict="violation", reason="bad stuff")
-            data = json.dumps({"prompt": "bad input", "rule": "no-slop"}).encode()
+            data = json.dumps(
+                {"prompt": "bad input", "rule": "no-slop", "input_text": "bad input"}
+            ).encode()
             handle_request(data, backend, event_logger=el)
             time.sleep(0.05)
 
@@ -101,6 +103,30 @@ class TestHandleRequestEventLogging:
             assert v["verdict"] == "violation"
             assert v["reason"] == "bad stuff"
             assert v["input_snippet"] == "bad input"
+        finally:
+            el.close()
+
+    def test_input_text_used_as_snippet_when_present(self, tmp_path: str) -> None:
+        """input_text field is stored as input_snippet instead of the full prompt."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend(verdict="clean", reason="ok")
+            data = json.dumps(
+                {
+                    "prompt": "RULE TEMPLATE claude said: hello there",
+                    "rule": "test",
+                    "input_text": "hello there",
+                }
+            ).encode()
+            handle_request(data, backend, event_logger=el)
+            time.sleep(0.05)
+
+            events_path = Path(logs_dir) / "events.jsonl"
+            evt = json.loads(events_path.read_text().strip())
+            assert evt["input_snippet"] == "hello there"
         finally:
             el.close()
 

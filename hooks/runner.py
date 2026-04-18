@@ -212,7 +212,11 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
         prompt, prefix_len = rule.split_prompt(text, context_str)
 
         result = client.classify(
-            prompt, rule=rule.name, prefix_len=prefix_len, tier=rule.tier
+            prompt,
+            rule=rule.name,
+            prefix_len=prefix_len,
+            tier=rule.tier,
+            input_text=text,
         )
         if result is None:
             continue

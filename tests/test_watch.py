@@ -156,12 +156,12 @@ def test_build_table_has_tier_column() -> None:
     assert "Tier" in [str(h) for h in col_names]
 
 
-def test_build_table_has_reason_and_text_columns() -> None:
+def test_build_table_has_reason_and_llm_output_columns() -> None:
     events = [_make_event()]
     table = _build_table(events, (1, 0))
     col_names = [str(c.header) for c in table.columns]
     assert "Reason" in col_names
-    assert "Text" in col_names
+    assert "LLM Output" in col_names
 
 
 def test_sanitize_display_short_text() -> None:

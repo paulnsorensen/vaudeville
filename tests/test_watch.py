@@ -12,9 +12,10 @@ import pytest
 from vaudeville.server.watch import (
     _MAX_ROWS,
     _build_table,
+    _confidence_text,
     _parse_ts_display,
+    _sanitize_display,
     _tier_text,
-    _truncate_display,
     _verdict_text,
     watch,
 )
@@ -76,6 +77,37 @@ def test_tier_text_enforce() -> None:
     assert "green" in str(text.style)
 
 
+# --- _confidence_text ---
+
+
+def test_confidence_text_high() -> None:
+    text = _confidence_text(0.95)
+    assert text.plain == "0.95"
+    assert "green" in str(text.style)
+
+
+def test_confidence_text_high_at_threshold() -> None:
+    text = _confidence_text(0.80)
+    assert "green" in str(text.style)
+
+
+def test_confidence_text_meh() -> None:
+    text = _confidence_text(0.65)
+    assert text.plain == "0.65"
+    assert "yellow" in str(text.style)
+
+
+def test_confidence_text_meh_at_threshold() -> None:
+    text = _confidence_text(0.50)
+    assert "yellow" in str(text.style)
+
+
+def test_confidence_text_low() -> None:
+    text = _confidence_text(0.20)
+    assert text.plain == "0.20"
+    assert "dim" in str(text.style)
+
+
 # --- _build_table ---
 
 
@@ -132,21 +164,23 @@ def test_build_table_has_reason_and_text_columns() -> None:
     assert "Text" in col_names
 
 
-def test_truncate_display_short_text() -> None:
-    assert _truncate_display("short", 10).plain == "short"
+def test_sanitize_display_short_text() -> None:
+    assert _sanitize_display("short").plain == "short"
 
 
-def test_truncate_display_long_text() -> None:
-    assert _truncate_display("x" * 20, 10).plain == ("x" * 9) + "…"
+def test_sanitize_display_preserves_long_text() -> None:
+    # No truncation: Rich wraps long text via column overflow="fold".
+    assert _sanitize_display("x" * 200).plain == "x" * 200
 
 
-def test_truncate_display_sanitizes_newlines() -> None:
-    assert _truncate_display("line1\nline2\rline3", 100).plain == "line1 line2 line3"
+def test_sanitize_display_sanitizes_newlines() -> None:
+    assert _sanitize_display("line1\nline2\rline3").plain == "line1 line2 line3"
 
 
-def test_truncate_display_handles_tiny_widths() -> None:
-    assert _truncate_display("abc", 1).plain == "…"
-    assert _truncate_display("abc", 0).plain == ""
+def test_sanitize_display_handles_none_and_empty() -> None:
+    assert _sanitize_display(None).plain == ""
+    assert _sanitize_display("").plain == ""
+    assert _sanitize_display("   ").plain == ""
 
 
 def test_build_table_missing_fields() -> None:

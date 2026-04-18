@@ -114,7 +114,9 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
         no_wrap=True,
     )
     table.add_column("Reason", min_width=_REASON_MIN_WIDTH, ratio=1, overflow="fold")
-    table.add_column("Text", min_width=_SNIPPET_MIN_WIDTH, ratio=1, overflow="fold")
+    table.add_column(
+        "LLM Output", min_width=_SNIPPET_MIN_WIDTH, ratio=1, overflow="fold"
+    )
 
     for evt in events[-_MAX_ROWS:]:
         table.add_row(

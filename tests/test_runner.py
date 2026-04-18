@@ -217,7 +217,7 @@ class TestRunPipeline:
         from unittest.mock import ANY
 
         mock_client.classify.assert_called_once_with(
-            ANY, rule="test-hedging", prefix_len=ANY, tier="enforce"
+            ANY, rule="test-hedging", prefix_len=ANY, tier="enforce", input_text=ANY
         )
 
     def test_shadow_tier_logs_but_passes(

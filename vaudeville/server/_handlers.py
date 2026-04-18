@@ -66,6 +66,7 @@ def _handle_classify(
     tier = str(request.get("tier", "enforce"))
     raw_prefix = request.get("prefix_len", 0)
     prefix_len = int(float(str(raw_prefix))) if raw_prefix else 0
+    input_text = str(request.get("input_text", ""))
 
     logger.debug("prompt=%d chars prefix_len=%d", len(prompt), prefix_len)
     t0 = time.monotonic()
@@ -91,7 +92,7 @@ def _handle_classify(
         latency_ms=elapsed_ms,
         prompt_chars=len(prompt),
         reason=response.reason,
-        input_snippet=prompt[:500],
+        input_snippet=input_text[:500],
         tier=tier,
     )
     if event_logger is not None:

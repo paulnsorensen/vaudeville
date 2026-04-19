@@ -1,29 +1,16 @@
-"""Eval harness for vaudeville rules.
+"""Eval harness for vaudeville rules — core eval logic.
 
-Usage:
-    uv run python -m vaudeville.eval
-    uv run python -m vaudeville.eval --cross-validate
-    uv run python -m vaudeville.eval --rule violation-detector
+Data classes, test-case loading, and classification functions.
+CLI entrypoint is in eval_cli.py.
 """
 
 from __future__ import annotations
 
-import argparse
-import sys
 from dataclasses import dataclass, field
 
 import yaml
 
-from .core import (
-    ClassifyResult,
-    EvalCase,
-    Rule,
-    compute_confidence,
-    find_project_root,
-    load_rules,
-    load_rules_layered,
-    parse_verdict,
-)
+from .core import ClassifyResult, EvalCase, Rule, compute_confidence, parse_verdict
 from .server import InferenceBackend, LogprobBackend, condense_text
 
 __all__ = [
@@ -33,16 +20,27 @@ __all__ = [
     "classify_case",
     "evaluate_rule",
     "load_test_cases",
-    "main",
 ]
 
 
 @dataclass
 class CaseResult:
+    rule: str
+    case_id: int
     text: str
     label: str
     predicted: str
     confidence: float
+
+    def to_jsonl_dict(self) -> dict[str, str | int | float]:
+        return {
+            "rule": self.rule,
+            "case_id": self.case_id,
+            "expected": self.label,
+            "predicted": self.predicted,
+            "confidence": round(self.confidence, 4),
+            "text": self.text,
+        }
 
 
 @dataclass
@@ -125,6 +123,7 @@ def classify_case(
     rule: Rule,
     backend: InferenceBackend,
     results: EvalResults,
+    case_id: int = 0,
 ) -> CaseResult:
     """Classify a single case and update results. Returns CaseResult."""
     text = case.text
@@ -143,6 +142,8 @@ def classify_case(
     _update_results(results, case, predicted)
 
     return CaseResult(
+        rule=rule.name,
+        case_id=case_id,
         text=case.text,
         label=case.label,
         predicted=predicted,
@@ -162,119 +163,7 @@ def evaluate_rule(
 
     results = EvalResults(rule=rule_name)
     case_results: list[CaseResult] = []
-    for case in cases:
-        case_results.append(classify_case(case, rule, backend, results))
+    for i, case in enumerate(cases):
+        cr = classify_case(case, rule, backend, results, case_id=i)
+        case_results.append(cr)
     return results, case_results
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Vaudeville rule eval harness")
-    parser.add_argument("--rule", help="Evaluate only this rule")
-    parser.add_argument(
-        "--cross-validate",
-        action="store_true",
-        help="Leave-one-out cross-validation with per-fold output",
-    )
-    parser.add_argument(
-        "--test-file",
-        help="Extra test file to include (YAML format)",
-    )
-    parser.add_argument(
-        "--threshold-sweep",
-        action="store_true",
-        help="Sweep thresholds 0.30-0.90 and print confusion matrix per threshold",
-    )
-    parser.add_argument(
-        "--calibrate",
-        metavar="RULE",
-        help="Calibrate threshold for a rule: sweep, pick F1-optimal, write to YAML",
-    )
-    parser.add_argument(
-        "--eval-log",
-        help="Path to JSONL file for regression tracking (appends one line per run)",
-    )
-    parser.add_argument(
-        "--rules-dir",
-        help="Load rules from this directory only (skip layered resolution)",
-    )
-    parser.add_argument(
-        "--model",
-        default="mlx-community/Phi-4-mini-instruct-4bit",
-        help="Model path or Hugging Face ID",
-    )
-    return parser
-
-
-def _inject_extra_test_file(
-    args: argparse.Namespace,
-    test_suites: dict[str, list[EvalCase]],
-) -> None:
-    if not (args.test_file and args.rule):
-        return
-    extra_cases, rule_name = _load_test_file(args.test_file)
-    if rule_name != args.rule:
-        print(
-            f"Error: --test-file specifies rule '{rule_name}' but --rule is '{args.rule}'"
-        )
-        sys.exit(1)
-    existing = test_suites.get(args.rule, [])
-    test_suites[args.rule] = existing + extra_cases
-
-
-def _filter_test_suites(
-    args: argparse.Namespace,
-    test_suites: dict[str, list[EvalCase]],
-) -> dict[str, list[EvalCase]]:
-    if not args.rule:
-        return test_suites
-    filtered = {k: v for k, v in test_suites.items() if k == args.rule}
-    if not filtered:
-        print(f"No test suite found for rule: {args.rule}")
-        sys.exit(1)
-    return filtered
-
-
-def main() -> None:
-    from .server.mlx_backend import MLXBackend
-
-    args = _build_parser().parse_args()
-
-    print(f"Loading model: {args.model}")
-    backend = MLXBackend(args.model)
-    if args.rules_dir:
-        rules = load_rules(args.rules_dir)
-    else:
-        rules = load_rules_layered(project_root=find_project_root())
-    test_suites = load_test_cases(rules)
-    if not test_suites and not args.test_file:
-        print(
-            "Error: no rules with inline test_cases found. "
-            "Pass --rules-dir examples/rules or install rules into ~/.vaudeville/rules."
-        )
-        sys.exit(1)
-    _inject_extra_test_file(args, test_suites)
-
-    if args.calibrate:
-        from .eval_calibrate import run_calibrate
-
-        run_calibrate(args, rules, test_suites, backend, find_project_root())
-
-    test_suites = _filter_test_suites(args, test_suites)
-
-    from .eval_report import run_evaluations, threshold_sweep, write_eval_log
-
-    passed, all_results = run_evaluations(args, rules, test_suites, backend)
-
-    if args.eval_log and all_results:
-        write_eval_log(args.eval_log, args.model, all_results)
-        print(f"\nEval log appended to {args.eval_log}")
-
-    if args.threshold_sweep:
-        threshold_sweep(test_suites, rules, backend)
-
-    print("\n" + ("ALL RULES PASS" if passed else "SOME RULES FAILED"))
-    sys.exit(0 if passed else 1)
-
-
-if __name__ == "__main__":
-    main()

@@ -12,12 +12,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from vaudeville.core.rules import (
-    CHARS_PER_TOKEN,
-    MAX_INPUT_TOKENS,
     Rule,
     sanitize_input,
-    back_truncate,
     load_rules,
+)
+from vaudeville.core.truncation import (
+    CHARS_PER_TOKEN,
+    MAX_INPUT_TOKENS,
+    back_truncate,
 )
 
 

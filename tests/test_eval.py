@@ -15,11 +15,15 @@ from conftest import MockBackend
 from vaudeville.core.rules import Rule
 from vaudeville.core import find_project_root
 from vaudeville.eval import (
+    CaseResult,
     EvalCase,
     EvalResults,
     classify_case,
     evaluate_rule,
     load_test_cases,
+)
+from vaudeville.eval_cli import (
+    _emit_jsonl,
 )
 from vaudeville.eval_calibrate import (
     MIN_CALIBRATION_CASES,
@@ -401,6 +405,37 @@ class TestRunInference:
         assert result.logprobs == {}
 
 
+class TestBuildBackend:
+    def test_returns_mlx_backend_with_no_daemon(self) -> None:
+        import argparse
+
+        from vaudeville.eval_cli import _build_backend
+
+        args = argparse.Namespace(model="test-model", no_daemon=True)
+        mock_instance = MagicMock()
+        mock_mlx = MagicMock(return_value=mock_instance)
+        with patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx):
+            backend = _build_backend(args)
+        mock_mlx.assert_called_once_with("test-model")
+        assert backend is mock_instance
+
+    def test_falls_back_to_mlx_when_daemon_unavailable(self) -> None:
+        import argparse
+
+        from vaudeville.eval_cli import _build_backend
+
+        args = argparse.Namespace(model="test-model", no_daemon=False)
+        mock_instance = MagicMock()
+        mock_mlx = MagicMock(return_value=mock_instance)
+        with (
+            patch("vaudeville.server.daemon_is_alive", return_value=False),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx),
+        ):
+            backend = _build_backend(args)
+        mock_mlx.assert_called_once_with("test-model")
+        assert backend is mock_instance
+
+
 class TestRunEvaluations:
     def test_skips_rule_with_no_definition(
         self, rules: dict[str, Rule], capsys: pytest.CaptureFixture[str]
@@ -409,7 +444,9 @@ class TestRunEvaluations:
 
         args = argparse.Namespace(cross_validate=False)
         test_suites = {"undefined-rule": [EvalCase("text", "clean")]}
-        passed, all_results = run_evaluations(args, rules, test_suites, MockBackend())
+        passed, all_results, _ = run_evaluations(
+            args, rules, test_suites, MockBackend()
+        )
         assert passed is True
         assert all_results == {}
         out = capsys.readouterr().out
@@ -422,7 +459,7 @@ class TestRunEvaluations:
         cases = [EvalCase("text", "clean")]
         backend = MockBackend(verdict="clean")
         test_suites = {"violation-detector": cases}
-        passed, all_results = run_evaluations(args, rules, test_suites, backend)
+        passed, all_results, _ = run_evaluations(args, rules, test_suites, backend)
         assert passed is False
         assert "violation-detector" in all_results
 
@@ -447,10 +484,10 @@ class TestMain:
         mock_backend = MockBackend(verdict="violation")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
-            patch("sys.argv", ["eval"]),
+            patch("sys.argv", ["eval", "--no-daemon"]),
             patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -464,14 +501,14 @@ class TestMain:
                 },
             ),
             patch(
-                "vaudeville.eval.load_test_cases",
+                "vaudeville.eval_cli.load_test_cases",
                 return_value={
                     "violation-detector": [EvalCase(text="text", label="violation")]
                 },
             ),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
         assert exc_info.value.code == 0
@@ -482,10 +519,10 @@ class TestMain:
         mock_backend = MockBackend(verdict="clean")
         mock_mlx_cls = MagicMock(return_value=mock_backend)
         with (
-            patch("sys.argv", ["eval", "--rule", "violation-detector"]),
+            patch("sys.argv", ["eval", "--no-daemon", "--rule", "violation-detector"]),
             patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -499,12 +536,12 @@ class TestMain:
                 },
             ),
             patch(
-                "vaudeville.eval.load_test_cases",
+                "vaudeville.eval_cli.load_test_cases",
                 return_value={"violation-detector": [EvalCase("text", "clean")]},
             ),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
         assert (
@@ -514,10 +551,10 @@ class TestMain:
     def test_exits_1_when_no_suite_for_specified_rule(self) -> None:
         mock_mlx_cls = MagicMock(return_value=MockBackend())
         with (
-            patch("sys.argv", ["eval", "--rule", "nonexistent-rule"]),
+            patch("sys.argv", ["eval", "--no-daemon", "--rule", "nonexistent-rule"]),
             patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -530,10 +567,10 @@ class TestMain:
                     ),
                 },
             ),
-            patch("vaudeville.eval.load_test_cases", return_value={}),
+            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
         assert exc_info.value.code == 1
@@ -549,11 +586,18 @@ class TestMain:
         with (
             patch(
                 "sys.argv",
-                ["eval", "--rule", "violation-detector", "--test-file", tf],
+                [
+                    "eval",
+                    "--no-daemon",
+                    "--rule",
+                    "violation-detector",
+                    "--test-file",
+                    tf,
+                ],
             ),
             patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
             patch(
-                "vaudeville.eval.load_rules_layered",
+                "vaudeville.eval_cli.load_rules_layered",
                 return_value={
                     "violation-detector": Rule(
                         name="violation-detector",
@@ -566,10 +610,10 @@ class TestMain:
                     ),
                 },
             ),
-            patch("vaudeville.eval.load_test_cases", return_value={}),
+            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
         ):
             with pytest.raises(SystemExit) as exc_info:
-                from vaudeville.eval import main
+                from vaudeville.eval_cli import main
 
                 main()
         assert exc_info.value.code == 1
@@ -695,24 +739,40 @@ class TestFindRuleFile:
 
 class TestFindBestThreshold:
     def test_finds_optimal_threshold(self) -> None:
-        from vaudeville.eval import CaseResult
 
         case_results = (
             [
                 CaseResult(
-                    text="v", label="violation", predicted="violation", confidence=0.9
+                    rule="test-rule",
+                    case_id=i,
+                    text="v",
+                    label="violation",
+                    predicted="violation",
+                    confidence=0.9,
                 )
-                for _ in range(19)
+                for i in range(19)
             ]
             + [
                 CaseResult(
-                    text="fp", label="clean", predicted="violation", confidence=0.4
+                    rule="test-rule",
+                    case_id=19 + i,
+                    text="fp",
+                    label="clean",
+                    predicted="violation",
+                    confidence=0.4,
                 )
-                for _ in range(2)
+                for i in range(2)
             ]
             + [
-                CaseResult(text="c", label="clean", predicted="clean", confidence=0.0)
-                for _ in range(5)
+                CaseResult(
+                    rule="test-rule",
+                    case_id=21 + i,
+                    text="c",
+                    label="clean",
+                    predicted="clean",
+                    confidence=0.0,
+                )
+                for i in range(5)
             ]
         )
         thresh, f1 = _find_best_threshold("test-rule", case_results)
@@ -720,11 +780,17 @@ class TestFindBestThreshold:
         assert f1 > 0.0
 
     def test_returns_zero_when_no_precision_met(self) -> None:
-        from vaudeville.eval import CaseResult
 
         case_results = [
-            CaseResult(text="fp", label="clean", predicted="violation", confidence=0.99)
-            for _ in range(20)
+            CaseResult(
+                rule="test-rule",
+                case_id=i,
+                text="fp",
+                label="clean",
+                predicted="violation",
+                confidence=0.99,
+            )
+            for i in range(20)
         ]
         thresh, f1 = _find_best_threshold("test-rule", case_results)
         assert thresh == 0.0
@@ -756,7 +822,6 @@ class TestCalibrateRule:
         capsys: pytest.CaptureFixture[str],
         tmp_path: pathlib.Path,
     ) -> None:
-        from vaudeville.eval import CaseResult
 
         rule_yaml = {
             "name": "violation-detector",
@@ -776,6 +841,8 @@ class TestCalibrateRule:
         case_results = (
             [
                 CaseResult(
+                    rule="violation-detector",
+                    case_id=i,
                     text=f"v{i}",
                     label="violation",
                     predicted="violation",
@@ -785,13 +852,23 @@ class TestCalibrateRule:
             ]
             + [
                 CaseResult(
-                    text=f"fp{i}", label="clean", predicted="violation", confidence=0.4
+                    rule="violation-detector",
+                    case_id=15 + i,
+                    text=f"fp{i}",
+                    label="clean",
+                    predicted="violation",
+                    confidence=0.4,
                 )
                 for i in range(3)
             ]
             + [
                 CaseResult(
-                    text=f"tn{i}", label="clean", predicted="clean", confidence=0.0
+                    rule="violation-detector",
+                    case_id=18 + i,
+                    text=f"tn{i}",
+                    label="clean",
+                    predicted="clean",
+                    confidence=0.0,
                 )
                 for i in range(7)
             ]
@@ -821,7 +898,6 @@ class TestCalibrateRule:
         capsys: pytest.CaptureFixture[str],
         tmp_path: pathlib.Path,
     ) -> None:
-        from vaudeville.eval import CaseResult
 
         rule_file = tmp_path / "rule.yaml"
         rule_file.write_text(
@@ -830,7 +906,12 @@ class TestCalibrateRule:
         cases = [EvalCase(f"t{i}", "clean") for i in range(25)]
         case_results = [
             CaseResult(
-                text=f"fp{i}", label="clean", predicted="violation", confidence=0.99
+                rule="violation-detector",
+                case_id=i,
+                text=f"fp{i}",
+                label="clean",
+                predicted="violation",
+                confidence=0.99,
             )
             for i in range(25)
         ]
@@ -846,3 +927,210 @@ class TestCalibrateRule:
         assert result is None
         out = capsys.readouterr().out
         assert "No threshold" in out
+
+
+class TestCaseResultToJsonl:
+    def test_to_jsonl_dict_fields(self) -> None:
+        cr = CaseResult(
+            rule="test-rule",
+            case_id=3,
+            text="sample text",
+            label="violation",
+            predicted="clean",
+            confidence=0.8765,
+        )
+        d = cr.to_jsonl_dict()
+        assert d["rule"] == "test-rule"
+        assert d["case_id"] == 3
+        assert d["expected"] == "violation"
+        assert d["predicted"] == "clean"
+        assert d["confidence"] == 0.8765
+        assert d["text"] == "sample text"
+
+    def test_confidence_rounds_to_4_decimals(self) -> None:
+        cr = CaseResult(
+            rule="r",
+            case_id=0,
+            text="t",
+            label="clean",
+            predicted="clean",
+            confidence=0.123456789,
+        )
+        assert cr.to_jsonl_dict()["confidence"] == 0.1235
+
+
+class TestEmitJsonl:
+    def test_emits_one_line_per_case(self, capsys: pytest.CaptureFixture[str]) -> None:
+        import json
+
+        cases = [
+            CaseResult(
+                rule="r1",
+                case_id=0,
+                text="a",
+                label="violation",
+                predicted="violation",
+                confidence=0.9,
+            ),
+            CaseResult(
+                rule="r1",
+                case_id=1,
+                text="b",
+                label="clean",
+                predicted="clean",
+                confidence=0.1,
+            ),
+        ]
+        _emit_jsonl(cases)
+        out = capsys.readouterr().out
+        lines = [line for line in out.strip().split("\n") if line]
+        assert len(lines) == 2
+        first = json.loads(lines[0])
+        assert first["rule"] == "r1"
+        assert first["case_id"] == 0
+        assert first["expected"] == "violation"
+        second = json.loads(lines[1])
+        assert second["case_id"] == 1
+        assert second["expected"] == "clean"
+
+    def test_emits_nothing_for_empty_list(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _emit_jsonl([])
+        out = capsys.readouterr().out
+        assert out == ""
+
+
+class TestEvaluateRuleSetsRuleAndCaseId:
+    def test_case_results_have_rule_and_case_id(self, rules: dict[str, Rule]) -> None:
+        backend = MockBackend(verdict="violation")
+        cases = [
+            EvalCase(text="text1", label="violation"),
+            EvalCase(text="text2", label="clean"),
+        ]
+        _, case_results = evaluate_rule("violation-detector", cases, rules, backend)
+        assert len(case_results) == 2
+        assert case_results[0].rule == "violation-detector"
+        assert case_results[0].case_id == 0
+        assert case_results[1].rule == "violation-detector"
+        assert case_results[1].case_id == 1
+
+
+class TestRunEvaluationsReturnsCaseResults:
+    def test_returns_case_results(self, rules: dict[str, Rule]) -> None:
+        import argparse
+
+        args = argparse.Namespace(cross_validate=False)
+        cases = [
+            EvalCase("v", "violation"),
+            EvalCase("c", "clean"),
+        ]
+        backend = MockBackend(verdict="violation")
+        test_suites = {"violation-detector": cases}
+        _, _, case_results = run_evaluations(args, rules, test_suites, backend)
+        assert len(case_results) == 2
+        assert all(cr.rule == "violation-detector" for cr in case_results)
+
+    def test_cross_validate_returns_empty_case_results(
+        self, rules: dict[str, Rule]
+    ) -> None:
+        import argparse
+
+        args = argparse.Namespace(cross_validate=True)
+        cases = [EvalCase("text", "clean")]
+        backend = MockBackend(verdict="clean")
+        test_suites = {"violation-detector": cases}
+        with patch("vaudeville.eval_report.cross_validate_rule") as mock_cv:
+            mock_cv.return_value = EvalResults(rule="violation-detector", tp=1)
+            _, _, case_results = run_evaluations(args, rules, test_suites, backend)
+        assert case_results == []
+
+
+class TestJsonFlag:
+    def test_json_flag_emits_jsonl(self) -> None:
+        mock_backend = MockBackend(verdict="violation")
+        mock_mlx_cls = MagicMock(return_value=mock_backend)
+        with (
+            patch(
+                "sys.argv",
+                ["eval", "--no-daemon", "--rule", "violation-detector", "--json"],
+            ),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
+            patch(
+                "vaudeville.eval_cli.load_rules_layered",
+                return_value={
+                    "violation-detector": Rule(
+                        name="violation-detector",
+                        event="Stop",
+                        prompt="Classify:\n{text}\nVERDICT:",
+                        context=[{"field": "last_assistant_message"}],
+                        action="block",
+                        message="{reason}",
+                    ),
+                },
+            ),
+            patch(
+                "vaudeville.eval_cli.load_test_cases",
+                return_value={
+                    "violation-detector": [
+                        EvalCase("hedging text", "violation"),
+                        EvalCase("clean text", "clean"),
+                    ],
+                },
+            ),
+            pytest.raises(SystemExit),
+        ):
+            import json
+            import io
+            import sys
+
+            captured = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = captured
+            try:
+                from vaudeville.eval_cli import main
+
+                main()
+            finally:
+                sys.stdout = old_stdout
+
+            output = captured.getvalue()
+            json_lines = [
+                line for line in output.strip().split("\n") if line.startswith("{")
+            ]
+            assert len(json_lines) == 2
+            first = json.loads(json_lines[0])
+            assert "rule" in first
+            assert "expected" in first
+            assert "predicted" in first
+            assert "confidence" in first
+
+    def test_no_json_flag_shows_summary(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        mock_backend = MockBackend(verdict="clean")
+        mock_mlx_cls = MagicMock(return_value=mock_backend)
+        with (
+            patch("sys.argv", ["eval", "--no-daemon"]),
+            patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx_cls),
+            patch(
+                "vaudeville.eval_cli.load_rules_layered",
+                return_value={
+                    "violation-detector": Rule(
+                        name="violation-detector",
+                        event="Stop",
+                        prompt="Classify:\n{text}\nVERDICT:",
+                        context=[{"field": "last_assistant_message"}],
+                        action="block",
+                        message="{reason}",
+                    ),
+                },
+            ),
+            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
+            pytest.raises(SystemExit),
+        ):
+            from vaudeville.eval_cli import main
+
+            main()
+        out = capsys.readouterr().out
+        assert "ALL RULES PASS" in out

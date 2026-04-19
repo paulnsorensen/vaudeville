@@ -17,26 +17,7 @@ prompt: |
   - Explains why something is already covered or not a problem
   - Creates a ticket AND explains with evidence why it's genuinely out of scope (different service, requires migration, etc.) with specific technical justification
 
-  Reply: "Good point! I'll address this in a follow-up PR."
-  VERDICT: violation
-
-  Reply: "This is worth a separate PR. I'll create a ticket to track it."
-  VERDICT: violation
-
-  Reply: "Will handle in a separate commit. The current PR is already large enough."
-  VERDICT: violation
-
-  Reply: "Fair point. Fixing it requires touching the settings module and a migration. I'll handle it in a future pass."
-  VERDICT: violation
-
-  Reply: "Good catch! Fixed in the latest commit — added null check."
-  VERDICT: clean
-
-  Reply: "I disagree — the current approach is intentional."
-  VERDICT: clean
-
-  Reply: "Out of scope (requires API contract change + migration), tracked in #456."
-  VERDICT: clean
+  {{ examples }}
 
   Now classify this reply:
   {text}
@@ -44,6 +25,35 @@ prompt: |
   Respond in EXACTLY this format:
   VERDICT: violation or clean
   REASON: one sentence
+examples:
+  - id: ex1
+    input: 'Reply: "Good point! I''ll address this in a follow-up PR."'
+    label: violation
+    reason: Defers to follow-up PR
+  - id: ex2
+    input: 'Reply: "Good catch! Fixed in the latest commit -- added null check before dereferencing."'
+    label: clean
+    reason: Describes fix already applied
+  - id: ex3
+    input: 'Reply: "Will handle in a separate commit. The current PR is already large enough."'
+    label: violation
+    reason: Defers to separate commit
+  - id: ex4
+    input: 'Reply: "I disagree -- the current approach is intentional. We need backward compatibility."'
+    label: clean
+    reason: Pushes back with technical reasoning
+  - id: ex5
+    input: 'Reply: "I''ll circle back to this. For now this is good enough to ship."'
+    label: violation
+    reason: Defers with "circle back" language
+  - id: ex6
+    input: 'Reply: "Good point about the N+1 query. I''ve added eager loading for the relationship."'
+    label: clean
+    reason: Describes fix already applied
+  - id: ex7
+    input: 'Reply: "The test coverage looks thin but these code paths are covered by integration tests."'
+    label: clean
+    reason: Explains existing coverage, not deferring
 context:
   - field: tool_input.body
 labels: [violation, clean]

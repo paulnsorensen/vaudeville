@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from vaudeville.server.stats import _bucket_for_latency, aggregate_events
+from vaudeville.server.stats import aggregate_events
 
 
 def _write_events(path: pathlib.Path, events: list[dict[str, object]]) -> str:
@@ -189,28 +189,6 @@ def test_partial_records_skipped(tmp_path: pathlib.Path) -> None:
     log_file.write_text(f"{partial}\n{good}\n")
     result = aggregate_events(str(log_file))
     assert result["total"] == 1
-
-
-class TestBucketForLatency:
-    """Unit tests for _bucket_for_latency helper."""
-
-    def test_below_first_bucket(self) -> None:
-        assert _bucket_for_latency(10.0) == "<=50ms"
-
-    def test_exact_bucket_boundary(self) -> None:
-        assert _bucket_for_latency(50.0) == "<=50ms"
-        assert _bucket_for_latency(100.0) == "<=100ms"
-        assert _bucket_for_latency(1000.0) == "<=1000ms"
-
-    def test_between_buckets(self) -> None:
-        assert _bucket_for_latency(75.0) == "<=100ms"
-        assert _bucket_for_latency(350.0) == "<=500ms"
-
-    def test_above_all_buckets(self) -> None:
-        assert _bucket_for_latency(1500.0) == ">1000ms"
-
-    def test_zero_latency(self) -> None:
-        assert _bucket_for_latency(0.0) == "<=50ms"
 
 
 def test_all_partial_records_returns_empty(tmp_path: pathlib.Path) -> None:

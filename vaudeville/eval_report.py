@@ -96,16 +96,15 @@ def run_evaluations(
     rules: dict[str, Rule],
     test_suites: dict[str, list[EvalCase]],
     backend: InferenceBackend,
-) -> tuple[bool, dict[str, EvalResults], list[CaseResult]]:
+) -> tuple[bool, dict[str, EvalResults]]:
     """Run eval or cross-validation for each rule.
 
-    Returns (all_passed, per_rule_results, all_case_results).
+    Returns (all_passed, per_rule_results).
     """
     from .eval import evaluate_rule
 
     overall_pass = True
     all_results: dict[str, EvalResults] = {}
-    all_case_results: list[CaseResult] = []
     for rule_name, cases in sorted(test_suites.items()):
         if rule_name not in rules:
             print(f"\nWARNING: No rule definition found for {rule_name}")
@@ -115,12 +114,11 @@ def run_evaluations(
             print(f"  Leave-one-out cross-validation ({len(cases)} folds):")
             results = cross_validate_rule(rule_name, cases, rules, backend)
         else:
-            results, case_results = evaluate_rule(rule_name, cases, rules, backend)
-            all_case_results.extend(case_results)
+            results, _ = evaluate_rule(rule_name, cases, rules, backend)
         all_results[rule_name] = results
         if not print_results(results):
             overall_pass = False
-    return overall_pass, all_results, all_case_results
+    return overall_pass, all_results
 
 
 def threshold_sweep(

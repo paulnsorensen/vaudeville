@@ -1,12 +1,12 @@
 """YAML rule loader with layered config resolution.
 
 Rules are resolved from multiple directories in priority order:
-  1. project/.vaudeville/rules/   (highest -- project overrides)
+  1. project/.vaudeville/rules/   (highest — project overrides)
   2. ~/.vaudeville/rules/          (user-global rules)
 
 Higher-priority rules override lower-priority ones by name.
 
-Uses PyYAML -- only imported by daemon and eval, NOT by hook entry points.
+Uses PyYAML — only imported by daemon and eval, NOT by hook entry points.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from typing import Any
 
 import yaml
 
-from .truncation import _truncate_for_event, prepare_text
 
+MAX_INPUT_TOKENS = 3000
 DEFAULT_LABELS: tuple[str, ...] = ("violation", "clean")
 
 
@@ -32,6 +32,9 @@ class EvalCase:
     label: str
 
 
+CHARS_PER_TOKEN = 4  # conservative English approximation
+
+
 def sanitize_input(text: str) -> str:
     """Neutralize verdict/reason markers that could spoof parse_verdict().
 
@@ -41,6 +44,80 @@ def sanitize_input(text: str) -> str:
     text = re.sub(r"(?i)VERDICT\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
     text = re.sub(r"(?i)REASON\s*:", lambda m: m.group().replace(":", "\u200b:"), text)
     return text
+
+
+def back_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
+    """Keep the last max_tokens tokens (approx). Violations cluster at the end."""
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def front_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
+    """Keep the first max_tokens tokens (approx). For context at turn start."""
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars]
+
+
+def sandwich_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
+    """Keep head + tail slices. Violations cluster at the end but beginning gives context."""
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    if len(text) <= max_chars:
+        return text
+    marker = "\n[...]\n"
+    available = max_chars - len(marker)
+    if available <= 0:
+        return back_truncate(text, max_tokens)
+    head_chars = available * 3 // 10
+    tail_chars = available - head_chars
+    return text[:head_chars] + marker + text[-tail_chars:]
+
+
+def _truncate_for_event(
+    text: str,
+    event: str,
+    max_tokens: int = MAX_INPUT_TOKENS,
+) -> str:
+    """Apply event-aware truncation strategy.
+
+    Stop hooks get sandwich truncation (beginning context + end where violations cluster).
+    PreToolUse hooks care about the beginning (front-truncate).
+    All other events default to back-truncation.
+    """
+    if event == "Stop":
+        return sandwich_truncate(text, max_tokens)
+    if event == "PreToolUse":
+        return front_truncate(text, max_tokens)
+    return back_truncate(text, max_tokens)
+
+
+_CODE_BLOCK_RE = re.compile(
+    r"^```[^\n]*\n.*?^```\s*$",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _strip_code_blocks(text: str) -> str:
+    """Remove fenced code blocks — they consume tokens but rarely contain violations."""
+    return _CODE_BLOCK_RE.sub("", text)
+
+
+def prepare_text(text: str, event: str) -> str:
+    """Strip structural noise before truncation.
+
+    Only applies to Stop hooks (assistant response quality).
+    Other event types pass through unmodified.
+    Fail-open: returns original text on any error.
+    """
+    if event != "Stop":
+        return text
+    try:
+        return _strip_code_blocks(text)
+    except Exception:
+        return text
 
 
 def _resolve_field(data: dict[str, object], path: str) -> object:
@@ -78,42 +155,6 @@ VALID_TIERS = ("shadow", "warn", "enforce")
 
 
 @dataclass
-class Example:
-    id: str
-    input: str
-    label: str
-    reason: str
-
-
-def _format_examples(examples: list[Example]) -> str:
-    """Format examples into the prompt text block."""
-    blocks = [
-        f"{ex.input}\nVERDICT: {ex.label}\nREASON: {ex.reason}" for ex in examples
-    ]
-    return "\n\n".join(blocks)
-
-
-def render_prompt(
-    rule: "Rule",
-    example_ids: list[str] | None = None,
-) -> str:
-    """Render the prompt template with selected examples filled in.
-
-    When example_ids is None, all rule examples are used.
-    When provided, selects from both examples and candidates by ID.
-    """
-    if "{{ examples }}" not in rule.prompt:
-        return rule.prompt
-    if example_ids is None:
-        selected = rule.examples
-    else:
-        id_set = set(example_ids)
-        pool = rule.examples + rule.candidates
-        selected = [ex for ex in pool if ex.id in id_set]
-    return rule.prompt.replace("{{ examples }}", _format_examples(selected))
-
-
-@dataclass
 class Rule:
     name: str
     event: str
@@ -122,19 +163,18 @@ class Rule:
     action: str
     message: str
     threshold: float = 0.5
-    examples: list[Example] = field(default_factory=list)
-    candidates: list[Example] = field(default_factory=list)
     tier: str = "enforce"
     labels: list[str] = field(default_factory=lambda: list(DEFAULT_LABELS))
     test_cases: list[EvalCase] = field(default_factory=list)
 
     def format_prompt(self, text: str, context: str = "") -> str:
-        base = render_prompt(self)
         safe_text = sanitize_input(
             _truncate_for_event(prepare_text(text, self.event), self.event)
         )
         safe_context = sanitize_input(context) if context else ""
-        return base.replace("{text}", safe_text).replace("{context}", safe_context)
+        return self.prompt.replace("{text}", safe_text).replace(
+            "{context}", safe_context
+        )
 
     def split_prompt(self, text: str, context: str = "") -> tuple[str, int]:
         """Format prompt and return (full_prompt, prefix_len).
@@ -142,15 +182,11 @@ class Rule:
         prefix_len is the character index where the static prefix ends
         and the variable {text} content begins.
         """
-        base = render_prompt(self)
         safe_text = sanitize_input(
             _truncate_for_event(prepare_text(text, self.event), self.event)
         )
         safe_context = sanitize_input(context) if context else ""
-        prompt_with_context = base.replace("{context}", safe_context)
-
-        if "{text}" not in prompt_with_context:
-            return prompt_with_context, 0
+        prompt_with_context = self.prompt.replace("{context}", safe_context)
 
         before, _, after = prompt_with_context.partition("{text}")
         full_prompt = before + safe_text + after
@@ -167,31 +203,6 @@ class Rule:
             for entry in self.context
         ]
         return "\n".join(p for p in parts if p)
-
-
-def _parse_examples(raw: Any) -> list[Example]:
-    """Parse a list of raw YAML example dicts into Example objects."""
-    if not isinstance(raw, list):
-        raise ValueError(f"examples must be a list, got {type(raw).__name__}")
-    required = ("id", "input", "label", "reason")
-    examples: list[Example] = []
-    for i, e in enumerate(raw):
-        if not isinstance(e, dict):
-            continue
-        missing = [k for k in required if k not in e]
-        if missing:
-            raise ValueError(
-                f"examples[{i}] missing required keys: {', '.join(missing)}"
-            )
-        examples.append(
-            Example(
-                id=str(e["id"]),
-                input=str(e["input"]),
-                label=str(e["label"]),
-                reason=str(e["reason"]),
-            )
-        )
-    return examples
 
 
 def _load_rule_file(path: str) -> Rule | None:
@@ -240,7 +251,7 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
             continue
         path = os.path.join(rules_dir, filename)
         try:
-            rule = _load_rule_file(path)
+            rule = _load_rule_file(path)  # uses parse_rule internally
             if rule is None:
                 continue
             rules[rule.name] = rule
@@ -253,9 +264,9 @@ def load_rules(rules_dir: str) -> dict[str, Rule]:
 def rules_search_path(
     project_root: str | None = None,
 ) -> list[str]:
-    """Build the rules directory search path (lowest -> highest priority).
+    """Build the rules directory search path (lowest → highest priority).
 
-    Returns directories that exist. Order: global -> project.
+    Returns directories that exist. Order: global → project.
     """
     dirs: list[str] = []
 
@@ -306,8 +317,6 @@ def parse_rule(data: dict[str, Any]) -> Rule:
         action=str(data.get("action", "block")),
         message=str(data.get("message", "{reason}")),
         threshold=float(data.get("threshold", 0.5)),
-        examples=_parse_examples(data.get("examples", [])),
-        candidates=_parse_examples(data.get("candidates", [])),
         tier=tier,
         labels=labels,
         test_cases=test_cases,

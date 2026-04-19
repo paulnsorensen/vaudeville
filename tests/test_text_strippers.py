@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from vaudeville.core.rules import Rule
-from vaudeville.core.truncation import (
+from vaudeville.core.rules import (
     CHARS_PER_TOKEN,
     MAX_INPUT_TOKENS,
+    Rule,
+    prepare_text,
     _strip_code_blocks,
     _truncate_for_event,
     front_truncate,
-    prepare_text,
 )
 
 
@@ -62,7 +62,7 @@ class TestStripCodeBlocks:
         assert "all code" not in result
 
     def test_fails_open(self) -> None:
-        with patch("vaudeville.core.truncation._CODE_BLOCK_RE") as mock_re:
+        with patch("vaudeville.core.rules._CODE_BLOCK_RE") as mock_re:
             mock_re.sub.side_effect = RuntimeError("boom")
             # prepare_text wraps _strip_code_blocks; fail-open returns original
             assert prepare_text("keep me", "Stop") == "keep me"
@@ -92,7 +92,7 @@ class TestPrepareText:
 
     def test_fails_open_on_stripper_error(self) -> None:
         with patch(
-            "vaudeville.core.truncation._strip_code_blocks",
+            "vaudeville.core.rules._strip_code_blocks",
             side_effect=RuntimeError("boom"),
         ):
             assert prepare_text("keep me", "Stop") == "keep me"

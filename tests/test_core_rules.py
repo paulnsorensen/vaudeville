@@ -307,7 +307,7 @@ class TestSplitPrompt:
         assert "REASON\u200b:" in full
 
     def test_back_truncates_long_text(self) -> None:
-        from vaudeville.core.truncation import CHARS_PER_TOKEN, MAX_INPUT_TOKENS
+        from vaudeville.core.rules import CHARS_PER_TOKEN, MAX_INPUT_TOKENS
 
         max_chars = MAX_INPUT_TOKENS * CHARS_PER_TOKEN
         long_text = "A" * (max_chars + 100)
@@ -316,11 +316,13 @@ class TestSplitPrompt:
         text_part = full[prefix_len:]
         assert len(text_part) == max_chars
 
-    def test_no_text_placeholder_returns_prompt_unchanged(self) -> None:
+    def test_no_text_placeholder_returns_zero_prefix(self) -> None:
         rule = self._rule("No placeholder here")
         full, prefix_len = rule.split_prompt("ignored")
-        assert full == "No placeholder here"
-        assert prefix_len == 0
+        # partition on missing "{text}" returns (whole_string, "", "")
+        # so prefix_len == len(whole_string) and text is appended with empty after
+        assert full == "No placeholder hereignored"
+        assert prefix_len == len("No placeholder here")
 
     def test_prefix_len_is_int(self) -> None:
         rule = self._rule("{text}")

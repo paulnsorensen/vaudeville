@@ -90,13 +90,6 @@ def _parse_events(log_path: str) -> list[dict[str, Any]]:
     return events
 
 
-def _bucket_for_latency(lat: float) -> str:
-    for bucket in _HISTOGRAM_BUCKETS:
-        if lat <= bucket:
-            return f"<={bucket}ms"
-    return f">{_HISTOGRAM_BUCKETS[-1]}ms"
-
-
 def _latency_stats(latencies: list[float]) -> dict[str, Any]:
     sorted_lat = sorted(latencies)
     n = len(sorted_lat)
@@ -111,7 +104,12 @@ def _latency_stats(latencies: list[float]) -> dict[str, Any]:
     histogram = _empty_histogram()
 
     for lat in sorted_lat:
-        histogram[_bucket_for_latency(lat)] += 1
+        for bucket in _HISTOGRAM_BUCKETS:
+            if lat <= bucket:
+                histogram[f"<={bucket}ms"] += 1
+                break
+        else:
+            histogram[f">{_HISTOGRAM_BUCKETS[-1]}ms"] += 1
 
     return {
         "p50_ms": round(p50, 1),

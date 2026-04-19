@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass, field
 
 _SPECIAL_TOKEN_RE = re.compile(r"<\|[a-z_]+\|>")
+_FIRST_SENTENCE_RE = re.compile(r"^(.*?[.!?])(?:\s|$)")
 _NEGATION_VIOLATION_RE = re.compile(
     r"\b(?:no\s+violation|not\s+(?:a\s+)?violation|isn't\s+(?:a\s+)?violation|is\s+not\s+(?:a\s+)?violation)\b[.!?,;:)]*"
 )
@@ -24,6 +25,7 @@ class ClassifyRequest:
 
     prefix_len: int = 0  # 0 = no caching (backward compatible)
     tier: str = "enforce"
+    input_text: str = ""  # raw LLM output text, before prompt construction
 
     def to_json_dict(self) -> dict[str, object]:
         d: dict[str, object] = {"prompt": self.prompt}
@@ -33,6 +35,8 @@ class ClassifyRequest:
             d["prefix_len"] = self.prefix_len
         if self.tier != "enforce":
             d["tier"] = self.tier
+        if self.input_text:
+            d["input_text"] = self.input_text
         return d
 
 
@@ -86,6 +90,9 @@ def parse_verdict(raw: str) -> ClassifyResponse:
         reason = raw.strip()[:200]
 
     reason = _SPECIAL_TOKEN_RE.sub("", reason).strip()
+    m = _FIRST_SENTENCE_RE.match(reason)
+    if m:
+        reason = m.group(1)
     return ClassifyResponse(verdict=verdict, reason=reason)
 
 

@@ -61,6 +61,24 @@ class TestParseVerdict:
         result = parse_verdict("VERDICT: clean\nREASON:   leading spaces  ")
         assert result.reason == "leading spaces"
 
+    def test_reason_truncated_to_first_sentence(self) -> None:
+        result = parse_verdict(
+            "VERDICT: clean\nREASON: The response is fine. Are you certain? Extra fluff."
+        )
+        assert result.reason == "The response is fine."
+
+    def test_reason_single_sentence_preserved(self) -> None:
+        result = parse_verdict("VERDICT: violation\nREASON: Bad response detected.")
+        assert result.reason == "Bad response detected."
+
+    def test_reason_no_punctuation_preserved(self) -> None:
+        result = parse_verdict("VERDICT: clean\nREASON: no issues found")
+        assert result.reason == "no issues found"
+
+    def test_reason_exclamation_truncated(self) -> None:
+        result = parse_verdict("VERDICT: violation\nREASON: Bad! And more stuff here.")
+        assert result.reason == "Bad!"
+
     def test_mixed_case_verdict_value(self) -> None:
         result = parse_verdict("VERDICT: Violation\nREASON: test")
         assert result.verdict == "violation"

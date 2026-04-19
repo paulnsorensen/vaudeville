@@ -12,6 +12,8 @@ args:
   - p_min
   - r_min
   - f1_min
+completion_signal: THRESHOLDS_MET
+stop_on_completion_signal: true
 ---
 
 # vaudeville tune
@@ -62,6 +64,7 @@ Each iteration, do exactly one improvement:
 7. **Read results** — parse eval.log for precision, recall, F1. If empty/error, run `tail -n 50 eval.log` to diagnose.
 8. **Record** — append results to `tune-results.tsv` (tab-separated). Do NOT commit tune-results.tsv.
 9. **Decide**:
+   - **ALL thresholds met**: Print `<promise>THRESHOLDS_MET</promise>` and stop. The loop will exit early.
    - Metrics **improved** (closer to thresholds): keep the commit, branch advances.
    - Metrics **equal or worse**: `git reset --hard HEAD~1` to revert.
    - **Error**: log as error in tune-results.tsv, revert. If trivial fix, retry once.
@@ -94,9 +97,9 @@ If `tune-results.tsv` doesn't exist yet, create it with just the header row, the
 
 ## Success criteria
 
-Stop when ALL thresholds are met:
+When ALL thresholds are met:
 - Precision >= {{ args.p_min }}
 - Recall >= {{ args.r_min }}
 - F1 >= {{ args.f1_min }}
 
-Or after 15 iterations without progress.
+Print `<promise>THRESHOLDS_MET</promise>` to signal completion and exit the loop early.

@@ -2,11 +2,12 @@
 name: vaudeville:tune
 description: >
   Tune a single vaudeville SLM rule to meet precision/recall/f1 targets. Runs
-  `vaudeville tune <rule>` which launches an autonomous agent loop to iteratively
-  improve the rule's prompt until it meets accuracy thresholds. Use when the
-  user says "tune rule", "fix rule accuracy", "improve rule precision", "reduce
-  false positives", "recall is too low", "tune violation-detector", or wants to
-  iterate on an SLM rule prompt until it meets accuracy targets.
+  `vaudeville tune <rule>` which launches a ralphify autonomous agent loop to
+  iteratively improve the rule's prompt until it meets accuracy thresholds.
+  The loop exits early when thresholds are met via completion promise. Use when
+  the user says "tune rule", "fix rule accuracy", "improve rule precision",
+  "reduce false positives", "recall is too low", "tune violation-detector", or
+  wants to iterate on an SLM rule prompt until it meets accuracy targets.
 model: sonnet
 context: fork
 allowed-tools: Bash(uv:*), Read
@@ -31,11 +32,13 @@ Run the tune command:
 uv run python -m vaudeville tune <rule> [flags]
 ```
 
-The command launches an autonomous agent that iteratively:
+The command launches a ralphify autonomous agent that iteratively:
 1. Evaluates the current rule against test cases
 2. Analyzes misclassified cases
 3. Improves the prompt (examples, criteria, threshold)
 4. Re-evaluates until thresholds are met
+
+The loop exits early when all thresholds are met via the `<promise>THRESHOLDS_MET</promise>` completion signal.
 
 Progress is tracked in `tune-results.tsv` and git commits.
 

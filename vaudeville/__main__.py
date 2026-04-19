@@ -65,7 +65,7 @@ def _find_project_root() -> str:
 
 
 def cmd_tune(args: argparse.Namespace) -> None:
-    """Run the rule tuning agent via ralphify pattern.
+    """Run the rule tuning agent via ralphify.
 
     Launches an autonomous agent loop to iteratively improve a rule's
     prompt until it meets precision/recall/f1 thresholds.
@@ -77,18 +77,14 @@ def cmd_tune(args: argparse.Namespace) -> None:
         print(f"Error: RALPH.md not found in {ralph_dir}", file=sys.stderr)
         sys.exit(2)
 
-    # Build the ralph command with args
+    # Build the ralph run command
     cmd = [
-        "claude",
-        "-p",
-        "--allowedTools",
-        "Read,Edit,Write,Bash",
-        "--disallowedTools",
-        "mcp",
-        "--print",
-        f"Run the tune ralph for rule '{args.rule}' with thresholds: "
-        f"p_min={args.p_min}, r_min={args.r_min}, f1_min={args.f1_min}. "
-        f"Read commands/tune/RALPH.md for instructions.",
+        "ralph",
+        "run",
+        ralph_dir,
+        "--target",
+        f"Tune rule '{args.rule}' to meet thresholds: "
+        f"p_min={args.p_min}, r_min={args.r_min}, f1_min={args.f1_min}",
     ]
 
     print(f"Starting tune agent for rule: {args.rule}")
@@ -102,7 +98,9 @@ def cmd_tune(args: argparse.Namespace) -> None:
         sys.exit(result.returncode)
     except FileNotFoundError:
         print(
-            "Error: 'claude' CLI not found. Install Claude Code first.", file=sys.stderr
+            "Error: 'ralph' CLI not found. Install ralphify first:\n"
+            "  pip install ralphify",
+            file=sys.stderr,
         )
         sys.exit(2)
     except KeyboardInterrupt:
@@ -111,7 +109,7 @@ def cmd_tune(args: argparse.Namespace) -> None:
 
 
 def cmd_generate(args: argparse.Namespace) -> None:
-    """Run the rule generation agent via ralphify pattern.
+    """Run the rule generation agent via ralphify.
 
     Launches an autonomous agent loop to create a new rule from
     user instructions, iterating until it meets metric thresholds.
@@ -125,19 +123,15 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
     mode = "live" if args.live else "shadow"
 
-    # Build the ralph command with args
+    # Build the ralph run command
     cmd = [
-        "claude",
-        "-p",
-        "--allowedTools",
-        "Read,Edit,Write,Bash,Glob,Grep",
-        "--disallowedTools",
-        "mcp",
-        "--print",
-        f"Run the generate ralph with instructions: '{args.instructions}'. "
+        "ralph",
+        "run",
+        ralph_dir,
+        "--target",
+        f"Generate rule from instructions: '{args.instructions}'. "
         f"Thresholds: p_min={args.p_min}, r_min={args.r_min}, f1_min={args.f1_min}. "
-        f"Mode: {mode}. "
-        f"Read commands/generate/RALPH.md for instructions.",
+        f"Mode: {mode}.",
     ]
 
     print("Starting generate agent")
@@ -153,7 +147,9 @@ def cmd_generate(args: argparse.Namespace) -> None:
         sys.exit(result.returncode)
     except FileNotFoundError:
         print(
-            "Error: 'claude' CLI not found. Install Claude Code first.", file=sys.stderr
+            "Error: 'ralph' CLI not found. Install ralphify first:\n"
+            "  pip install ralphify",
+            file=sys.stderr,
         )
         sys.exit(2)
     except KeyboardInterrupt:

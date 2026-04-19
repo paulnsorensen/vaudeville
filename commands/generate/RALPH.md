@@ -13,6 +13,8 @@ args:
   - r_min
   - f1_min
   - mode
+completion_signal: THRESHOLDS_MET
+stop_on_completion_signal: true
 ---
 
 # vaudeville generate
@@ -103,8 +105,8 @@ Each iteration:
 6. **Read results** — parse eval.log for precision, recall, F1.
 7. **Record** — append results to `generate-results.tsv`.
 8. **Decide**:
-   - Metrics **meet thresholds** AND mode is `live`: DONE. Keep commit.
-   - Metrics **meet thresholds** AND mode is `shadow`: Report success, revert (`git reset --hard HEAD~1`).
+   - **ALL thresholds met** AND mode is `live`: Print `<promise>THRESHOLDS_MET</promise>` and stop.
+   - **ALL thresholds met** AND mode is `shadow`: Print `<promise>THRESHOLDS_MET</promise>`, revert (`git reset --hard HEAD~1`), then stop.
    - Metrics **below thresholds**: Iterate on prompt/examples, commit, re-evaluate.
    - **Error**: Log error, revert, diagnose.
 
@@ -133,12 +135,9 @@ commit	rule_name	precision	recall	f1	status	description
 
 ## Success criteria
 
-Stop when ALL thresholds are met:
+When ALL thresholds are met:
 - Precision >= {{ args.p_min }}
 - Recall >= {{ args.r_min }}
 - F1 >= {{ args.f1_min }}
 
-If mode is `shadow`, report success but do not keep the rule.
-If mode is `live`, keep the rule committed.
-
-Or after 10 iterations without progress.
+Print `<promise>THRESHOLDS_MET</promise>` to signal completion and exit the loop early.

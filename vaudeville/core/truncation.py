@@ -51,7 +51,6 @@ def _truncate_for_event(
     event: str,
     max_tokens: int = MAX_INPUT_TOKENS,
 ) -> str:
-    """Apply event-aware truncation strategy."""
     if event == "Stop":
         return sandwich_truncate(text, max_tokens)
     if event == "PreToolUse":

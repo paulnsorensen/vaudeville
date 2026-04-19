@@ -428,10 +428,7 @@ class TestBuildBackend:
         mock_instance = MagicMock()
         mock_mlx = MagicMock(return_value=mock_instance)
         with (
-            patch(
-                "vaudeville.server.daemon_backend.daemon_is_alive",
-                return_value=False,
-            ),
+            patch("vaudeville.server.daemon_is_alive", return_value=False),
             patch("vaudeville.server.mlx_backend.MLXBackend", mock_mlx),
         ):
             backend = _build_backend(args)

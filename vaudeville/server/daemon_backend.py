@@ -80,12 +80,17 @@ class DaemonBackend:
 
     def _send_classify(self, prompt: str) -> dict[str, object]:
         payload = json.dumps({"prompt": prompt}).encode() + b"\n"
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(CONNECT_TIMEOUT)
-            sock.connect(self._socket_path)
-            sock.settimeout(READ_TIMEOUT)
-            sock.sendall(payload)
-            return _recv_response(sock)
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                sock.settimeout(CONNECT_TIMEOUT)
+                sock.connect(self._socket_path)
+                sock.settimeout(READ_TIMEOUT)
+                sock.sendall(payload)
+                return _recv_response(sock)
+        except (OSError, socket.timeout, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"Daemon classify failed via {self._socket_path}: {exc}"
+            ) from exc
 
 
 def _confidence_to_logprobs(verdict: str, confidence: float) -> dict[str, float]:

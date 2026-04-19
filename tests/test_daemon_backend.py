@@ -135,7 +135,7 @@ class TestDaemonBackendClassify:
     def test_raises_on_dead_socket(self, socket_dir: str) -> None:
         path = os.path.join(socket_dir, "dead.sock")
         backend = DaemonBackend(socket_path=path)
-        with pytest.raises(OSError):
+        with pytest.raises(RuntimeError, match="Daemon classify failed"):
             backend.classify("test")
 
 
@@ -195,10 +195,8 @@ class TestBuildBackendDaemonPreference:
 
         args = argparse.Namespace(model="test-model", no_daemon=False)
         with (
-            patch(
-                "vaudeville.server.daemon_backend.daemon_is_alive", return_value=True
-            ),
-            patch("vaudeville.server.daemon_backend.DaemonBackend") as mock_cls,
+            patch("vaudeville.server.daemon_is_alive", return_value=True),
+            patch("vaudeville.server.DaemonBackend") as mock_cls,
         ):
             sentinel = object()
             mock_cls.return_value = sentinel
@@ -214,9 +212,7 @@ class TestBuildBackendDaemonPreference:
         args = argparse.Namespace(model="test-model", no_daemon=False)
         mock_mlx = object()
         with (
-            patch(
-                "vaudeville.server.daemon_backend.daemon_is_alive", return_value=False
-            ),
+            patch("vaudeville.server.daemon_is_alive", return_value=False),
             patch("vaudeville.server.mlx_backend.MLXBackend", return_value=mock_mlx),
         ):
             result = _build_backend(args)

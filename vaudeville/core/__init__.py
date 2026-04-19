@@ -1,4 +1,5 @@
 from .client import VaudevilleClient
+from .examples import Example, render_prompt
 from .paths import find_project_root
 from .protocol import (
     ClassifyRequest,
@@ -8,13 +9,11 @@ from .protocol import (
     parse_verdict,
 )
 from .rules import (
-    Example,
     EvalCase,
     Rule,
     load_rules,
     load_rules_layered,
     parse_rule,
-    render_prompt,
     rules_search_path,
     sanitize_input,
 )

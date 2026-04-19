@@ -1,18 +1,20 @@
-"""Tests for structured examples and render_prompt in vaudeville.core.rules."""
+"""Tests for structured examples and render_prompt."""
 
 from __future__ import annotations
 
 import os
 import tempfile
 
-from vaudeville.core.rules import (
+from vaudeville.core.examples import (
     Example,
-    Rule,
     _format_examples,
     _parse_examples,
+    render_prompt,
+)
+from vaudeville.core.rules import (
+    Rule,
     load_rules,
     parse_rule,
-    render_prompt,
 )
 
 

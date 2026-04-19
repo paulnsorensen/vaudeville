@@ -6,31 +6,13 @@ import argparse
 import logging
 import sys
 
-from .core.rules import EvalCase, load_rules, load_rules_layered
+from .core import EvalCase, find_project_root, load_rules, load_rules_layered
 from .eval import (
     CaseResult,
     _load_test_file,
     load_test_cases,
 )
 from .server import InferenceBackend
-
-
-def _find_project_root() -> str | None:
-    """Find the git working tree root, or None if not in a repo."""
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return None
 
 
 def _build_backend(args: argparse.Namespace) -> InferenceBackend:
@@ -40,7 +22,7 @@ def _build_backend(args: argparse.Namespace) -> InferenceBackend:
     """
     no_daemon = getattr(args, "no_daemon", False)
     if not no_daemon:
-        from .server.daemon_backend import DaemonBackend, daemon_is_alive
+        from .server import DaemonBackend, daemon_is_alive
 
         if daemon_is_alive():
             print("Using warm daemon for inference")
@@ -56,7 +38,6 @@ def _build_backend(args: argparse.Namespace) -> InferenceBackend:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build CLI argument parser."""
     parser = argparse.ArgumentParser(description="Vaudeville rule eval harness")
     parser.add_argument("--rule", help="Evaluate only this rule")
     parser.add_argument(
@@ -97,9 +78,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Force in-process backend, skip daemon check",
     )
     parser.add_argument(
-        "--backend", default="mlx", choices=["mlx"], help="Inference backend"
-    )
-    parser.add_argument(
         "--model",
         default="mlx-community/Phi-4-mini-instruct-4bit",
         help="Model path or Hugging Face ID",
@@ -124,7 +102,6 @@ def _apply_extra_test_file(
 
 
 def _emit_jsonl(case_results: list[CaseResult]) -> None:
-    """Write per-case results as JSONL to stdout."""
     import json
 
     for cr in case_results:
@@ -132,12 +109,15 @@ def _emit_jsonl(case_results: list[CaseResult]) -> None:
 
 
 def main() -> None:
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    args = parser.parse_args()
+    if args.json and args.cross_validate:
+        parser.error("--json cannot be combined with --cross-validate")
     backend = _build_backend(args)
     if getattr(args, "rules_dir", None):
         rules = load_rules(args.rules_dir)
     else:
-        rules = load_rules_layered(project_root=_find_project_root())
+        rules = load_rules_layered(project_root=find_project_root())
     test_suites = load_test_cases(rules)
 
     _apply_extra_test_file(args, test_suites)
@@ -145,7 +125,7 @@ def main() -> None:
     if args.calibrate:
         from .eval_calibrate import run_calibrate
 
-        run_calibrate(args, rules, test_suites, backend, _find_project_root())
+        run_calibrate(args, rules, test_suites, backend, find_project_root())
 
     if args.rule:
         test_suites = {k: v for k, v in test_suites.items() if k == args.rule}

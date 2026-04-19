@@ -1,12 +1,12 @@
 ---
-agent: claude -p --model claude-sonnet-4-5 --allowedTools Read,Edit,Write,Bash,Glob,Grep,Skill --disallowedTools mcp
+agent: claude -p --model claude-haiku-4-5 --allowedTools Read,Edit,Write,Bash,Glob,Grep,Skill --disallowedTools=mcp
 commands:
   - name: generate_results
-    run: cat generate-results.tsv 2>/dev/null || echo "No generate-results.tsv yet"
+    run: ./show-results.sh
   - name: rules
-    run: ls -la .vaudeville/rules/ 2>/dev/null || echo "No rules directory"
+    run: ./list-rules.sh
   - name: shadow_rules
-    run: grep -l "tier: shadow" .vaudeville/rules/*.yaml 2>/dev/null | wc -l || echo "0"
+    run: ./count-shadow.sh
   - name: git-log
     run: git log --oneline -10
 args:
@@ -124,7 +124,7 @@ Each iteration works on the **current active rule** (or creates a new one if non
    - `threshold: 0.5`
    - `tier: shadow` (all new rules start in shadow)
 4. **Commit** — `git commit -m "feat(rules): add <name>"`.
-5. **Evaluate** — run: `uv run python -m vaudeville.eval --rule <name> > eval.log 2>&1`
+5. **Evaluate** — run: `uv run python -m vaudeville.eval_cli --rule <name> > eval.log 2>&1`
 6. **Read results** — parse eval.log for precision, recall, F1.
 7. **Record** — if `generate-results.tsv` doesn't exist yet, create it with the header row:
    ```

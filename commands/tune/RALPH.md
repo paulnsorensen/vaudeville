@@ -1,10 +1,10 @@
 ---
-agent: claude -p --model claude-sonnet-4-5 --allowedTools Read,Edit,Write,Bash,Skill --disallowedTools mcp
+agent: claude -p --model claude-haiku-4-5 --allowedTools Read,Edit,Write,Bash,Skill --disallowedTools=mcp
 commands:
   - name: eval
-    run: ./commands/tune/run-eval.sh
+    run: ./run-eval.sh {{ args.rule_name }}
   - name: metrics
-    run: ./commands/tune/show-metrics.sh
+    run: ./show-metrics.sh
   - name: git-log
     run: git log --oneline -10
 args:
@@ -60,7 +60,7 @@ Each iteration, do exactly one improvement:
    - Adjusting the threshold value
 4. **Implement** — edit the rule YAML with your change.
 5. **Commit** — `git commit` your change with a short descriptive message.
-6. **Evaluate** — run: `uv run python -m vaudeville.eval --rule {{ args.rule_name }} > eval.log 2>&1`
+6. **Evaluate** — run: `uv run python -m vaudeville.eval_cli --rule {{ args.rule_name }} > eval.log 2>&1`
 7. **Read results** — parse eval.log for precision, recall, F1. If empty/error, run `tail -n 50 eval.log` to diagnose.
 8. **Record** — append results to `tune-results.tsv` (tab-separated). Do NOT commit tune-results.tsv.
 9. **Decide**:

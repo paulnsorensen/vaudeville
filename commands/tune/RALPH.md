@@ -1,5 +1,5 @@
 ---
-agent: claude -p --allowedTools Read,Edit,Write,Bash --disallowedTools mcp
+agent: claude -p --model claude-sonnet-4-5 --allowedTools Read,Edit,Write,Bash,Skill --disallowedTools mcp
 commands:
   - name: eval
     run: ./commands/tune/run-eval.sh

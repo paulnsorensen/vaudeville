@@ -72,7 +72,7 @@ def cross_validate_rule(
 
     for i, case in enumerate(cases):
         fold = EvalResults(rule=rule_name)
-        case_result = classify_case(case, rule, backend, fold)
+        case_result = classify_case(case, rule, backend, fold, case_id=i)
 
         aggregate.tp += fold.tp
         aggregate.fp += fold.fp

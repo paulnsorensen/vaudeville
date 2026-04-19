@@ -123,6 +123,7 @@ def classify_case(
     rule: Rule,
     backend: InferenceBackend,
     results: EvalResults,
+    case_id: int = 0,
 ) -> CaseResult:
     """Classify a single case and update results. Returns CaseResult."""
     text = case.text
@@ -141,8 +142,8 @@ def classify_case(
     _update_results(results, case, predicted)
 
     return CaseResult(
-        rule="",
-        case_id=0,
+        rule=rule.name,
+        case_id=case_id,
         text=case.text,
         label=case.label,
         predicted=predicted,
@@ -163,8 +164,6 @@ def evaluate_rule(
     results = EvalResults(rule=rule_name)
     case_results: list[CaseResult] = []
     for i, case in enumerate(cases):
-        cr = classify_case(case, rule, backend, results)
-        cr.rule = rule_name
-        cr.case_id = i
+        cr = classify_case(case, rule, backend, results, case_id=i)
         case_results.append(cr)
     return results, case_results

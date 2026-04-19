@@ -79,7 +79,7 @@ class DaemonBackend:
         return ClassifyResult(text=text, logprobs=logprobs)
 
     def _send_classify(self, prompt: str) -> dict[str, object]:
-        payload = json.dumps({"prompt": prompt}).encode() + b"\n"
+        payload = json.dumps({"prompt": prompt, "rule": "eval"}).encode() + b"\n"
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
                 sock.settimeout(CONNECT_TIMEOUT)

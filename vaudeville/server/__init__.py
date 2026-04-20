@@ -1,3 +1,4 @@
+from ._handlers import CLASSIFY_MAX_TOKENS
 from .condense import condense_text
 from .daemon import DaemonConfig, VaudevilleDaemon
 from .daemon_backend import DaemonBackend, daemon_is_alive
@@ -8,6 +9,7 @@ from .stats import aggregate_events, empty_result
 from .watch import watch
 
 __all__ = [
+    "CLASSIFY_MAX_TOKENS",
     "ClassificationEvent",
     "DaemonBackend",
     "DaemonConfig",

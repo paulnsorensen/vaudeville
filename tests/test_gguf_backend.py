@@ -259,6 +259,23 @@ class TestGGUFBackend:
         call_kwargs = mock_llm.create_chat_completion.call_args[1]
         assert "grammar" not in call_kwargs
 
+    def test_grammar_forces_sentence_terminator(self) -> None:
+        """Grammar must require a [.!?] terminator at the end of REASON.
+
+        Regression for bug where Phi-4-mini ran past the REASON line
+        ("...fix.Are you familiar with..."). Forcing a terminator at the
+        grammar level bounds the runaway window and guarantees clean shape.
+        """
+        from vaudeville.server.gguf_backend import GBNF_GRAMMAR
+
+        assert "reason ::= [^\\n.!?]" in GBNF_GRAMMAR, (
+            "grammar must exclude newlines and sentence terminators from "
+            "the reason body"
+        )
+        assert "[.!?]" in GBNF_GRAMMAR, (
+            "grammar must end the reason with a sentence terminator"
+        )
+
     def test_grammar_is_cached_across_calls(self) -> None:
         mock_llm = self._make_mock_llama()
         mock_lm_cls = MagicMock(return_value=mock_llm)

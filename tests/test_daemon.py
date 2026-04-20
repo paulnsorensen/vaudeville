@@ -57,6 +57,29 @@ class TestHandleRequest:
         response = handle_request(data, backend)
         assert response.endswith(b"\n")
 
+    def test_classify_max_tokens_is_tight(self) -> None:
+        """Runtime must cap Phi at ~one short sentence to avoid hallucinated run-ons.
+
+        Regression for bug where `max_tokens=50` let Phi-4-mini continue past
+        the REASON line (e.g. "...confirmed fix.Are you familiar with..."),
+        corrupting systemMessage output.
+        """
+        from vaudeville.server import CLASSIFY_MAX_TOKENS
+
+        captured: dict[str, int] = {}
+
+        class RecordingBackend:
+            def classify(self, prompt: str, max_tokens: int) -> str:  # noqa: ARG002
+                captured["max_tokens"] = max_tokens
+                return "VERDICT: clean\nREASON: ok."
+
+        data = json.dumps({"prompt": "test"}).encode() + b"\n"
+        handle_request(data, RecordingBackend())
+        assert captured["max_tokens"] == CLASSIFY_MAX_TOKENS
+        assert CLASSIFY_MAX_TOKENS <= 35, (
+            "classify budget must stay tight — loosening invites run-on REASONs"
+        )
+
 
 class TestHandleRequestEventLogging:
     def test_event_logger_called_on_clean(self, tmp_path: str) -> None:

@@ -57,6 +57,29 @@ class TestHandleRequest:
         response = handle_request(data, backend)
         assert response.endswith(b"\n")
 
+    def test_classify_max_tokens_is_tight(self) -> None:
+        """Runtime must cap Phi at ~one short sentence to avoid hallucinated run-ons.
+
+        Regression for bug where `max_tokens=50` let Phi-4-mini continue past
+        the REASON line (e.g. "...confirmed fix.Are you familiar with..."),
+        corrupting systemMessage output.
+        """
+        from vaudeville.server import CLASSIFY_MAX_TOKENS
+
+        captured: dict[str, int] = {}
+
+        class RecordingBackend:
+            def classify(self, prompt: str, max_tokens: int) -> str:  # noqa: ARG002
+                captured["max_tokens"] = max_tokens
+                return "VERDICT: clean\nREASON: ok."
+
+        data = json.dumps({"prompt": "test"}).encode() + b"\n"
+        handle_request(data, RecordingBackend())
+        assert captured["max_tokens"] == CLASSIFY_MAX_TOKENS
+        assert CLASSIFY_MAX_TOKENS <= 35, (
+            "classify budget must stay tight — loosening invites run-on REASONs"
+        )
+
 
 class TestHandleRequestEventLogging:
     def test_event_logger_called_on_clean(self, tmp_path: str) -> None:
@@ -586,13 +609,16 @@ class TestCachedInferenceRouting:
             def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
                 raise AssertionError("Should not call uncached classify")
 
-            def classify_cached(self, prompt: str, prefix_len: int) -> str:  # noqa: ARG002
+            def classify_cached(
+                self, prompt: str, prefix_len: int, max_tokens: int = 50
+            ) -> str:  # noqa: ARG002
                 raise AssertionError("Should prefer logprob variant")
 
             def classify_cached_with_logprobs(
                 self,
                 prompt: str,
                 prefix_len: int,
+                max_tokens: int = 50,
             ) -> ClassifyResult:
                 cached_calls.append((prompt, prefix_len))
                 return ClassifyResult(
@@ -621,6 +647,7 @@ class TestCachedInferenceRouting:
                 self,
                 prompt: str,
                 prefix_len: int,
+                max_tokens: int = 50,
             ) -> str:
                 cached_calls.append((prompt, prefix_len))
                 return "VERDICT: violation\nREASON: cached plain"
@@ -655,7 +682,9 @@ class TestCachedInferenceRouting:
                 route_taken.append("uncached")
                 return "VERDICT: clean\nREASON: uncached"
 
-            def classify_cached(self, prompt: str, prefix_len: int) -> str:  # noqa: ARG002
+            def classify_cached(
+                self, prompt: str, prefix_len: int, max_tokens: int = 50
+            ) -> str:  # noqa: ARG002
                 route_taken.append("cached_plain")
                 return "VERDICT: clean\nREASON: cached plain"
 
@@ -663,6 +692,7 @@ class TestCachedInferenceRouting:
                 self,
                 prompt: str,
                 prefix_len: int,
+                max_tokens: int = 50,
             ) -> ClassifyResult:  # noqa: ARG002
                 route_taken.append("cached_logprobs")
                 return ClassifyResult(
@@ -699,6 +729,7 @@ class TestCachedInferenceRouting:
                 self,
                 prompt: str,
                 prefix_len: int,
+                max_tokens: int = 50,
             ) -> ClassifyResult:  # noqa: ARG002
                 route_taken.append("cached_logprobs")
                 return ClassifyResult(
@@ -708,6 +739,68 @@ class TestCachedInferenceRouting:
 
         _run_inference(FullBackend(), "prompt", prefix_len=0)
         assert route_taken == ["uncached_logprobs"]
+
+    def test_classify_cached_max_tokens_is_tight_logprob(self) -> None:
+        """Cached logprob path must also cap at CLASSIFY_MAX_TOKENS.
+
+        Regression for the bug where cached requests silently used the
+        MLX backend's max_tokens=50 default after the uncached path was
+        tightened to 30, letting run-on REASONs slip through on cache hits.
+        """
+        from vaudeville.server import CLASSIFY_MAX_TOKENS
+
+        captured: dict[str, int] = {}
+
+        class RecordingCachedLogprob:
+            def classify(self, prompt: str, max_tokens: int) -> str:  # noqa: ARG002
+                raise AssertionError("should route to cached logprob path")
+
+            def classify_cached(
+                self,
+                prompt: str,
+                prefix_len: int,
+                max_tokens: int = 50,
+            ) -> str:  # noqa: ARG002
+                raise AssertionError("should prefer logprob variant")
+
+            def classify_cached_with_logprobs(
+                self,
+                prompt: str,
+                prefix_len: int,
+                max_tokens: int = 50,
+            ) -> ClassifyResult:  # noqa: ARG002
+                captured["max_tokens"] = max_tokens
+                return ClassifyResult(
+                    text="VERDICT: clean\nREASON: ok.",
+                    logprobs={"clean": -0.1, "violation": -3.0},
+                )
+
+        data = json.dumps({"prompt": "x", "prefix_len": 5}).encode() + b"\n"
+        handle_request(data, RecordingCachedLogprob())
+        assert captured["max_tokens"] == CLASSIFY_MAX_TOKENS
+
+    def test_classify_cached_max_tokens_is_tight_plain(self) -> None:
+        """Cached plain path (no logprobs) must also cap at CLASSIFY_MAX_TOKENS."""
+        from vaudeville.server import CLASSIFY_MAX_TOKENS
+
+        captured: dict[str, int] = {}
+
+        class RecordingCachedPlain:
+            def classify(self, prompt: str, max_tokens: int) -> str:  # noqa: ARG002
+                raise AssertionError("should route to cached plain path")
+
+            def classify_cached(
+                self,
+                prompt: str,
+                prefix_len: int,
+                max_tokens: int = 50,
+            ) -> str:  # noqa: ARG002
+                captured["max_tokens"] = max_tokens
+                return "VERDICT: clean\nREASON: ok."
+
+        data = json.dumps({"prompt": "x", "prefix_len": 5}).encode() + b"\n"
+        handle_request(data, RecordingCachedPlain())
+        assert captured["max_tokens"] == CLASSIFY_MAX_TOKENS
 
 
 class TestConfidenceScoring:

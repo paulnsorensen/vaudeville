@@ -83,7 +83,7 @@ class TestVerdictToHookResponse:
         resp = runner.verdict_to_hook_response(
             "test-rule", "Caught: {reason}", "mild issue", "warn"
         )
-        assert resp["decision"] == "warn"
+        assert "decision" not in resp
         assert "vaudeville hook [test-rule] warned about:" in resp["systemMessage"]
         assert "mild issue" in resp["systemMessage"]
 
@@ -294,10 +294,15 @@ class TestRunPipeline:
         captured = capsys.readouterr()
         assert "shadow test-shadow" in captured.err
 
-    def test_warn_tier_returns_warn_decision(
+    def test_warn_tier_omits_decision_field(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Warn tier returns warn decision even for block-action rules."""
+        """Warn tier emits systemMessage-only response (no decision field).
+
+        Claude Code's Stop hook schema only accepts decision="approve"|"block";
+        a "warn" value would fail JSON validation. Warnings must ride on
+        systemMessage with no decision field.
+        """
         from unittest.mock import MagicMock
 
         from vaudeville.core.protocol import ClassifyResponse
@@ -329,7 +334,8 @@ class TestRunPipeline:
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
         response = json.loads(captured.out.strip())
-        assert response["decision"] == "warn"
+        assert "decision" not in response
+        assert "warned about" in response["systemMessage"]
 
     def test_enforce_tier_uses_rule_action(
         self, capsys: pytest.CaptureFixture[str]

@@ -84,7 +84,6 @@ def verdict_to_hook_response(
         return {}
     elif action == "warn":
         return {
-            "decision": "warn",
             "reason": reason,
             "systemMessage": (
                 f"\U0001fa9d vaudeville hook [{name}] warned about: {message}"

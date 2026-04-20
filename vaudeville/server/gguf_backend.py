@@ -22,7 +22,7 @@ SYSTEM_PROMPT = (
 
 GBNF_GRAMMAR = r"""root ::= "VERDICT: " verdict "\nREASON: " reason
 verdict ::= "violation" | "clean"
-reason ::= [^\n]{1,200}"""
+reason ::= [^\n.!?]{1,150} [.!?]"""
 
 _compiled_grammar: Any = None
 

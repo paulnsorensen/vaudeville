@@ -18,6 +18,11 @@ from .inference import (
 
 logger = logging.getLogger(__name__)
 
+# Budget for a classify verdict: `VERDICT: <label>\nREASON: <one short sentence>`.
+# ~5 tokens for VERDICT line + ~20 for REASON gives a tight cap that prevents
+# Phi-4-mini from hallucinating extra sentences past the REASON line.
+CLASSIFY_MAX_TOKENS = 30
+
 
 def _run_inference(
     backend: InferenceBackend,
@@ -25,17 +30,21 @@ def _run_inference(
     prefix_len: int = 0,
 ) -> ClassifyResult:
     if prefix_len > 0 and isinstance(backend, CachedLogprobBackend):
-        return backend.classify_cached_with_logprobs(prompt, prefix_len)
+        return backend.classify_cached_with_logprobs(
+            prompt, prefix_len, max_tokens=CLASSIFY_MAX_TOKENS
+        )
     elif prefix_len > 0 and isinstance(backend, CachedBackend):
-        text = backend.classify_cached(prompt, prefix_len)
+        text = backend.classify_cached(
+            prompt, prefix_len, max_tokens=CLASSIFY_MAX_TOKENS
+        )
         return ClassifyResult(text=text)
     elif prefix_len > 0:
         logger.debug(
             "prefix_len=%d but backend lacks cached methods — uncached", prefix_len
         )
     if isinstance(backend, LogprobBackend):
-        return backend.classify_with_logprobs(prompt, max_tokens=50)
-    text = backend.classify(prompt, max_tokens=50)
+        return backend.classify_with_logprobs(prompt, max_tokens=CLASSIFY_MAX_TOKENS)
+    text = backend.classify(prompt, max_tokens=CLASSIFY_MAX_TOKENS)
     return ClassifyResult(text=text)
 
 

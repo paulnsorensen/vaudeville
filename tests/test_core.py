@@ -79,6 +79,12 @@ class TestParseVerdict:
         result = parse_verdict("VERDICT: violation\nREASON: Bad! And more stuff here.")
         assert result.reason == "Bad!"
 
+    def test_reason_run_on_sentence_truncated(self) -> None:
+        result = parse_verdict(
+            "VERDICT: violation\nREASON: Missing fix.Are you familiar with Latin?"
+        )
+        assert result.reason == "Missing fix."
+
     def test_mixed_case_verdict_value(self) -> None:
         result = parse_verdict("VERDICT: Violation\nREASON: test")
         assert result.verdict == "violation"

@@ -11,7 +11,12 @@ from dataclasses import dataclass, field
 import yaml
 
 from .core import ClassifyResult, EvalCase, Rule, compute_confidence, parse_verdict
-from .server import InferenceBackend, LogprobBackend, condense_text
+from .server import (
+    CLASSIFY_MAX_TOKENS,
+    InferenceBackend,
+    LogprobBackend,
+    condense_text,
+)
 
 __all__ = [
     "CaseResult",
@@ -95,8 +100,8 @@ def _load_test_file(path: str) -> tuple[list[EvalCase], str]:
 def _run_inference(backend: InferenceBackend, prompt: str) -> ClassifyResult:
     """Run inference with logprobs, falling back to plain classify."""
     if isinstance(backend, LogprobBackend):
-        return backend.classify_with_logprobs(prompt, max_tokens=50)
-    text = backend.classify(prompt, max_tokens=50)
+        return backend.classify_with_logprobs(prompt, max_tokens=CLASSIFY_MAX_TOKENS)
+    text = backend.classify(prompt, max_tokens=CLASSIFY_MAX_TOKENS)
     return ClassifyResult(text=text)
 
 

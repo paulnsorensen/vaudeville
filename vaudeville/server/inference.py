@@ -31,8 +31,11 @@ class LogprobBackend(InferenceBackend, Protocol):
 class CachedBackend(InferenceBackend, Protocol):
     """Backend that supports KV cache prefix reuse."""
 
-    def classify_cached(self, prompt: str, prefix_len: int) -> str:
-        """Run inference reusing a precomputed KV cache for prompt[:prefix_len]."""
+    def classify_cached(self, prompt: str, prefix_len: int, max_tokens: int) -> str:
+        """Run inference reusing a precomputed KV cache for prompt[:prefix_len].
+
+        Callers must pass max_tokens (typically CLASSIFY_MAX_TOKENS) to bound output.
+        """
         ...
 
 
@@ -44,6 +47,10 @@ class CachedLogprobBackend(CachedBackend, Protocol):
         self,
         prompt: str,
         prefix_len: int,
+        max_tokens: int,
     ) -> ClassifyResult:
-        """Cached inference with first-token logprobs."""
+        """Cached inference with first-token logprobs.
+
+        Callers must pass max_tokens (typically CLASSIFY_MAX_TOKENS) to bound output.
+        """
         ...

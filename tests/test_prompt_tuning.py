@@ -424,7 +424,6 @@ class TestRunnerHelpers:
             "test-rule", "{reason}", "test reason", "warn"
         )
         assert result == {
-            "decision": "warn",
             "reason": "test reason",
             "systemMessage": "\U0001fa9d vaudeville hook [test-rule] warned about: test reason",
         }

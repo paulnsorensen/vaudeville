@@ -30,9 +30,13 @@ def _run_inference(
     prefix_len: int = 0,
 ) -> ClassifyResult:
     if prefix_len > 0 and isinstance(backend, CachedLogprobBackend):
-        return backend.classify_cached_with_logprobs(prompt, prefix_len)
+        return backend.classify_cached_with_logprobs(
+            prompt, prefix_len, max_tokens=CLASSIFY_MAX_TOKENS
+        )
     elif prefix_len > 0 and isinstance(backend, CachedBackend):
-        text = backend.classify_cached(prompt, prefix_len)
+        text = backend.classify_cached(
+            prompt, prefix_len, max_tokens=CLASSIFY_MAX_TOKENS
+        )
         return ClassifyResult(text=text)
     elif prefix_len > 0:
         logger.debug(

@@ -217,7 +217,7 @@ def _build_generate_parser(sub: Any) -> None:
     p.add_argument(
         "--live",
         action="store_true",
-        help="Commit the rule when thresholds are met (default: shadow mode)",
+        help="Run generation in live mode instead of shadow mode",
     )
     p.add_argument(
         "--rounds",

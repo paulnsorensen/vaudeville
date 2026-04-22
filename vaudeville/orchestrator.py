@@ -74,7 +74,10 @@ def parse_judge_signal(output: str) -> JudgeVerdict:
             m = _RAISE_RE.match(stripped)
             if not m:
                 raise JudgeParseError(f"malformed JUDGE_RAISE: {stripped!r}")
-            p, r, f1 = float(m.group(1)), float(m.group(2)), float(m.group(3))
+            try:
+                p, r, f1 = float(m.group(1)), float(m.group(2)), float(m.group(3))
+            except ValueError:
+                raise JudgeParseError(f"malformed JUDGE_RAISE floats: {stripped!r}")
             if not all(0.0 <= v <= 1.0 for v in (p, r, f1)):
                 raise JudgeParseError(f"thresholds out of [0,1]: {stripped!r}")
             return JudgeVerdict(
@@ -116,7 +119,8 @@ def abandon_rule(
         r"^tier:\s*\S+", "tier: disabled", content, flags=re.MULTILINE
     )
     if count == 0:
-        new_content = content + "tier: disabled\n"
+        separator = "" if not content or content.endswith("\n") else "\n"
+        new_content = content + separator + "tier: disabled\n"
 
     new_content += f"\n# ABANDONED {ts}: {sanitized}\n"
     rule_file.write_text(new_content)
@@ -168,7 +172,11 @@ def _run_phase(
     """Run one ralph phase; raise RalphError on non-zero exit."""
     result = runner(ralph_dir, extra_args, project_root)
     if result.returncode != 0:
-        raise RalphError(f"{phase_name} phase failed: ralph exit {result.returncode}")
+        tail = (result.stderr or result.stdout or "").strip()[-500:]
+        raise RalphError(
+            f"{phase_name} phase failed: ralph exit {result.returncode}"
+            + (f"\n{tail}" if tail else "")
+        )
     return result
 
 
@@ -194,7 +202,9 @@ def orchestrate_tune(
     design_dir = os.path.join(commands_dir, "design")
     tune_dir = os.path.join(commands_dir, "tune")
     judge_dir = os.path.join(commands_dir, "judge")
-    plan_file = Path(commands_dir) / "tune" / "state" / f"{rule_name}.plan.md"
+    plan_file = (
+        Path(project_root) / "commands" / "tune" / "state" / f"{rule_name}.plan.md"
+    )
 
     verdict = JudgeVerdict(kind="JUDGE_CONTINUE_RE_DESIGN")
     judge_stdout = ""
@@ -301,7 +311,7 @@ def orchestrate_generate(
 
     after = _snapshot_rules(rules_dir)
     new_files = after - before
-    new_rules = [Path(f).stem for f in new_files]
+    new_rules = sorted(Path(f).stem for f in new_files)
 
     for name in new_rules:
         result = _eval_rule(name, project_root)

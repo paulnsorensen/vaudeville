@@ -89,6 +89,15 @@ class TestParseJudgeSignal:
         with pytest.raises(JudgeParseError):
             parse_judge_signal(output)
 
+    def test_parse_judge_raise_double_dot_float_raises_error(self) -> None:
+        """JUDGE_RAISE with '1..0' matches regex but float() raises ValueError → JudgeParseError."""
+        from vaudeville.orchestrator import JudgeParseError, parse_judge_signal
+
+        output = "Analysis\nJUDGE_RAISE 1..0 0.5 0.5"
+
+        with pytest.raises(JudgeParseError):
+            parse_judge_signal(output)
+
     def test_parse_no_signal_raises_error(self) -> None:
         """Output with no signal line raises JudgeParseError."""
         from vaudeville.orchestrator import JudgeParseError, parse_judge_signal
@@ -209,6 +218,25 @@ class TestAbandonRule:
         assert entry["rule"] == "test-rule"
         assert entry["reason"] == "stagnant"
         assert entry["metrics"] == metrics
+
+    def test_abandon_no_trailing_newline_produces_valid_yaml(
+        self, tmp_path: Path
+    ) -> None:
+        """Rule file without trailing newline gets a newline inserted before appended tier."""
+        from vaudeville.orchestrator import abandon_rule
+
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
+        rule_file = rules_dir / "test-rule.yaml"
+        rule_file.write_bytes(b"name: test-rule\nprompt: test")  # no trailing newline
+
+        abandon_rule("test-rule", "stagnant", {}, str(tmp_path))
+
+        content = rule_file.read_text()
+        assert "tier: disabled" in content
+        lines = content.splitlines()
+        tier_line = next(line for line in lines if line.startswith("tier:"))
+        assert tier_line == "tier: disabled"
 
     def test_abandon_creates_log_dir_if_missing(self, tmp_path: Path) -> None:
         """Abandon creates .vaudeville/logs/ if it doesn't exist."""

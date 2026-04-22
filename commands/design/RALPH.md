@@ -2,11 +2,11 @@
 agent: claude -p --model claude-sonnet-4-6 --allowedTools Read,Write,Bash --disallowedTools=mcp
 commands:
   - name: rule
-    run: ./commands/design/read-rule.sh {{ args.rule_name }}
+    run: ./read-rule.sh {{ args.rule_name }}
   - name: last-eval
-    run: ./commands/design/last-eval-log.sh {{ args.rule_name }}
+    run: ./last-eval-log.sh {{ args.rule_name }}
   - name: prior-plan
-    run: ./commands/design/read-prior-plan.sh {{ args.rule_name }}
+    run: ./read-prior-plan.sh {{ args.rule_name }}
   - name: git-log
     run: git log --oneline -10
 args:

@@ -2,9 +2,9 @@
 agent: claude -p --model claude-sonnet-4-6 --allowedTools Read,Write,Bash,Skill --disallowedTools=mcp
 commands:
   - name: existing_rules
-    run: ls -la .vaudeville/rules/ 2>/dev/null || echo "empty"
+    run: ./list-rules.sh
   - name: session_patterns
-    run: ./commands/generate/session-analytics.sh
+    run: ./session-analytics.sh
 args: [instructions, p_min, r_min, f1_min, mode]
 ---
 

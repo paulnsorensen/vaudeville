@@ -2,13 +2,13 @@
 agent: claude -p --model claude-haiku-4-5 --allowedTools Read,Edit,Write,Bash --disallowedTools=mcp
 commands:
   - name: plan
-    run: ./commands/tune/read-plan.sh {{ args.rule_name }}
+    run: ./read-plan.sh {{ args.rule_name }}
   - name: metrics
-    run: ./commands/tune/show-metrics.sh {{ args.rule_name }}
+    run: ./show-metrics.sh {{ args.rule_name }}
   - name: eval
-    run: ./commands/tune/run-eval.sh {{ args.rule_name }}
+    run: ./run-eval.sh {{ args.rule_name }}
   - name: results
-    run: ./commands/tune/read-tune-results.sh {{ args.rule_name }}
+    run: ./read-tune-results.sh {{ args.rule_name }}
   - name: git-log
     run: git log --oneline -10
 args:

@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+
+RULE_NAME="${1:-}"
+if [ -z "$RULE_NAME" ]; then
+    echo "Usage: read-plan.sh <rule_name>" >&2
+    exit 1
+fi
+
+PLAN_FILE="commands/tune/state/$RULE_NAME.plan.md"
+if [ -f "$PLAN_FILE" ]; then
+    cat "$PLAN_FILE"
+else
+    echo "EMPTY_PLAN"
+fi

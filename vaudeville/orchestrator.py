@@ -239,7 +239,15 @@ def orchestrate_tune(
 
     if verdict.kind == "JUDGE_ABANDON":
         reason = _extract_abandon_reason(judge_stdout) or verdict.raw_line
-        abandon_rule(rule_name, reason, {}, project_root)
+        metrics: dict[str, object] = {}
+        eval_result = _eval_rule(rule_name, project_root)
+        if eval_result:
+            metrics = {
+                "p_min": eval_result.p_min,
+                "r_min": eval_result.r_min,
+                "f1_min": eval_result.f1_min,
+            }
+        abandon_rule(rule_name, reason, metrics, project_root)
 
     return 0
 

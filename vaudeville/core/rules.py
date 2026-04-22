@@ -75,7 +75,7 @@ def _read_context_entry(
     return ""
 
 
-VALID_TIERS = ("shadow", "warn", "enforce")
+VALID_TIERS = ("shadow", "warn", "enforce", "disabled")
 
 
 @dataclass

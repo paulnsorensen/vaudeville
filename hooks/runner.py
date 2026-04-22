@@ -174,6 +174,9 @@ def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
 
 def _dispatch_violation(rule: Rule, result: ClassifyResponse) -> bool:
     """Handle a tier-aware violation. Returns True if the rule loop should continue."""
+    if rule.tier == "disabled":
+        return True
+
     if rule.tier == "shadow":
         _dbg(
             "shadow %s: %s (%.2f)",

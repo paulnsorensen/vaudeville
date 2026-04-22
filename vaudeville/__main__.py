@@ -8,9 +8,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from typing import Any
+
+from vaudeville import orchestrator
+from vaudeville.core.paths import find_project_root as _core_find_project_root
+from vaudeville.orchestrator import RalphError, Thresholds
 
 
 _EVENTS_LOG = os.path.join(
@@ -49,18 +52,7 @@ def cmd_stats(args: argparse.Namespace) -> None:
 
 
 def _find_project_root() -> str:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return os.getcwd()
+    return _core_find_project_root() or os.getcwd()
 
 
 def _find_commands_dir() -> str:
@@ -78,79 +70,44 @@ def _threshold_float(value: str) -> float:
     return v
 
 
-def _run_ralph_agent(ralph_dir: str, project_root: str, extra_args: list[str]) -> None:
-    """Invoke `ralph run <ralph_dir> [extra_args]` and exit with its return code."""
-    if not os.path.exists(os.path.join(ralph_dir, "RALPH.md")):
-        print(f"Error: RALPH.md not found in {ralph_dir}", file=sys.stderr)
-        sys.exit(2)
-    cmd = ["ralph", "run", ralph_dir] + extra_args
+def cmd_tune(args: argparse.Namespace) -> int:
+    """Tune a rule via the multi-phase design→tune→judge pipeline."""
+    project_root = _find_project_root()
+    commands_dir = _find_commands_dir()
+    thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
     try:
-        result = subprocess.run(cmd, cwd=project_root)
-        sys.exit(result.returncode)
-    except FileNotFoundError:
-        print(
-            "Error: 'ralph' CLI not found. Install ralphify first:\n"
-            "  pip install ralphify",
-            file=sys.stderr,
+        return orchestrator.orchestrate_tune(
+            rule_name=args.rule,
+            thresholds=thresholds,
+            rounds=args.rounds,
+            tuner_iters=args.tuner_iters,
+            project_root=project_root,
+            commands_dir=commands_dir,
         )
-        sys.exit(2)
-    except KeyboardInterrupt:
-        sys.exit(1)
+    except RalphError as e:
+        print(str(e), file=sys.stderr)
+        return 2
 
 
-def cmd_tune(args: argparse.Namespace) -> None:
-    """Tune a rule via the ralphify autonomous agent loop."""
+def cmd_generate(args: argparse.Namespace) -> int:
+    """Generate new rules via the multi-phase design→tune→judge pipeline."""
     project_root = _find_project_root()
-    ralph_dir = os.path.join(_find_commands_dir(), "tune")
-    print(f"Starting tune agent for rule: {args.rule}")
-    print(
-        f"Thresholds: precision>={args.p_min}, recall>={args.r_min}, f1>={args.f1_min}"
-    )
-    print()
-    _run_ralph_agent(
-        ralph_dir,
-        project_root,
-        [
-            "--rule_name",
-            args.rule,
-            "--p_min",
-            str(args.p_min),
-            "--r_min",
-            str(args.r_min),
-            "--f1_min",
-            str(args.f1_min),
-        ],
-    )
-
-
-def cmd_generate(args: argparse.Namespace) -> None:
-    """Generate a new rule via the ralphify autonomous agent loop."""
-    project_root = _find_project_root()
-    ralph_dir = os.path.join(_find_commands_dir(), "generate")
+    commands_dir = _find_commands_dir()
     mode = "live" if args.live else "shadow"
-    print("Starting generate agent")
-    print(f"Instructions: {args.instructions}")
-    print(
-        f"Thresholds: precision>={args.p_min}, recall>={args.r_min}, f1>={args.f1_min}"
-    )
-    print(f"Mode: {mode}")
-    print()
-    _run_ralph_agent(
-        ralph_dir,
-        project_root,
-        [
-            "--instructions",
-            args.instructions,
-            "--p_min",
-            str(args.p_min),
-            "--r_min",
-            str(args.r_min),
-            "--f1_min",
-            str(args.f1_min),
-            "--mode",
-            mode,
-        ],
-    )
+    thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
+    try:
+        return orchestrator.orchestrate_generate(
+            instructions=args.instructions,
+            thresholds=thresholds,
+            rounds=args.rounds,
+            tuner_iters=args.tuner_iters,
+            mode=mode,
+            project_root=project_root,
+            commands_dir=commands_dir,
+        )
+    except RalphError as e:
+        print(str(e), file=sys.stderr)
+        return 2
 
 
 def _print_stats_human(result: dict[str, Any]) -> None:
@@ -216,6 +173,18 @@ def _build_tune_parser(sub: Any) -> None:
         default=0.85,
         help="Minimum F1 threshold (default: 0.85)",
     )
+    p.add_argument(
+        "--rounds",
+        type=int,
+        default=3,
+        help="Maximum orchestration rounds (default: 3)",
+    )
+    p.add_argument(
+        "--tuner-iters",
+        type=int,
+        default=10,
+        help="Ralph iterations for tune phase (default: 10)",
+    )
 
 
 def _build_generate_parser(sub: Any) -> None:
@@ -248,7 +217,19 @@ def _build_generate_parser(sub: Any) -> None:
     p.add_argument(
         "--live",
         action="store_true",
-        help="Commit the rule when thresholds are met (default: shadow mode)",
+        help="Run generation in live mode instead of shadow mode",
+    )
+    p.add_argument(
+        "--rounds",
+        type=int,
+        default=3,
+        help="Maximum orchestration rounds (default: 3)",
+    )
+    p.add_argument(
+        "--tuner-iters",
+        type=int,
+        default=10,
+        help="Ralph iterations for tune phase (default: 10)",
     )
 
 
@@ -291,9 +272,9 @@ def main() -> None:
     elif args.command == "stats":
         cmd_stats(args)
     elif args.command == "tune":
-        cmd_tune(args)
+        sys.exit(cmd_tune(args))
     elif args.command == "generate":
-        cmd_generate(args)
+        sys.exit(cmd_generate(args))
 
 
 if __name__ == "__main__":

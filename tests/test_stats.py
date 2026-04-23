@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from vaudeville.server.stats import _bucket_for_latency, aggregate_events
+from vaudeville.server.stats import _bucket_for_latency, _percentiles, aggregate_events
 
 
 def _write_events(path: pathlib.Path, events: list[dict[str, object]]) -> str:
@@ -230,3 +230,41 @@ def test_single_event_latency_percentiles(tmp_path: pathlib.Path) -> None:
     assert lat["p50_ms"] == 42.0
     assert lat["p95_ms"] == 42.0
     assert lat["mean_ms"] == 42.0
+
+
+def test_per_rule_percentiles(tmp_path: pathlib.Path) -> None:
+    """Each rule summary contains p50_latency_ms and p95_latency_ms."""
+    events = [_make_event(latency_ms=float(i)) for i in range(1, 101)]
+    path = _write_events(tmp_path, events)
+    result = aggregate_events(path)
+
+    rule = result["rules"]["no-hedging"]
+    assert "p50_latency_ms" in rule
+    assert "p95_latency_ms" in rule
+    assert isinstance(rule["p50_latency_ms"], float)
+    assert isinstance(rule["p95_latency_ms"], float)
+
+
+def test_per_rule_percentiles_single_event(tmp_path: pathlib.Path) -> None:
+    """Single-event rule: p50 == p95 == the latency."""
+    path = _write_events(tmp_path, [_make_event(latency_ms=77.0)])
+    result = aggregate_events(path)
+
+    rule = result["rules"]["no-hedging"]
+    assert rule["p50_latency_ms"] == 77.0
+    assert rule["p95_latency_ms"] == 77.0
+
+
+class TestPercentiles:
+    """Unit tests for the _percentiles helper."""
+
+    def test_single_value(self) -> None:
+        p50, p95 = _percentiles([42.0])
+        assert p50 == 42.0
+        assert p95 == 42.0
+
+    def test_multiple_values(self) -> None:
+        data = [float(i) for i in range(1, 101)]
+        p50, p95 = _percentiles(data)
+        assert p50 == 50.5
+        assert round(p95, 1) == 96.0

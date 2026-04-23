@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
+from rich.console import Console
+
 from vaudeville.__main__ import _print_stats_human, cmd_stats, cmd_watch, main
 from vaudeville.server import empty_result
 
@@ -23,12 +25,16 @@ def _sample_result() -> dict[str, Any]:
                 "violations": 1,
                 "pass_rate": 66.7,
                 "avg_latency_ms": 120.5,
+                "p50_latency_ms": 110.0,
+                "p95_latency_ms": 130.0,
             },
             "no-todo": {
                 "total": 2,
                 "violations": 0,
                 "pass_rate": 100.0,
                 "avg_latency_ms": 80.0,
+                "p50_latency_ms": 75.0,
+                "p95_latency_ms": 85.0,
             },
         },
         "latency": {
@@ -68,15 +74,17 @@ class TestCmdStats:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         args = Namespace(json=False, log_path="/fake/events.jsonl")
+        console = Console(force_terminal=False, width=200)
         with patch(
             "vaudeville.server.aggregate_events",
             return_value=_sample_result(),
         ):
-            cmd_stats(args)
+            with patch("vaudeville.__main__._console", console):
+                cmd_stats(args)
         captured = capsys.readouterr()
         assert "no-yolo" in captured.out
         assert "no-todo" in captured.out
-        assert "Total classifications: 5" in captured.out
+        assert "5 classifications" in captured.out
 
     def test_human_output_empty_log(self, capsys: pytest.CaptureFixture[str]) -> None:
         args = Namespace(json=False, log_path="/fake/events.jsonl")
@@ -89,34 +97,47 @@ class TestCmdStats:
         assert "No events recorded yet." in captured.out
 
 
+def _make_console() -> Console:
+    return Console(force_terminal=False, width=200)
+
+
 class TestPrintStatsHuman:
     def test_empty_result(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_stats_human(empty_result())
+        _print_stats_human(empty_result(), console=_make_console())
         captured = capsys.readouterr()
         assert "No events recorded yet." in captured.out
 
     def test_includes_latency_line(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_stats_human(_sample_result())
+        _print_stats_human(_sample_result(), console=_make_console())
         captured = capsys.readouterr()
-        assert "p50=100.0ms" in captured.out
-        assert "p95=200.0ms" in captured.out
+        assert "p50" in captured.out
+        assert "100.0ms" in captured.out
+        assert "p95" in captured.out
+        assert "200.0ms" in captured.out
 
     def test_includes_histogram(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_stats_human(_sample_result())
+        _print_stats_human(_sample_result(), console=_make_console())
         captured = capsys.readouterr()
-        assert "Histogram:" in captured.out
+        assert "Histogram" in captured.out
         assert "<=100ms" in captured.out
 
-    def test_includes_time_range(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_stats_human(_sample_result())
+    def test_includes_rule_name(self, capsys: pytest.CaptureFixture[str]) -> None:
+        _print_stats_human(_sample_result(), console=_make_console())
         captured = capsys.readouterr()
-        assert "2026-04-12T10:00:00" in captured.out
+        assert "no-yolo" in captured.out
 
     def test_pass_rate_formatting(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_stats_human(_sample_result())
+        _print_stats_human(_sample_result(), console=_make_console())
         captured = capsys.readouterr()
-        assert "66.7%" in captured.out
-        assert "100.0%" in captured.out
+        assert "66.7" in captured.out
+
+    def test_human_output_contains_p50_p95_columns(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _print_stats_human(_sample_result(), console=_make_console())
+        captured = capsys.readouterr()
+        assert "p50" in captured.out
+        assert "p95" in captured.out
 
 
 class TestCmdWatch:

@@ -77,6 +77,37 @@ Other events (`SessionStart`, `UserPromptSubmit`, `Notification`, etc.) are avai
 
 The GGUF backend (llama-cpp-python) enforces the `VERDICT: .../REASON: ...` output format via GBNF grammar-constrained decoding, guaranteeing structurally valid responses. The MLX backend relies on prompt compliance alone, as MLX-LM does not support GBNF grammars. Both backends use temperature 0.0 for deterministic inference; the GGUF backend additionally applies `repeat_penalty=1.1`.
 
+## Observability
+
+Every classification is appended as a JSONL event by the daemon, so you can inspect rule behavior after the fact.
+
+### Commands
+
+```bash
+uv run vaudeville stats           # aggregated per-rule totals, pass rate, latency p50/p95, histogram
+uv run vaudeville stats --json    # same data as raw JSON
+uv run vaudeville watch           # live TUI of rule firings
+```
+
+Both commands accept `--log-path` to point at a non-default events file.
+
+### Log Location
+
+- `~/.vaudeville/logs/events.jsonl` — every classification (ts, rule, verdict, confidence, latency_ms, tier, reason, input_snippet)
+- `~/.vaudeville/logs/violations.jsonl` — subset where `verdict == "violation"`
+- `~/.vaudeville/logs/config.yaml` — retention settings (auto-created with defaults on first run)
+
+### Retention
+
+Loguru rotates each log file when it reaches `max_size_mb` and deletes rotated siblings older than `retention_days`. Defaults:
+
+```yaml
+max_size_mb: 10
+retention_days: 7
+```
+
+Edit `~/.vaudeville/logs/config.yaml` to change these. Raise `max_size_mb` if you want `stats` to reflect a longer window — `stats` reads only the live `events.jsonl`, not rotated siblings, so once rotation fires only post-rotation data is aggregated.
+
 ## Requirements
 
 - Python 3.11+

@@ -1,5 +1,5 @@
 #!/bin/bash
-# List existing .vaudeville/rules/*.yaml; print "empty" if the dir is missing
+# List files in .vaudeville/rules/; print "empty" if the dir is missing
 # or contains no rules. Extracted from RALPH.md frontmatter because ralph
 # runs commands via shlex.split + subprocess (no shell), which mangles
 # `2>/dev/null || echo ...` into literal args.

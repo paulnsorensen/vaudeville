@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 """Vaudeville CLI entry point.
 
 Usage: uv run python -m vaudeville <command>
@@ -10,6 +11,8 @@ import json
 import os
 import sys
 from typing import Any
+
+import argcomplete
 
 from vaudeville import orchestrator
 from vaudeville.core.paths import find_project_root as _core_find_project_root
@@ -260,6 +263,7 @@ def main() -> None:
     _build_tune_parser(sub)
     _build_generate_parser(sub)
 
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
     if args.command is None:
         parser.print_help()

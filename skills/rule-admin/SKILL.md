@@ -8,72 +8,68 @@ description: >
   or invokes /rule-admin. Typically used after /tier-advisor produces
   recommendations. Do NOT use for analysis — use /tier-advisor for that.
 model: sonnet
-allowed-tools: Read, Edit, Write, Glob, Bash(cp:*), Bash(rm:*), Bash(ls:*)
+allowed-tools: Read, Bash(vaudeville:*)
 ---
 
 # rule-admin
 
-Applies tier changes to vaudeville rule YAML files. Handles the mechanical
-steps of promoting, demoting, or deleting rules after /tier-advisor has
-produced recommendations.
+Applies tier changes to vaudeville rule YAML files via the `vaudeville` CLI.
+All mechanical operations (locate, read, write, delete) are handled by the CLI.
+
+## Available CLI commands
+
+```bash
+vaudeville list [--tier shadow|warn|enforce|disabled] [--event Stop] [--json]
+vaudeville show <name> [--json]
+vaudeville promote <name>       # shadow → warn → enforce
+vaudeville demote <name>        # enforce → warn → shadow
+vaudeville enable <name>        # restore from disabled
+vaudeville disable <name>       # disable (saves previous tier)
+vaudeville delete <name> [--yes]
+vaudeville path <name>
+vaudeville validate [name]
+```
 
 ## Input
 
-A rule name and action. If not provided, ask. Valid actions:
-
-| Action | What it does |
-|--------|-------------|
-| `promote-to-warn` | Set `tier: warn` in `rules_dev/`, copy to `~/.vaudeville/rules/` |
-| `promote-to-block` | Set `tier: block` in `rules_dev/`, copy to `~/.vaudeville/rules/` |
-| `demote-to-shadow` | Set `tier: shadow` in `rules_dev/`, remove from `~/.vaudeville/rules/` |
-| `delete` | Remove from both `rules_dev/` and `~/.vaudeville/rules/` (confirm first) |
+A rule name and action. If not provided, ask. Valid actions: `promote`,
+`demote`, `enable`, `disable`, `delete`.
 
 ## Steps
 
-### 1. Locate the rule
+### 1. Confirm the rule exists
 
-Find the rule YAML file. Search in order:
-1. `${CLAUDE_PLUGIN_ROOT}/rules_dev/<rule-name>.yaml`
-2. `${CLAUDE_PLUGIN_ROOT}/rules/<rule-name>.yaml`
-3. `~/.vaudeville/rules/<rule-name>.yaml`
+```bash
+vaudeville show <rule-name>
+```
 
-If not found, tell the user and stop.
+Show the user the current tier, event, and threshold. If not found, stop.
 
-### 2. Read current state
+### 2. Apply the change
 
-Read the rule file and show the user:
-- Current `tier:` value (or "none" if field is absent)
-- Current `threshold:` value
-- Rule `event:` type
+Use the matching CLI command. Examples:
 
-### 3. Apply the change
+```bash
+vaudeville promote sycophancy-detector
+vaudeville demote hedging-detector
+vaudeville disable stale-rule
+vaudeville enable restored-rule
+vaudeville delete old-rule --yes
+```
 
-For **promote-to-warn**:
-1. Set `tier: warn` in the rule YAML
-2. Copy the file to `~/.vaudeville/rules/<rule-name>.yaml`
+`promote` and `demote` step one tier at a time (shadow↔warn↔enforce).
+Use `disable` / `enable` for the disabled tier — they preserve the previous
+tier in a sidecar comment so `enable` can restore it.
 
-For **promote-to-block**:
-1. Set `tier: block` in the rule YAML
-2. Copy the file to `~/.vaudeville/rules/<rule-name>.yaml`
+### 3. Confirm
 
-For **demote-to-shadow**:
-1. Set `tier: shadow` in the rule YAML
-2. Remove `~/.vaudeville/rules/<rule-name>.yaml` if it exists
-
-For **delete**:
-1. Confirm with the user before proceeding
-2. Remove the rule file from `rules_dev/` and `~/.vaudeville/rules/`
-
-### 4. Confirm
-
-Show the user what changed and where.
+Run `vaudeville show <rule-name>` again and report the new tier to the user.
 
 ## Gotchas
 
-- Always read the YAML before editing — rules may have comments or
-  non-standard field ordering that blind writes would destroy
-- The `~/.vaudeville/rules/` directory may not exist yet — create it
-  if needed when copying
-- Delete is destructive — always confirm before removing files
-- Some rules exist only in `~/.vaudeville/rules/` (user-created),
-  not in `rules_dev/` — handle both locations
+- `delete` prompts for confirmation unless `--yes` is passed. In non-interactive
+  contexts always pass `--yes`.
+- If a rule exists in both project and home, `delete` will ask which location
+  to remove.
+- `promote` / `demote` refuse to move a disabled rule — use `enable` first.
+- Rules search order: project `.vaudeville/rules/` first, then `~/.vaudeville/rules/`.

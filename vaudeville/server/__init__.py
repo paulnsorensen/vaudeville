@@ -6,6 +6,7 @@ from .event_log import ClassificationEvent, EventLogger
 from .inference import InferenceBackend, LogprobBackend
 from .log_config import LogConfig, load_log_config
 from .stats import aggregate_events, empty_result
+from .tui import latency_text, styled_table
 from .watch import watch
 
 __all__ = [
@@ -22,6 +23,8 @@ __all__ = [
     "condense_text",
     "daemon_is_alive",
     "empty_result",
+    "latency_text",
     "load_log_config",
+    "styled_table",
     "watch",
 ]

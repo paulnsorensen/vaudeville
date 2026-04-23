@@ -88,3 +88,43 @@ class TestMain:
             main()
 
         mock_setup.assert_called_once_with()
+
+    def test_stats_command_dispatches(self) -> None:
+        empty: dict[str, object] = {"total": 0}
+        with (
+            patch("sys.argv", ["vaudeville", "stats"]),
+            patch("vaudeville.server.aggregate_events", return_value=empty) as mock_agg,
+        ):
+            from vaudeville.__main__ import main
+
+            main()
+
+        mock_agg.assert_called_once()
+
+    def test_tune_command_dispatches(self) -> None:
+        with (
+            patch("sys.argv", ["vaudeville", "tune", "no-hedging"]),
+            patch(
+                "vaudeville.orchestrator.orchestrate_tune", return_value=0
+            ) as mock_tune,
+        ):
+            from vaudeville.__main__ import main
+
+            with pytest.raises(SystemExit, match="0"):
+                main()
+
+        mock_tune.assert_called_once()
+
+    def test_generate_command_dispatches(self) -> None:
+        with (
+            patch("sys.argv", ["vaudeville", "generate", "describe rule"]),
+            patch(
+                "vaudeville.orchestrator.orchestrate_generate", return_value=0
+            ) as mock_gen,
+        ):
+            from vaudeville.__main__ import main
+
+            with pytest.raises(SystemExit, match="0"):
+                main()
+
+        mock_gen.assert_called_once()

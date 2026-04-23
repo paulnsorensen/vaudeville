@@ -17,7 +17,7 @@ from rich.text import Text
 from vaudeville import orchestrator
 from vaudeville.core.paths import find_project_root as _core_find_project_root
 from vaudeville.orchestrator import RalphError, Thresholds
-from vaudeville.server.tui import latency_text, styled_table
+from vaudeville.server import latency_text, styled_table
 
 
 _EVENTS_LOG = os.path.join(
@@ -118,47 +118,48 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 def _print_stats_human(result: dict[str, Any], console: Console | None = None) -> None:
     con = console if console is not None else _console
-    total = result["total"]
-    if total == 0:
+    if result["total"] == 0:
         con.print("No events recorded yet.")
         return
 
     con.rule("Vaudeville Stats", style="bold cyan")
+    if result["rules"]:
+        _render_rules_table(result, con)
+    _render_latency_summary(result["latency"], con)
+    _render_histogram(result["latency"], con)
 
-    rules = result["rules"]
-    if rules:
-        table = styled_table(
-            "Per-Rule Breakdown",
-            caption=f"{total} classifications",
+
+_PASS_RATE_STYLES = (("green", 90.0), ("yellow", 50.0))
+
+
+def _render_rules_table(result: dict[str, Any], con: Console) -> None:
+    table = styled_table(
+        "Per-Rule Breakdown", caption=f"{result['total']} classifications"
+    )
+    table.add_column("Rule", justify="left")
+    table.add_column("Total", justify="right")
+    table.add_column("Violations", justify="right")
+    table.add_column("Pass %", justify="right")
+    table.add_column("Avg ms", justify="right")
+    table.add_column("p50 ms", justify="right")
+    table.add_column("p95 ms", justify="right")
+
+    for name, data in result["rules"].items():
+        pass_rate = data["pass_rate"]
+        style = next((s for s, t in _PASS_RATE_STYLES if pass_rate >= t), "red")
+        table.add_row(
+            name,
+            str(data["total"]),
+            str(data["violations"]),
+            Text(f"{pass_rate:.1f}%", style=style),
+            latency_text(data["avg_latency_ms"]),
+            latency_text(data["p50_latency_ms"]),
+            latency_text(data["p95_latency_ms"]),
         )
-        table.add_column("Rule", justify="left")
-        table.add_column("Total", justify="right")
-        table.add_column("Violations", justify="right")
-        table.add_column("Pass %", justify="right")
-        table.add_column("Avg ms", justify="right")
-        table.add_column("p50 ms", justify="right")
-        table.add_column("p95 ms", justify="right")
+    con.print(table)
 
-        for name, data in rules.items():
-            pass_rate = data["pass_rate"]
-            if pass_rate >= 90:
-                pass_style = "green"
-            elif pass_rate >= 50:
-                pass_style = "yellow"
-            else:
-                pass_style = "red"
-            table.add_row(
-                name,
-                str(data["total"]),
-                str(data["violations"]),
-                Text(f"{pass_rate:.1f}%", style=pass_style),
-                latency_text(data["avg_latency_ms"]),
-                latency_text(data["p50_latency_ms"]),
-                latency_text(data["p95_latency_ms"]),
-            )
-        con.print(table)
 
-    lat = result["latency"]
+def _render_latency_summary(lat: dict[str, Any], con: Console) -> None:
     summary = Text.assemble(
         "Overall latency \u2014 p50: ",
         (f"{lat['p50_ms']:.1f}ms", "bold"),
@@ -170,6 +171,8 @@ def _print_stats_human(result: dict[str, Any], console: Console | None = None) -
     con.print(summary)
     con.print()
 
+
+def _render_histogram(lat: dict[str, Any], con: Console) -> None:
     hist_table = styled_table("Latency Histogram")
     hist_table.add_column("Bucket", justify="right")
     hist_table.add_column("Count", justify="right")
@@ -185,12 +188,7 @@ def _print_stats_human(result: dict[str, Any], console: Console | None = None) -
     con.print(hist_table)
 
 
-def _build_tune_parser(sub: Any) -> None:
-    p = sub.add_parser(
-        "tune",
-        help="Tune a rule to meet precision/recall/f1 thresholds (autonomous agent)",
-    )
-    p.add_argument("rule", help="Rule name to tune")
+def _add_threshold_args(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--p-min",
         type=_threshold_float,
@@ -221,6 +219,15 @@ def _build_tune_parser(sub: Any) -> None:
         default=10,
         help="Ralph iterations for tune phase (default: 10)",
     )
+
+
+def _build_tune_parser(sub: Any) -> None:
+    p = sub.add_parser(
+        "tune",
+        help="Tune a rule to meet precision/recall/f1 thresholds (autonomous agent)",
+    )
+    p.add_argument("rule", help="Rule name to tune")
+    _add_threshold_args(p)
 
 
 def _build_generate_parser(sub: Any) -> None:
@@ -233,39 +240,18 @@ def _build_generate_parser(sub: Any) -> None:
         help="Description of what the rule should detect",
     )
     p.add_argument(
-        "--p-min",
-        type=_threshold_float,
-        default=0.95,
-        help="Minimum precision threshold (default: 0.95)",
-    )
-    p.add_argument(
-        "--r-min",
-        type=_threshold_float,
-        default=0.80,
-        help="Minimum recall threshold (default: 0.80)",
-    )
-    p.add_argument(
-        "--f1-min",
-        type=_threshold_float,
-        default=0.85,
-        help="Minimum F1 threshold (default: 0.85)",
-    )
-    p.add_argument(
         "--live",
         action="store_true",
         help="Run generation in live mode instead of shadow mode",
     )
+    _add_threshold_args(p)
+
+
+def _add_log_path_arg(p: argparse.ArgumentParser) -> None:
     p.add_argument(
-        "--rounds",
-        type=int,
-        default=3,
-        help="Maximum orchestration rounds (default: 3)",
-    )
-    p.add_argument(
-        "--tuner-iters",
-        type=int,
-        default=10,
-        help="Ralph iterations for tune phase (default: 10)",
+        "--log-path",
+        default=_EVENTS_LOG,
+        help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
     )
 
 
@@ -276,22 +262,12 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
 
-    watch_parser = sub.add_parser("watch", help="Live TUI of rule firings")
-    watch_parser.add_argument(
-        "--log-path",
-        default=_EVENTS_LOG,
-        help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
-    )
-
+    _add_log_path_arg(sub.add_parser("watch", help="Live TUI of rule firings"))
     sub.add_parser("setup", help="Download model and verify inference")
 
     stats_parser = sub.add_parser("stats", help="Show classification statistics")
     stats_parser.add_argument("--json", action="store_true", help="Output raw JSON")
-    stats_parser.add_argument(
-        "--log-path",
-        default=_EVENTS_LOG,
-        help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
-    )
+    _add_log_path_arg(stats_parser)
 
     _build_tune_parser(sub)
     _build_generate_parser(sub)
@@ -300,7 +276,10 @@ def main() -> None:
     if args.command is None:
         parser.print_help()
         sys.exit(1)
+    _dispatch(args)
 
+
+def _dispatch(args: argparse.Namespace) -> None:
     if args.command == "watch":
         cmd_watch(args)
     elif args.command == "setup":

@@ -44,59 +44,61 @@ def query_session_patterns(project_filter: str | None = None) -> str:
         con.close()
 
 
+def _query_filtered(
+    con: Any,
+    sql_unfiltered: str,
+    sql_filtered: str,
+    cwd_filter: str | None,
+) -> list[tuple[Any, ...]]:
+    """Execute the filtered or unfiltered SQL based on cwd_filter presence."""
+    if cwd_filter is None:
+        return list(con.execute(sql_unfiltered).fetchall())
+    return list(con.execute(sql_filtered, [cwd_filter]).fetchall())
+
+
 def _build_patterns_text(con: Any, project_filter: str | None) -> str:
+    cwd_filter = f"%{project_filter}%" if project_filter else None
     lines: list[str] = []
 
-    cwd_filter = f"%{project_filter}%" if project_filter else None
-
     lines.append("## Top bash commands")
-    if cwd_filter is not None:
-        rows = con.execute(
-            "SELECT bash_cmd, count(*) AS uses FROM tool_uses"
-            " WHERE tool_name = 'Bash' AND bash_cmd IS NOT NULL AND cwd LIKE ?"
-            " GROUP BY bash_cmd ORDER BY uses DESC LIMIT 10",
-            [cwd_filter],
-        ).fetchall()
-    else:
-        rows = con.execute(
-            "SELECT bash_cmd, count(*) AS uses FROM tool_uses"
-            " WHERE tool_name = 'Bash' AND bash_cmd IS NOT NULL"
-            " GROUP BY bash_cmd ORDER BY uses DESC LIMIT 10"
-        ).fetchall()
+    rows = _query_filtered(
+        con,
+        "SELECT bash_cmd, count(*) AS uses FROM tool_uses"
+        " WHERE tool_name = 'Bash' AND bash_cmd IS NOT NULL"
+        " GROUP BY bash_cmd ORDER BY uses DESC LIMIT 10",
+        "SELECT bash_cmd, count(*) AS uses FROM tool_uses"
+        " WHERE tool_name = 'Bash' AND bash_cmd IS NOT NULL AND cwd LIKE ?"
+        " GROUP BY bash_cmd ORDER BY uses DESC LIMIT 10",
+        cwd_filter,
+    )
     for cmd, count in rows:
         lines.append(f"  {count:4d}  {cmd}")
 
     lines.append("\n## Top tool uses")
-    if cwd_filter is not None:
-        rows = con.execute(
-            "SELECT tool_name, count(*) AS uses FROM tool_uses"
-            " WHERE cwd LIKE ?"
-            " GROUP BY tool_name ORDER BY uses DESC LIMIT 10",
-            [cwd_filter],
-        ).fetchall()
-    else:
-        rows = con.execute(
-            "SELECT tool_name, count(*) AS uses FROM tool_uses"
-            " GROUP BY tool_name ORDER BY uses DESC LIMIT 10"
-        ).fetchall()
+    rows = _query_filtered(
+        con,
+        "SELECT tool_name, count(*) AS uses FROM tool_uses"
+        " GROUP BY tool_name ORDER BY uses DESC LIMIT 10",
+        "SELECT tool_name, count(*) AS uses FROM tool_uses"
+        " WHERE cwd LIKE ?"
+        " GROUP BY tool_name ORDER BY uses DESC LIMIT 10",
+        cwd_filter,
+    )
     for tool, count in rows:
         lines.append(f"  {count:4d}  {tool}")
 
     lines.append("\n## Permission denials")
-    if cwd_filter is not None:
-        rows = con.execute(
-            "SELECT pd.content, count(*) AS cnt"
-            " FROM permission_denials pd"
-            " JOIN sessions s ON pd.sessionId = s.sessionId"
-            " WHERE s.project LIKE ?"
-            " GROUP BY pd.content ORDER BY cnt DESC LIMIT 5",
-            [cwd_filter],
-        ).fetchall()
-    else:
-        rows = con.execute(
-            "SELECT content, count(*) AS cnt FROM permission_denials"
-            " GROUP BY content ORDER BY cnt DESC LIMIT 5"
-        ).fetchall()
+    rows = _query_filtered(
+        con,
+        "SELECT content, count(*) AS cnt FROM permission_denials"
+        " GROUP BY content ORDER BY cnt DESC LIMIT 5",
+        "SELECT pd.content, count(*) AS cnt"
+        " FROM permission_denials pd"
+        " JOIN sessions s ON pd.sessionId = s.sessionId"
+        " WHERE s.project LIKE ?"
+        " GROUP BY pd.content ORDER BY cnt DESC LIMIT 5",
+        cwd_filter,
+    )
     for content, count in rows:
         lines.append(f"  {count:4d}  {content[:80]}")
 

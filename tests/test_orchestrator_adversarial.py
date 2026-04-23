@@ -698,7 +698,7 @@ class TestOrchestrateGenerateAdversarial:
         # Generate creates no new files
         runner.add_response(_ok("Generated 0 rules"))
 
-        with patch("vaudeville.orchestrator._eval_rule") as mock_eval:
+        with patch("vaudeville.orchestrator._abandon._eval_rule") as mock_eval:
             rc = orchestrate_generate(
                 instructions="nothing",
                 thresholds=Thresholds(0.9, 0.8, 0.85),
@@ -736,7 +736,7 @@ class TestOrchestrateGenerateAdversarial:
         runner.add_side_effect(mk_plan, _ok("Design"))
         runner.add_response(_ok("Judge\nJUDGE_DONE"))
 
-        with patch("vaudeville.orchestrator._eval_rule", return_value=None):
+        with patch("vaudeville.orchestrator._abandon._eval_rule", return_value=None):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=Thresholds(0.9, 0.8, 0.85),
@@ -769,7 +769,9 @@ class TestOrchestrateGenerateAdversarial:
 
         # Return metrics exactly at threshold
         exact_result = Thresholds(p_min=0.9, r_min=0.8, f1_min=0.85)
-        with patch("vaudeville.orchestrator._eval_rule", return_value=exact_result):
+        with patch(
+            "vaudeville.orchestrator._abandon._eval_rule", return_value=exact_result
+        ):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -810,7 +812,9 @@ class TestOrchestrateGenerateAdversarial:
 
         # p_min is 0.8999 < 0.9 threshold
         below_result = Thresholds(p_min=0.8999, r_min=0.8, f1_min=0.85)
-        with patch("vaudeville.orchestrator._eval_rule", return_value=below_result):
+        with patch(
+            "vaudeville.orchestrator._abandon._eval_rule", return_value=below_result
+        ):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -850,7 +854,9 @@ class TestOrchestrateGenerateAdversarial:
             eval_call_count += 1
             return thresholds  # all pass
 
-        with patch("vaudeville.orchestrator._eval_rule", side_effect=mock_eval):
+        with patch(
+            "vaudeville.orchestrator._abandon._eval_rule", side_effect=mock_eval
+        ):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,

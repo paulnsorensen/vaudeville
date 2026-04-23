@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
+from typing import Callable
 
 import pytest
 
@@ -41,6 +43,44 @@ class MockBackend:
             text=f"VERDICT: {self.verdict}\nREASON: {self.reason}",
             logprobs=self.logprobs,
         )
+
+
+class FakeRalphRunner:
+    """Mock ralph runner that returns scripted responses and records calls."""
+
+    def __init__(self) -> None:
+        self.responses: list[
+            tuple[Callable[[], None] | None, subprocess.CompletedProcess[str]]
+        ] = []
+        self.calls: list[tuple[str, list[str], str]] = []
+
+    def add_response(
+        self,
+        side_effect_fn: Callable[[], None] | None,
+        completed_process: subprocess.CompletedProcess[str],
+    ) -> None:
+        """Queue a response: optional side effect + CompletedProcess to return."""
+        self.responses.append((side_effect_fn, completed_process))
+
+    def __call__(
+        self, ralph_dir: str, extra_args: list[str], project_root: str
+    ) -> subprocess.CompletedProcess[str]:
+        """Called by orchestrator; pops first queued response."""
+        self.calls.append((ralph_dir, extra_args, project_root))
+
+        if not self.responses:
+            return subprocess.CompletedProcess(
+                args=["ralph", "run", ralph_dir],
+                returncode=1,
+                stdout="",
+                stderr="No more mock responses queued",
+            )
+
+        side_effect_fn, completed_process = self.responses.pop(0)
+        if side_effect_fn:
+            side_effect_fn()
+
+        return completed_process
 
 
 @pytest.fixture

@@ -143,7 +143,7 @@ Edit `~/.vaudeville/logs/config.yaml` to change these. Raise `max_size_mb` if yo
 ## Requirements
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [uv](https://docs.astral.sh/uv/) >= 0.4.27 (Python package manager)
 - ~4 GB disk for the model
 - Apple Silicon (recommended — MLX backend, GPU-accelerated) or x86_64 (GGUF backend, CPU only, slower)
 

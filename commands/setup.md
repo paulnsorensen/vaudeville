@@ -25,6 +25,15 @@ if ! command -v uv &>/dev/null; then
   }
 fi
 echo "uv $(uv --version)"
+
+# Enforce minimum uv version (0.4.27 introduced --group support)
+_uv_min="0.4.27"
+_uv_actual=$(uv --version | awk '{print $2}')
+if [ "$(printf '%s\n' "$_uv_min" "$_uv_actual" | sort -V | head -n1)" != "$_uv_min" ]; then
+  echo "ERROR: uv ${_uv_actual} is too old — vaudeville requires uv >= ${_uv_min}." >&2
+  echo "Upgrade with: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  exit 1
+fi
 ```
 
 2. **Sync dependencies** — install the correct backend for this OS+arch. MLX is Apple Silicon only; everything else (incl. Linux aarch64) uses gguf:
@@ -35,10 +44,10 @@ os=$(uname -s)
 arch=$(uname -m)
 if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
   echo "Apple Silicon detected — syncing mlx backend..."
-  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group mlx
+  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group mlx
 else
   echo "${os}/${arch} detected — syncing gguf backend..."
-  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group gguf
+  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group gguf
 fi
 ```
 

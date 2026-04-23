@@ -116,37 +116,18 @@ def cmd_generate(args: argparse.Namespace) -> int:
         return 2
 
 
-def _print_stats_human(result: dict[str, Any], console: Console | None = None) -> None:
-    con = console if console is not None else _console
-    if result["total"] == 0:
-        con.print("No events recorded yet.")
-        return
-
-    con.rule("Vaudeville Stats", style="bold cyan")
-    if result["rules"]:
-        _render_rules_table(result, con)
-    _render_latency_summary(result["latency"], con)
-    _render_histogram(result["latency"], con)
-
-
-_PASS_RATE_STYLES = (("green", 90.0), ("yellow", 50.0))
-
-
-def _render_rules_table(result: dict[str, Any], con: Console) -> None:
+def _render_rules_table(con: Console, rules: dict[str, Any], total: int) -> None:
     table = styled_table(
-        "Per-Rule Breakdown", caption=f"{result['total']} classifications"
+        "Per-Rule Breakdown",
+        caption=f"{total} classifications",
     )
     table.add_column("Rule", justify="left")
-    table.add_column("Total", justify="right")
-    table.add_column("Violations", justify="right")
-    table.add_column("Pass %", justify="right")
-    table.add_column("Avg ms", justify="right")
-    table.add_column("p50 ms", justify="right")
-    table.add_column("p95 ms", justify="right")
+    for col in ("Total", "Violations", "Pass %", "Avg ms", "p50 ms", "p95 ms"):
+        table.add_column(col, justify="right")
 
-    for name, data in result["rules"].items():
+    for name, data in rules.items():
         pass_rate = data["pass_rate"]
-        style = next((s for s, t in _PASS_RATE_STYLES if pass_rate >= t), "red")
+        style = "green" if pass_rate >= 90 else "yellow" if pass_rate >= 50 else "red"
         table.add_row(
             name,
             str(data["total"]),
@@ -159,7 +140,7 @@ def _render_rules_table(result: dict[str, Any], con: Console) -> None:
     con.print(table)
 
 
-def _render_latency_summary(lat: dict[str, Any], con: Console) -> None:
+def _render_latency_summary(con: Console, lat: dict[str, Any]) -> None:
     summary = Text.assemble(
         "Overall latency \u2014 p50: ",
         (f"{lat['p50_ms']:.1f}ms", "bold"),
@@ -172,23 +153,46 @@ def _render_latency_summary(lat: dict[str, Any], con: Console) -> None:
     con.print()
 
 
-def _render_histogram(lat: dict[str, Any], con: Console) -> None:
+def _render_histogram(con: Console, histogram: dict[str, int]) -> None:
     hist_table = styled_table("Latency Histogram")
     hist_table.add_column("Bucket", justify="right")
     hist_table.add_column("Count", justify="right")
     hist_table.add_column("Bar")
 
-    histogram = lat["histogram"]
     max_count = max(histogram.values()) if histogram else 1
     bar_width = 40
     for bucket, count in histogram.items():
         bar_len = int((count / max_count) * bar_width) if max_count else 0
-        bar = "\u2588" * bar_len
-        hist_table.add_row(bucket, str(count), bar)
+        hist_table.add_row(bucket, str(count), "\u2588" * bar_len)
     con.print(hist_table)
 
 
-def _add_threshold_args(p: argparse.ArgumentParser) -> None:
+def _print_stats_human(result: dict[str, Any], console: Console | None = None) -> None:
+    con = console if console is not None else _console
+    total = result["total"]
+    if total == 0:
+        con.print("No events recorded yet.")
+        return
+
+    con.rule("Vaudeville Stats", style="bold cyan")
+    rules = result["rules"]
+    if rules:
+        _render_rules_table(con, rules, total)
+    lat = result["latency"]
+    _render_latency_summary(con, lat)
+    _render_histogram(con, lat["histogram"])
+
+
+def _add_log_path_arg(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--log-path",
+        default=_EVENTS_LOG,
+        help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
+    )
+
+
+def _add_pipeline_args(p: argparse.ArgumentParser) -> None:
+    """Add threshold + orchestration args shared by tune and generate."""
     p.add_argument(
         "--p-min",
         type=_threshold_float,
@@ -227,7 +231,7 @@ def _build_tune_parser(sub: Any) -> None:
         help="Tune a rule to meet precision/recall/f1 thresholds (autonomous agent)",
     )
     p.add_argument("rule", help="Rule name to tune")
-    _add_threshold_args(p)
+    _add_pipeline_args(p)
 
 
 def _build_generate_parser(sub: Any) -> None:
@@ -244,39 +248,7 @@ def _build_generate_parser(sub: Any) -> None:
         action="store_true",
         help="Run generation in live mode instead of shadow mode",
     )
-    _add_threshold_args(p)
-
-
-def _add_log_path_arg(p: argparse.ArgumentParser) -> None:
-    p.add_argument(
-        "--log-path",
-        default=_EVENTS_LOG,
-        help="Path to events.jsonl (default: ~/.vaudeville/logs/events.jsonl)",
-    )
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="vaudeville",
-        description="Vaudeville SLM hook enforcement",
-    )
-    sub = parser.add_subparsers(dest="command")
-
-    _add_log_path_arg(sub.add_parser("watch", help="Live TUI of rule firings"))
-    sub.add_parser("setup", help="Download model and verify inference")
-
-    stats_parser = sub.add_parser("stats", help="Show classification statistics")
-    stats_parser.add_argument("--json", action="store_true", help="Output raw JSON")
-    _add_log_path_arg(stats_parser)
-
-    _build_tune_parser(sub)
-    _build_generate_parser(sub)
-
-    args = parser.parse_args()
-    if args.command is None:
-        parser.print_help()
-        sys.exit(1)
-    _dispatch(args)
+    _add_pipeline_args(p)
 
 
 def _dispatch(args: argparse.Namespace) -> None:
@@ -290,6 +262,33 @@ def _dispatch(args: argparse.Namespace) -> None:
         sys.exit(cmd_tune(args))
     elif args.command == "generate":
         sys.exit(cmd_generate(args))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="vaudeville",
+        description="Vaudeville SLM hook enforcement",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    watch_parser = sub.add_parser("watch", help="Live TUI of rule firings")
+    _add_log_path_arg(watch_parser)
+
+    sub.add_parser("setup", help="Download model and verify inference")
+
+    stats_parser = sub.add_parser("stats", help="Show classification statistics")
+    stats_parser.add_argument("--json", action="store_true", help="Output raw JSON")
+    _add_log_path_arg(stats_parser)
+
+    _build_tune_parser(sub)
+    _build_generate_parser(sub)
+
+    args = parser.parse_args()
+    if args.command is None:
+        parser.print_help()
+        sys.exit(1)
+
+    _dispatch(args)
 
 
 if __name__ == "__main__":

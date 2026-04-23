@@ -86,7 +86,8 @@ def _summarize_rules(
     return summaries
 
 
-def _parse_line(stripped: str) -> dict[str, Any] | None:
+def _parse_line(line: str) -> dict[str, Any] | None:
+    stripped = line.strip()
     if not stripped:
         return None
     try:
@@ -99,13 +100,8 @@ def _parse_line(stripped: str) -> dict[str, Any] | None:
 def _parse_events(log_path: str) -> list[dict[str, Any]]:
     if not os.path.exists(log_path):
         return []
-    events: list[dict[str, Any]] = []
     with open(log_path) as f:
-        for line in f:
-            evt = _parse_line(line.strip())
-            if evt is not None:
-                events.append(evt)
-    return events
+        return [evt for line in f if (evt := _parse_line(line)) is not None]
 
 
 def _bucket_for_latency(lat: float) -> str:

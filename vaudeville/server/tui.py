@@ -18,6 +18,7 @@ def styled_table(title: str, caption: str | None = None) -> Table:
         box=box.SIMPLE_HEAVY,
         expand=True,
         show_lines=False,
+        padding=(0, 1),
     )
 
 

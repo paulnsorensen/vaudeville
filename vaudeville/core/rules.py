@@ -15,6 +15,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -252,6 +253,80 @@ def parse_rule(data: dict[str, Any]) -> Rule:
         labels=labels,
         test_cases=test_cases,
     )
+
+
+def locate_rule_file(rule_name: str, project_root: str | None = None) -> Path:
+    """Find a rule YAML; searches project then home, raises FileNotFoundError if absent."""
+    home = os.path.expanduser("~")
+    candidates: list[Path] = []
+    if project_root:
+        proj_rules = Path(project_root) / ".vaudeville" / "rules"
+        candidates += [
+            proj_rules / f"{rule_name}.yaml",
+            proj_rules / f"{rule_name}.yml",
+        ]
+    home_rules = Path(home) / ".vaudeville" / "rules"
+    candidates += [home_rules / f"{rule_name}.yaml", home_rules / f"{rule_name}.yml"]
+    for path in candidates:
+        if path.exists():
+            return path
+    raise FileNotFoundError(f"rule file not found for {rule_name!r}")
+
+
+def locate_all_rule_files(
+    rule_name: str, project_root: str | None = None
+) -> list[Path]:
+    """Return all matching rule YAML paths across project and home search dirs."""
+    home = os.path.expanduser("~")
+    candidates: list[Path] = []
+    if project_root:
+        proj_rules = Path(project_root) / ".vaudeville" / "rules"
+        candidates += [
+            proj_rules / f"{rule_name}.yaml",
+            proj_rules / f"{rule_name}.yml",
+        ]
+    home_rules = Path(home) / ".vaudeville" / "rules"
+    candidates += [home_rules / f"{rule_name}.yaml", home_rules / f"{rule_name}.yml"]
+    return [p for p in candidates if p.exists()]
+
+
+def set_tier(rule_name: str, new_tier: str, project_root: str | None = None) -> Path:
+    """Update the tier field in a rule file in-place. Returns the modified path."""
+    if new_tier not in VALID_TIERS:
+        raise ValueError(f"Invalid tier {new_tier!r}, must be one of {VALID_TIERS}")
+    path = locate_rule_file(rule_name, project_root)
+    content = path.read_text()
+    new_content, count = re.subn(
+        r"^tier:\s*\S+", f"tier: {new_tier}", content, flags=re.MULTILINE
+    )
+    if count == 0:
+        sep = "" if not content or content.endswith("\n") else "\n"
+        new_content = content + sep + f"tier: {new_tier}\n"
+    path.write_text(new_content)
+    return path
+
+
+def list_rules_with_source(project_root: str | None = None) -> list[tuple[Rule, str]]:
+    """Return (rule, source_dir) pairs; project-level rules override global by name."""
+    seen: dict[str, tuple[Rule, str]] = {}
+    for rules_dir in rules_search_path(project_root):
+        for filename in os.listdir(rules_dir):
+            if not (filename.endswith(".yaml") or filename.endswith(".yml")):
+                continue
+            path = os.path.join(rules_dir, filename)
+            try:
+                rule = _load_rule_file(path)
+                if rule is None:
+                    continue
+                seen[rule.name] = (rule, rules_dir)
+            except Exception:
+                continue
+    return list(seen.values())
+
+
+def load_rule_file(path: str | Path) -> Rule | None:
+    """Public wrapper: load and parse a single rule YAML. Returns None for drafts."""
+    return _load_rule_file(str(path))
 
 
 def _parse_test_cases(raw: object, rule_name: str, labels: list[str]) -> list[EvalCase]:

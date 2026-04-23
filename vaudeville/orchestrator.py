@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal, cast
 
+from vaudeville.core.rules import set_tier
+
 
 @dataclass(frozen=True)
 class Thresholds:
@@ -89,41 +91,16 @@ def parse_judge_signal(output: str) -> JudgeVerdict:
     raise JudgeParseError("no JUDGE_* signal found in output")
 
 
-def _locate_rule_file(rule_name: str, project_root: str) -> Path:
-    """Find the rule YAML by searching project path then user home."""
-    home = os.path.expanduser("~")
-    home_rules = Path(home) / ".vaudeville" / "rules"
-    candidates = [
-        Path(project_root) / ".vaudeville" / "rules" / f"{rule_name}.yaml",
-        Path(project_root) / ".vaudeville" / "rules" / f"{rule_name}.yml",
-        home_rules / f"{rule_name}.yaml",
-        home_rules / f"{rule_name}.yml",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    raise FileNotFoundError(f"rule file not found for {rule_name!r}")
-
-
 def abandon_rule(
     rule_name: str, reason: str, metrics: dict[str, object], project_root: str
 ) -> None:
     """Disable rule tier, append ABANDONED comment, and log to abandoned.jsonl."""
-    rule_file = _locate_rule_file(rule_name, project_root)
-    content = rule_file.read_text()
-
+    rule_file = set_tier(rule_name, "disabled", project_root)
     sanitized = reason.replace("\n", " ").replace("\r", " ")
     ts = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
-
-    new_content, count = re.subn(
-        r"^tier:\s*\S+", "tier: disabled", content, flags=re.MULTILINE
-    )
-    if count == 0:
-        separator = "" if not content or content.endswith("\n") else "\n"
-        new_content = content + separator + "tier: disabled\n"
-
-    new_content += f"\n# ABANDONED {ts}: {sanitized}\n"
-    rule_file.write_text(new_content)
+    content = rule_file.read_text()
+    content += f"\n# ABANDONED {ts}: {sanitized}\n"
+    rule_file.write_text(content)
 
     log_dir = Path(project_root) / ".vaudeville" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)

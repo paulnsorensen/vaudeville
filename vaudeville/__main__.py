@@ -275,13 +275,6 @@ def _build_generate_parser(sub: Any) -> None:
         help="Run generation in live mode instead of shadow mode",
     )
     _add_pipeline_args(p)
-    p.add_argument(
-        "--scope",
-        choices=("project", "global"),
-        default="global",
-        help="Where the rule lives: project (.vaudeville/rules/) or "
-        "global (~/.vaudeville/rules/) [default: global]",
-    )
 
 
 def _dispatch(args: argparse.Namespace) -> None:

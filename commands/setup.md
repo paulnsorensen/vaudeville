@@ -38,6 +38,7 @@ if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
   uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group mlx
 else
   echo "${os}/${arch} detected — syncing gguf backend..."
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/gguf-preflight.sh"
   uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group gguf
 fi
 ```

@@ -15,6 +15,7 @@ install:
         uv sync --group dev --group mlx
     else
         echo "${os}/${arch} detected — installing with gguf backend"
+        bash "{{justfile_directory()}}/scripts/gguf-preflight.sh"
         uv sync --group dev --group gguf
     fi
 
@@ -127,6 +128,7 @@ setup:
         uv sync --group mlx
     else
         echo "${os}/${arch} detected — syncing gguf backend"
+        bash "{{justfile_directory()}}/scripts/gguf-preflight.sh"
         uv sync --group gguf
     fi
     uv run python -m vaudeville.setup

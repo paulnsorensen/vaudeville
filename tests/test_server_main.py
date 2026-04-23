@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -66,6 +68,8 @@ class TestSetupMain:
             patch("vaudeville.setup._detect_platform", return_value="mlx"),
             patch("vaudeville.setup._setup_mlx"),
             patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space"),
+            patch("vaudeville.setup._enable_hf_transfer"),
         ):
             from vaudeville.setup import main
 
@@ -77,6 +81,8 @@ class TestSetupMain:
             patch("vaudeville.setup._detect_platform", return_value="gguf"),
             patch("vaudeville.setup._setup_gguf"),
             patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space"),
+            patch("vaudeville.setup._enable_hf_transfer"),
         ):
             from vaudeville.setup import main
 
@@ -91,12 +97,116 @@ class TestSetupMain:
                 side_effect=ImportError("mlx_lm not found"),
             ),
             patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space"),
+            patch("vaudeville.setup._enable_hf_transfer"),
         ):
             from vaudeville.setup import main
 
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 1
+
+    def test_disk_space_checked_before_download(self) -> None:
+        call_order: list[str] = []
+        with (
+            patch("vaudeville.setup._detect_platform", return_value="gguf"),
+            patch(
+                "vaudeville.setup._check_disk_space",
+                side_effect=lambda: call_order.append("disk"),
+            ),
+            patch(
+                "vaudeville.setup._enable_hf_transfer",
+                side_effect=lambda: call_order.append("transfer"),
+            ),
+            patch(
+                "vaudeville.setup._setup_gguf",
+                side_effect=lambda: call_order.append("setup"),
+            ),
+            patch("vaudeville.setup._ensure_rules_dir"),
+        ):
+            from vaudeville.setup import main
+
+            main()
+        assert call_order.index("disk") < call_order.index("setup")
+        assert call_order.index("transfer") < call_order.index("setup")
+
+    def test_size_announcement_printed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with (
+            patch("vaudeville.setup._detect_platform", return_value="gguf"),
+            patch("vaudeville.setup._setup_gguf"),
+            patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space"),
+            patch("vaudeville.setup._enable_hf_transfer"),
+        ):
+            from vaudeville.setup import main
+
+            main()
+        out = capsys.readouterr().out
+        assert "~/.cache/huggingface" in out
+        assert "2.4 GB" in out
+
+
+class TestCheckDiskSpace:
+    def test_sufficient_space_passes(self, tmp_path: Path) -> None:
+        cache_dir = str(tmp_path / ".cache" / "huggingface")
+        mock_usage = MagicMock(free=10_000_000_000)
+        with (
+            patch("vaudeville.setup.os.path.expanduser", return_value=cache_dir),
+            patch("vaudeville.setup.shutil.disk_usage", return_value=mock_usage),
+        ):
+            from vaudeville.setup import _check_disk_space
+
+            _check_disk_space()  # should not raise
+
+    def test_insufficient_space_exits_1(self, tmp_path: Path) -> None:
+        cache_dir = str(tmp_path / ".cache" / "huggingface")
+        mock_usage = MagicMock(free=500_000_000)
+        with (
+            patch("vaudeville.setup.os.path.expanduser", return_value=cache_dir),
+            patch("vaudeville.setup.shutil.disk_usage", return_value=mock_usage),
+        ):
+            from vaudeville.setup import _check_disk_space
+
+            with pytest.raises(SystemExit) as exc_info:
+                _check_disk_space()
+        assert exc_info.value.code == 1
+
+
+class TestEnableHfTransfer:
+    def test_sets_env_var_when_package_available(self) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "HF_HUB_ENABLE_HF_TRANSFER"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.dict("sys.modules", {"hf_transfer": MagicMock()}),
+        ):
+            from vaudeville.setup import _enable_hf_transfer
+
+            _enable_hf_transfer()
+            assert os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") == "1"
+
+    def test_prints_tip_when_package_missing(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "HF_HUB_ENABLE_HF_TRANSFER"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.dict("sys.modules", {"hf_transfer": None}),
+        ):
+            from vaudeville.setup import _enable_hf_transfer
+
+            _enable_hf_transfer()
+        assert "hf-transfer" in capsys.readouterr().out
+
+    def test_skips_when_env_already_set(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch.dict(os.environ, {"HF_HUB_ENABLE_HF_TRANSFER": "1"}):
+            from vaudeville.setup import _enable_hf_transfer
+
+            _enable_hf_transfer()
+        assert capsys.readouterr().out == ""
 
 
 class TestInitBackend:

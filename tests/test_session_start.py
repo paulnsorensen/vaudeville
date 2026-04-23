@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import signal
 import subprocess
 import sys
 from typing import TypedDict
@@ -110,7 +111,7 @@ def _run_session_start(
 class TestLogRotation:
     """session-start.sh rotates ${LOG_FILE} when it exceeds 50 MB."""
 
-    def test_log_over_50mb_rotated_to_dot_one(self, session_env: SessionEnv) -> None:
+    def test_log_over_50mb_rotated_to_log_1(self, session_env: SessionEnv) -> None:
         """A 60 MB log file is moved to .log.1 before the daemon spawns."""
         _skip_if_unsupported()
 
@@ -153,7 +154,7 @@ class TestLogRotation:
         assert result.returncode == 0, result.stderr.decode()
         assert not (runtime_dir / "vaudeville.log.1").exists()
 
-    def test_existing_dot_one_overwritten_on_second_rotation(
+    def test_existing_log_1_overwritten_on_second_rotation(
         self, session_env: SessionEnv
     ) -> None:
         """If .log.1 already exists from a previous rotation it is replaced."""
@@ -239,10 +240,10 @@ class TestRestartRaceDaemonWarning:
             try:
                 result = _run_session_start(session_env["env"])
             finally:
-                flock_holder.send_signal(__import__("signal").SIGTERM)
+                flock_holder.send_signal(signal.SIGTERM)
                 flock_holder.wait()
         finally:
-            sleeper.send_signal(__import__("signal").SIGTERM)
+            sleeper.send_signal(signal.SIGTERM)
             sleeper.wait()
 
         assert result.returncode == 0, result.stderr.decode()

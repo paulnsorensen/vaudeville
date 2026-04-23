@@ -146,6 +146,16 @@ Edit `~/.vaudeville/logs/config.yaml` to change these. Raise `max_size_mb` if yo
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - ~4 GB disk for the model
 - Apple Silicon (recommended — MLX backend, GPU-accelerated) or x86_64 (GGUF backend, CPU only, slower)
+- **Linux aarch64**: `llama-cpp-python` has no pre-built wheel for this platform, so `uv sync --group gguf` compiles from source. Before running `/vaudeville:setup` or `just install`, ensure `cmake` and a C/C++ compiler are present:
+  ```bash
+  # Ubuntu/Debian
+  sudo apt install build-essential cmake
+  # RHEL/Fedora
+  sudo dnf install gcc-c++ cmake
+  # Alpine
+  apk add build-base cmake
+  ```
+  The source build takes roughly 5–10 minutes. The setup command will detect missing tools and print the relevant install guidance before starting the build.
 
 ## Development
 

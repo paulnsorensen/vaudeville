@@ -14,7 +14,11 @@
   "plugins": [
     {
       "name": "vaudeville",
-      "source": "./",
+      "source": {
+        "source": "github",
+        "repo": "paulnsorensen/vaudeville",
+        "ref": "main"
+      },
       "description": "SLM-powered semantic hook enforcement — classifies AI output against YAML rules using local Phi-4-mini inference",
       "category": "development",
       "tags": ["hooks", "enforcement", "slm", "quality-gates"],

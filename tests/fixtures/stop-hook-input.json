@@ -1,0 +1,8 @@
+{
+  "hook_type": "Stop",
+  "session_id": "smoke-test-session",
+  "transcript": [
+    {"role": "user", "content": "Hello, can you help me?"},
+    {"role": "assistant", "content": "Of course! How can I assist you today?"}
+  ]
+}

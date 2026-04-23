@@ -11,14 +11,20 @@ import os
 import sys
 from typing import Any
 
+from rich.console import Console
+from rich.text import Text
+
 from vaudeville import orchestrator
 from vaudeville.core.paths import find_project_root as _core_find_project_root
 from vaudeville.orchestrator import RalphError, Thresholds
+from vaudeville.server.tui import latency_text, styled_table
 
 
 _EVENTS_LOG = os.path.join(
     os.path.expanduser("~"), ".vaudeville", "logs", "events.jsonl"
 )
+
+_console = Console()
 
 
 def cmd_watch(args: argparse.Namespace) -> None:
@@ -110,43 +116,73 @@ def cmd_generate(args: argparse.Namespace) -> int:
         return 2
 
 
-def _print_stats_human(result: dict[str, Any]) -> None:
+def _print_stats_human(result: dict[str, Any], console: Console | None = None) -> None:
+    con = console if console is not None else _console
     total = result["total"]
     if total == 0:
         print("No events recorded yet.")
         return
 
-    tr = result["time_range"]
-    print(f"=== Vaudeville Stats ({tr['earliest']} — {tr['latest']}) ===")
-    print()
+    con.rule("Vaudeville Stats", style="bold cyan")
 
     rules = result["rules"]
     if rules:
-        hdr = (
-            f"{'Rule':<30} {'Total':>6} {'Violations':>11} {'Pass %':>7} {'Avg ms':>7}"
+        table = styled_table(
+            "Per-Rule Breakdown",
+            caption=f"{total} classifications",
         )
-        print(hdr)
-        print("-" * len(hdr))
+        table.add_column("Rule", justify="left")
+        table.add_column("Total", justify="right")
+        table.add_column("Violations", justify="right")
+        table.add_column("Pass %", justify="right")
+        table.add_column("Avg ms", justify="right")
+        table.add_column("p50 ms", justify="right")
+        table.add_column("p95 ms", justify="right")
+
         for name, data in rules.items():
-            print(
-                f"{name:<30} {data['total']:>6} {data['violations']:>11}"
-                f" {data['pass_rate']:>6.1f}% {data['avg_latency_ms']:>7.1f}"
+            pass_rate = data["pass_rate"]
+            if pass_rate >= 90:
+                pass_style = "green"
+            elif pass_rate >= 50:
+                pass_style = "yellow"
+            else:
+                pass_style = "red"
+            table.add_row(
+                name,
+                str(data["total"]),
+                str(data["violations"]),
+                Text(f"{pass_rate:.1f}%", style=pass_style),
+                latency_text(data["avg_latency_ms"]),
+                latency_text(data["p50_latency_ms"]),
+                latency_text(data["p95_latency_ms"]),
             )
-        print()
+        con.print(table)
 
     lat = result["latency"]
-    print(
-        f"Latency: p50={lat['p50_ms']:.1f}ms  p95={lat['p95_ms']:.1f}ms  mean={lat['mean_ms']:.1f}ms"
+    summary = Text.assemble(
+        "Overall latency \u2014 p50: ",
+        (f"{lat['p50_ms']:.1f}ms", "bold"),
+        "   p95: ",
+        (f"{lat['p95_ms']:.1f}ms", "bold"),
+        "   mean: ",
+        (f"{lat['mean_ms']:.1f}ms", "bold"),
     )
-    print()
+    con.print(summary)
+    con.print()
 
-    print("Histogram:")
-    for bucket, count in lat["histogram"].items():
-        bar = "#" * min(count, 50)
-        print(f"  {bucket:>10}: {count:>5}  {bar}")
-    print()
+    hist_table = styled_table("Latency Histogram")
+    hist_table.add_column("Bucket", justify="right")
+    hist_table.add_column("Count", justify="right")
+    hist_table.add_column("Bar")
 
-    print(f"Total classifications: {total}")
+    histogram = lat["histogram"]
+    max_count = max(histogram.values()) if histogram else 1
+    bar_width = 40
+    for bucket, count in histogram.items():
+        bar_len = int((count / max_count) * bar_width) if max_count else 0
+        bar = "\u2588" * bar_len
+        hist_table.add_row(bucket, str(count), bar)
+    con.print(hist_table)
 
 
 def _build_tune_parser(sub: Any) -> None:

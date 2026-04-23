@@ -47,6 +47,15 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
     }
 
 
+def _percentiles(latencies: list[float]) -> tuple[float, float]:
+    """Return (p50, p95) for *latencies*. Handles the n==1 special case."""
+    n = len(latencies)
+    if n == 1:
+        return latencies[0], latencies[0]
+    quantiles = statistics.quantiles(sorted(latencies), n=100)
+    return quantiles[49], quantiles[94]
+
+
 def _summarize_rules(
     events: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
@@ -65,11 +74,14 @@ def _summarize_rules(
         total = data["total"]
         violations = data["violations"]
         pass_rate = ((total - violations) / total) * 100 if total else 0.0
+        p50, p95 = _percentiles(data["latencies"])
         summaries[name] = {
             "total": total,
             "violations": violations,
             "pass_rate": round(pass_rate, 1),
             "avg_latency_ms": round(statistics.mean(data["latencies"]), 1),
+            "p50_latency_ms": round(p50, 1),
+            "p95_latency_ms": round(p95, 1),
         }
     return summaries
 

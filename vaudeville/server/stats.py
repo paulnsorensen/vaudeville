@@ -86,20 +86,22 @@ def _summarize_rules(
     return summaries
 
 
+def _parse_line(line: str) -> dict[str, Any] | None:
+    stripped = line.strip()
+    if not stripped:
+        return None
+    try:
+        evt: dict[str, Any] = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    return evt
+
+
 def _parse_events(log_path: str) -> list[dict[str, Any]]:
     if not os.path.exists(log_path):
         return []
-    events: list[dict[str, Any]] = []
     with open(log_path) as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                events.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                continue
-    return events
+        return [evt for line in f if (evt := _parse_line(line)) is not None]
 
 
 def _bucket_for_latency(lat: float) -> str:

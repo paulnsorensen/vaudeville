@@ -90,7 +90,6 @@ def parse_judge_signal(output: str) -> JudgeVerdict:
 
 
 def _locate_rule_file(rule_name: str, rules_dir: str) -> Path:
-    """Find the rule YAML in the specified rules directory."""
     base = Path(rules_dir)
     for ext in (".yaml", ".yml"):
         c = base / f"{rule_name}{ext}"
@@ -171,7 +170,6 @@ def _run_phase(
     project_root: str,
     runner: _RalphRunner,
 ) -> subprocess.CompletedProcess[str]:
-    """Run one ralph phase; raise RalphError on non-zero exit."""
     result = runner(ralph_dir, extra_args, project_root)
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or "").strip()[-500:]
@@ -265,7 +263,6 @@ def orchestrate_tune(
 
 
 def _extract_abandon_reason(judge_stdout: str) -> str:
-    """Return judge prose above the final JUDGE_* signal line (trimmed to 2000 chars)."""
     prose: list[str] = []
     for line in judge_stdout.splitlines():
         if line.strip().startswith("JUDGE_"):
@@ -275,7 +272,6 @@ def _extract_abandon_reason(judge_stdout: str) -> str:
 
 
 def _eval_rule(rule_name: str, project_root: str) -> Thresholds | None:
-    """Run eval_cli for a rule; parse P/R/F1 from output. Returns None on failure."""
     try:
         out = subprocess.run(
             ["uv", "run", "python", "-m", "vaudeville.eval_cli", "--rule", rule_name],
@@ -297,7 +293,6 @@ def _eval_rule(rule_name: str, project_root: str) -> Thresholds | None:
 
 
 def _snapshot_rules(rules_dir: Path) -> set[str]:
-    """Return the set of .yaml/.yml filenames currently in rules_dir."""
     if not rules_dir.exists():
         return set()
     return {f.name for f in rules_dir.iterdir() if f.suffix in (".yaml", ".yml")}

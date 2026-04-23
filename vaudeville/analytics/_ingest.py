@@ -17,7 +17,7 @@ def build_database(db_path: Path, jsonl_glob: str) -> None:
 
     Writes to a tmp file first; atomically replaces the live DB on success.
     """
-    tmp_path = db_path.parent / "sessions.duckdb.tmp"
+    tmp_path = db_path.parent / f"sessions.duckdb.{os.getpid()}.tmp"
     if tmp_path.exists():
         tmp_path.unlink()
 
@@ -41,11 +41,12 @@ def build_database(db_path: Path, jsonl_glob: str) -> None:
 
 
 def _create_raw_entries(con: duckdb.DuckDBPyConnection, jsonl_glob: str) -> None:
+    escaped_glob = jsonl_glob.replace("'", "''")
     con.execute(f"""
         CREATE TABLE raw_entries AS
         SELECT *
         FROM read_json(
-            '{jsonl_glob}',
+            '{escaped_glob}',
             format='newline_delimited',
             union_by_name=true,
             ignore_errors=true,

@@ -279,7 +279,6 @@ def _build_generate_parser(sub: Any) -> None:
 
 
 def _dispatch(args: argparse.Namespace) -> None:
-
     if args.command == "watch":
         cmd_watch(args)
     elif args.command == "setup":

@@ -169,8 +169,11 @@ class TestQuerySessionPatterns:
 
         result = query_session_patterns()
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        # Output always contains these section headers
+        assert "## Top bash commands" in result
+        assert "## Top tool uses" in result
+        # The ingested entry was a Bash tool_use with cmd "ls"
+        assert "Bash" in result
 
     def test_query_session_patterns_with_filter(self, analytics_env: Path) -> None:
         """project_filter restricts results to matching cwd sessions."""
@@ -199,5 +202,7 @@ class TestQuerySessionPatterns:
 
         result = query_session_patterns("alpha")
 
-        assert "ls /alpha-only" in result or "Bash" in result
+        # Alpha session used Bash with "ls /alpha-only"; beta session used Read
+        assert "Bash" in result
+        assert "ls /alpha-only" in result
         assert "Read" not in result

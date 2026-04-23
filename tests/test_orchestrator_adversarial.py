@@ -84,11 +84,11 @@ class TestParseJudgeSignalAdversarial:
             parse_judge_signal("JUDGE_RAISE 1.1 0.8 0.85")
 
     def test_judge_raise_nan_raises(self) -> None:
-        """NaN satisfies 0.0 <= nan <= 1.0 == False, so it should be caught."""
+        """'nan' contains letters so [\d.]+ regex rejects it — malformed error fires."""
         from vaudeville.orchestrator import JudgeParseError, parse_judge_signal
 
-        # nan: float('nan') comparison always False -> not all(...) -> raises
-        with pytest.raises(JudgeParseError):
+        # 'nan' does not match [\d.]+ in _RAISE_RE → malformed error (not out-of-range)
+        with pytest.raises(JudgeParseError, match="malformed"):
             parse_judge_signal("JUDGE_RAISE nan 0.8 0.85")
 
     def test_judge_raise_scientific_notation_rejected_by_regex(self) -> None:
@@ -220,14 +220,10 @@ class TestAbandonRuleAdversarial:
         abandon_rule("multiline", "multiline tier test", {}, str(rules_dir))
 
         content = rule_file.read_text()
-        # Both occurrences of 'tier: ...' get replaced — this is a BUG
-        # The test documents the actual behavior (both replaced)
-        tier_count = content.count("tier: disabled")
-        # If only 1, the regex correctly targeted only the YAML field
-        # If 2, the multiline string's 'tier:' was also corrupted
-        assert tier_count >= 1  # at minimum the real field is fixed
-        # Document the actual count for scoring
-        _ = tier_count  # used for observation
+        # The YAML multiline continuation "  check tier: warn level" is indented,
+        # so it does NOT match ^tier:\s*\S+ (MULTILINE anchor). Only the real field
+        # is replaced. Bug previously claimed 2 replacements — bug is now fixed.
+        assert content.count("tier: disabled") == 1
 
     def test_abandon_reason_with_double_quotes_serializes_as_valid_json(
         self, tmp_path: Path
@@ -245,8 +241,8 @@ class TestAbandonRuleAdversarial:
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         line = log_file.read_text().strip()
         entry = json.loads(line)
-        # Newlines removed from reason but content otherwise preserved
-        assert '"quoted"' in entry["reason"] or "quoted" in entry["reason"]
+        # json.dumps preserves double quotes via escaping; they round-trip correctly
+        assert '"quoted"' in entry["reason"]
 
     def test_abandon_reason_with_backslash_produces_valid_json(
         self, tmp_path: Path
@@ -262,7 +258,8 @@ class TestAbandonRuleAdversarial:
 
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         entry = json.loads(log_file.read_text().strip())
-        assert "path" in entry["reason"]
+        # Backslashes preserved via json.dumps escaping; full string round-trips
+        assert entry["reason"] == "path\\to\\thing"
 
     def test_abandon_reason_with_carriage_return_sanitized(
         self, tmp_path: Path
@@ -567,7 +564,7 @@ class TestOrchestrateTuneAdversarial:
         runner.add_side_effect(mk_plan, _ok("Design done"))
         runner.add_response(_ok(""))  # empty stdout
 
-        with pytest.raises(JudgeParseError):
+        with pytest.raises(JudgeParseError, match="no JUDGE_"):
             orchestrate_tune(
                 "rule",
                 Thresholds(0.9, 0.8, 0.85),

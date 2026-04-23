@@ -4,8 +4,12 @@ set -euo pipefail
 RULES_DIR="${VAUDEVILLE_RULES_DIR:-.vaudeville/rules}"
 RULE_NAME="${1:-}"
 if [ -z "$RULE_NAME" ]; then
-    # Try to find the most recently modified rule
-    RULE_NAME=$(ls -t "$RULES_DIR"/*.yaml 2>/dev/null | head -n1 | xargs -I{} basename {} .yaml || echo "")
+    latest=$(ls -t "$RULES_DIR"/*.yaml "$RULES_DIR"/*.yml 2>/dev/null | head -n1 || true)
+    if [ -n "$latest" ]; then
+        RULE_NAME=$(basename "$latest")
+        RULE_NAME="${RULE_NAME%.yaml}"
+        RULE_NAME="${RULE_NAME%.yml}"
+    fi
 fi
 
 if [ -z "$RULE_NAME" ]; then

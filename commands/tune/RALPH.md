@@ -54,7 +54,7 @@ Each iteration, execute the top unchecked `- [ ]` item from the plan. If no unch
 
 For each item:
 
-1. **Read** — read the rule YAML at `{{ args.rules_dir }}/{{ args.rule_name }}.yaml`.
+1. **Read** — read the rule YAML at `{{ args.rules_dir }}/{{ args.rule_name }}.yaml` (or `.yml`).
 2. **Implement** — apply exactly the change described in the plan item. One change only.
 3. **Commit** — `git add -A && git commit -m "<short description>"`.
 4. **Eval** — `{{ commands.eval }}` runs the evaluation. Wait for it to finish.

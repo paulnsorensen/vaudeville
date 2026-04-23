@@ -18,16 +18,15 @@ _TTL_SECONDS = 3600
 
 def ingest(force: bool = False) -> Path:
     """Build or refresh the sessions DuckDB (1-hour TTL). Returns path to DB."""
-    db_path = _DB_PATH
-    if not force and db_path.exists():
-        age = time.time() - db_path.stat().st_mtime
+    if not force and _DB_PATH.exists():
+        age = time.time() - _DB_PATH.stat().st_mtime
         if age < _TTL_SECONDS:
-            return db_path
+            return _DB_PATH
     from vaudeville.analytics._ingest import build_database
 
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    build_database(db_path, _JSONL_GLOB)
-    return db_path
+    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    build_database(_DB_PATH, _JSONL_GLOB)
+    return _DB_PATH
 
 
 def query_session_patterns(project_filter: str | None = None) -> str:

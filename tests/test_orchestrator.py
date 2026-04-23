@@ -206,7 +206,7 @@ class TestAbandonRule:
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         assert log_file.exists()
         lines = log_file.read_text().strip().split("\n")
-        assert len(lines) >= 1
+        assert len(lines) == 1
 
         entry = json.loads(lines[-1])
         assert entry["rule"] == "test-rule"
@@ -1119,8 +1119,7 @@ class TestScopeFlag:
         ):
             rules_dir = _resolve_rules_dir("global", None)
 
-        assert rules_dir.endswith(".vaudeville/rules")
-        assert "/home/user" in rules_dir
+        assert rules_dir == "/home/user/.vaudeville/rules"
 
     def test_scope_project_without_git_root_exits_2(self) -> None:
         """scope='project' with no git root exits with code 2."""
@@ -1181,7 +1180,7 @@ class TestCmdRewire:
                 ):
                     cmd_tune(args)
 
-        assert mock_orch.called
+        mock_orch.assert_called_once()
         call_kwargs = mock_orch.call_args[1]
         assert call_kwargs["rounds"] == 2
         assert call_kwargs["tuner_iters"] == 10
@@ -1213,6 +1212,6 @@ class TestCmdRewire:
                 ):
                     cmd_generate(args)
 
-        assert mock_orch.called
+        mock_orch.assert_called_once()
         call_kwargs = mock_orch.call_args[1]
         assert call_kwargs["mode"] == "live"

@@ -55,6 +55,19 @@ def _find_project_root() -> str:
     return _core_find_project_root() or os.getcwd()
 
 
+def _strict_project_root() -> str | None:
+    return _core_find_project_root()
+
+
+def _resolve_rules_dir(scope: str, strict_root: str | None) -> str:
+    if scope == "global":
+        return os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
+    if strict_root is None:
+        print("error: --scope project requires a git project root", file=sys.stderr)
+        sys.exit(2)
+    return os.path.join(strict_root, ".vaudeville", "rules")
+
+
 def _find_commands_dir() -> str:
     """Return commands/ root, honoring VAUDEVILLE_COMMANDS_DIR if set."""
     override = os.environ.get("VAUDEVILLE_COMMANDS_DIR")
@@ -72,8 +85,10 @@ def _threshold_float(value: str) -> float:
 
 def cmd_tune(args: argparse.Namespace) -> int:
     """Tune a rule via the multi-phase design→tune→judge pipeline."""
-    project_root = _find_project_root()
+    strict_root = _strict_project_root()
+    project_root = strict_root or os.getcwd()
     commands_dir = _find_commands_dir()
+    rules_dir = _resolve_rules_dir(args.scope, strict_root)
     thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
     try:
         return orchestrator.orchestrate_tune(
@@ -83,6 +98,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
             tuner_iters=args.tuner_iters,
             project_root=project_root,
             commands_dir=commands_dir,
+            rules_dir=rules_dir,
         )
     except RalphError as e:
         print(str(e), file=sys.stderr)
@@ -91,8 +107,10 @@ def cmd_tune(args: argparse.Namespace) -> int:
 
 def cmd_generate(args: argparse.Namespace) -> int:
     """Generate new rules via the multi-phase design→tune→judge pipeline."""
-    project_root = _find_project_root()
+    strict_root = _strict_project_root()
+    project_root = strict_root or os.getcwd()
     commands_dir = _find_commands_dir()
+    rules_dir = _resolve_rules_dir(args.scope, strict_root)
     mode = "live" if args.live else "shadow"
     thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
     try:
@@ -104,6 +122,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
             mode=mode,
             project_root=project_root,
             commands_dir=commands_dir,
+            rules_dir=rules_dir,
         )
     except RalphError as e:
         print(str(e), file=sys.stderr)
@@ -185,6 +204,13 @@ def _build_tune_parser(sub: Any) -> None:
         default=10,
         help="Ralph iterations for tune phase (default: 10)",
     )
+    p.add_argument(
+        "--scope",
+        choices=("project", "global"),
+        default="global",
+        help="Where the rule lives: project (.vaudeville/rules/) or "
+        "global (~/.vaudeville/rules/) [default: global]",
+    )
 
 
 def _build_generate_parser(sub: Any) -> None:
@@ -230,6 +256,13 @@ def _build_generate_parser(sub: Any) -> None:
         type=int,
         default=10,
         help="Ralph iterations for tune phase (default: 10)",
+    )
+    p.add_argument(
+        "--scope",
+        choices=("project", "global"),
+        default="global",
+        help="Where the rule lives: project (.vaudeville/rules/) or "
+        "global (~/.vaudeville/rules/) [default: global]",
     )
 
 

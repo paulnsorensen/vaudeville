@@ -89,27 +89,21 @@ def parse_judge_signal(output: str) -> JudgeVerdict:
     raise JudgeParseError("no JUDGE_* signal found in output")
 
 
-def _locate_rule_file(rule_name: str, project_root: str) -> Path:
-    """Find the rule YAML by searching project path then user home."""
-    home = os.path.expanduser("~")
-    home_rules = Path(home) / ".vaudeville" / "rules"
-    candidates = [
-        Path(project_root) / ".vaudeville" / "rules" / f"{rule_name}.yaml",
-        Path(project_root) / ".vaudeville" / "rules" / f"{rule_name}.yml",
-        home_rules / f"{rule_name}.yaml",
-        home_rules / f"{rule_name}.yml",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    raise FileNotFoundError(f"rule file not found for {rule_name!r}")
+def _locate_rule_file(rule_name: str, rules_dir: str) -> Path:
+    """Find the rule YAML in the specified rules directory."""
+    base = Path(rules_dir)
+    for ext in (".yaml", ".yml"):
+        c = base / f"{rule_name}{ext}"
+        if c.exists():
+            return c
+    raise FileNotFoundError(f"rule {rule_name!r} not found in {rules_dir}")
 
 
 def abandon_rule(
-    rule_name: str, reason: str, metrics: dict[str, object], project_root: str
+    rule_name: str, reason: str, metrics: dict[str, object], rules_dir: str
 ) -> None:
     """Disable rule tier, append ABANDONED comment, and log to abandoned.jsonl."""
-    rule_file = _locate_rule_file(rule_name, project_root)
+    rule_file = _locate_rule_file(rule_name, rules_dir)
     content = rule_file.read_text()
 
     sanitized = reason.replace("\n", " ").replace("\r", " ")
@@ -125,7 +119,7 @@ def abandon_rule(
     new_content += f"\n# ABANDONED {ts}: {sanitized}\n"
     rule_file.write_text(new_content)
 
-    log_dir = Path(project_root) / ".vaudeville" / "logs"
+    log_dir = Path(rules_dir).parent / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_entry = json.dumps(
         {"ts": ts, "rule": rule_name, "reason": sanitized, "metrics": metrics}
@@ -158,8 +152,16 @@ def _build_threshold_args(thresholds: Thresholds) -> list[str]:
     ]
 
 
-def _build_phase_args(rule_name: str, thresholds: Thresholds) -> list[str]:
-    return ["--rule_name", rule_name, *_build_threshold_args(thresholds)]
+def _build_phase_args(
+    rule_name: str, thresholds: Thresholds, rules_dir: str
+) -> list[str]:
+    return [
+        "--rule_name",
+        rule_name,
+        *_build_threshold_args(thresholds),
+        "--rules_dir",
+        rules_dir,
+    ]
 
 
 def _run_phase(
@@ -197,6 +199,8 @@ def orchestrate_tune(
     project_root: str,
     commands_dir: str,
     runner: _RalphRunner = default_ralph_runner,
+    *,
+    rules_dir: str,
 ) -> int:
     """Run designer → tuner → judge for up to `rounds` iterations."""
     design_dir = os.path.join(commands_dir, "design")
@@ -209,33 +213,41 @@ def orchestrate_tune(
     verdict = JudgeVerdict(kind="JUDGE_CONTINUE_RE_DESIGN")
     judge_stdout = ""
 
-    for _round in range(rounds):
-        phase_args = _build_phase_args(rule_name, thresholds)
+    prior_rules_dir = os.environ.get("VAUDEVILLE_RULES_DIR")
+    os.environ["VAUDEVILLE_RULES_DIR"] = rules_dir
+    try:
+        for _round in range(rounds):
+            phase_args = _build_phase_args(rule_name, thresholds, rules_dir)
 
-        if verdict.kind in ("JUDGE_CONTINUE_RE_DESIGN", "JUDGE_RAISE"):
-            _run_phase(
-                "design", design_dir, ["-n", "1"] + phase_args, project_root, runner
+            if verdict.kind in ("JUDGE_CONTINUE_RE_DESIGN", "JUDGE_RAISE"):
+                _run_phase(
+                    "design", design_dir, ["-n", "1"] + phase_args, project_root, runner
+                )
+
+            if not _is_empty_plan(plan_file):
+                _run_phase(
+                    "tune",
+                    tune_dir,
+                    ["-n", str(tuner_iters)] + phase_args,
+                    project_root,
+                    runner,
+                )
+
+            result = _run_phase(
+                "judge", judge_dir, ["-n", "1"] + phase_args, project_root, runner
             )
+            judge_stdout = result.stdout
+            verdict = parse_judge_signal(judge_stdout)
 
-        if not _is_empty_plan(plan_file):
-            _run_phase(
-                "tune",
-                tune_dir,
-                ["-n", str(tuner_iters)] + phase_args,
-                project_root,
-                runner,
-            )
-
-        result = _run_phase(
-            "judge", judge_dir, ["-n", "1"] + phase_args, project_root, runner
-        )
-        judge_stdout = result.stdout
-        verdict = parse_judge_signal(judge_stdout)
-
-        if verdict.kind in ("JUDGE_DONE", "JUDGE_ABANDON"):
-            break
-        if verdict.kind == "JUDGE_RAISE" and verdict.raised is not None:
-            thresholds = verdict.raised
+            if verdict.kind in ("JUDGE_DONE", "JUDGE_ABANDON"):
+                break
+            if verdict.kind == "JUDGE_RAISE" and verdict.raised is not None:
+                thresholds = verdict.raised
+    finally:
+        if prior_rules_dir is None:
+            os.environ.pop("VAUDEVILLE_RULES_DIR", None)
+        else:
+            os.environ["VAUDEVILLE_RULES_DIR"] = prior_rules_dir
 
     if verdict.kind == "JUDGE_ABANDON":
         reason = _extract_abandon_reason(judge_stdout) or verdict.raw_line
@@ -247,7 +259,7 @@ def orchestrate_tune(
                 "r_min": eval_result.r_min,
                 "f1_min": eval_result.f1_min,
             }
-        abandon_rule(rule_name, reason, metrics, project_root)
+        abandon_rule(rule_name, reason, metrics, rules_dir)
 
     return 0
 
@@ -300,10 +312,12 @@ def orchestrate_generate(
     project_root: str,
     commands_dir: str,
     runner: _RalphRunner = default_ralph_runner,
+    *,
+    rules_dir: str,
 ) -> int:
     """Run generate designer, then tune any rules that miss thresholds."""
-    rules_dir = Path(project_root) / ".vaudeville" / "rules"
-    before = _snapshot_rules(rules_dir)
+    rules_dir_path = Path(rules_dir)
+    before = _snapshot_rules(rules_dir_path)
 
     generate_dir = os.path.join(commands_dir, "generate")
     gen_args = [
@@ -314,28 +328,46 @@ def orchestrate_generate(
         *_build_threshold_args(thresholds),
         "--mode",
         mode,
+        "--rules_dir",
+        rules_dir,
     ]
-    _run_phase("generate", generate_dir, gen_args, project_root, runner)
 
-    after = _snapshot_rules(rules_dir)
-    new_files = after - before
-    new_rules = sorted(Path(f).stem for f in new_files)
+    prior_rules_dir = os.environ.get("VAUDEVILLE_RULES_DIR")
+    prior_project_cwd = os.environ.get("VAUDEVILLE_PROJECT_CWD")
+    os.environ["VAUDEVILLE_RULES_DIR"] = rules_dir
+    os.environ["VAUDEVILLE_PROJECT_CWD"] = project_root
+    try:
+        _run_phase("generate", generate_dir, gen_args, project_root, runner)
 
-    for name in new_rules:
-        result = _eval_rule(name, project_root)
-        if result is None or (
-            result.p_min < thresholds.p_min
-            or result.r_min < thresholds.r_min
-            or result.f1_min < thresholds.f1_min
-        ):
-            orchestrate_tune(
-                name,
-                thresholds,
-                rounds,
-                tuner_iters,
-                project_root,
-                commands_dir,
-                runner,
-            )
+        after = _snapshot_rules(rules_dir_path)
+        new_files = after - before
+        new_rules = sorted(Path(f).stem for f in new_files)
+
+        for name in new_rules:
+            result = _eval_rule(name, project_root)
+            if result is None or (
+                result.p_min < thresholds.p_min
+                or result.r_min < thresholds.r_min
+                or result.f1_min < thresholds.f1_min
+            ):
+                orchestrate_tune(
+                    name,
+                    thresholds,
+                    rounds,
+                    tuner_iters,
+                    project_root,
+                    commands_dir,
+                    runner,
+                    rules_dir=rules_dir,
+                )
+    finally:
+        if prior_rules_dir is None:
+            os.environ.pop("VAUDEVILLE_RULES_DIR", None)
+        else:
+            os.environ["VAUDEVILLE_RULES_DIR"] = prior_rules_dir
+        if prior_project_cwd is None:
+            os.environ.pop("VAUDEVILLE_PROJECT_CWD", None)
+        else:
+            os.environ["VAUDEVILLE_PROJECT_CWD"] = prior_project_cwd
 
     return 0

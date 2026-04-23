@@ -5,12 +5,12 @@ commands:
     run: ./list-rules.sh
   - name: session_patterns
     run: ./session-analytics.sh
-args: [instructions, p_min, r_min, f1_min, mode]
+args: [instructions, p_min, r_min, f1_min, mode, rules_dir]
 ---
 
 # vaudeville generate (designer)
 
-You are a rule-creation Designer. You run ONCE. Produce 3 new vaudeville rule YAMLs at `.vaudeville/rules/<name>.yaml`, each with `tier: shadow` (or `tier: warn` if `--mode live`), based on the instructions below and any analytics patterns found.
+You are a rule-creation Designer. You run ONCE. Produce 3 new vaudeville rule YAMLs at `{{ args.rules_dir }}/<name>.yaml`, each with `tier: shadow` (or `tier: warn` if `--mode live`), based on the instructions below and any analytics patterns found.
 
 Do NOT tune. Do NOT eval. The orchestrator handles evaluation and routes each rule through the tune pipeline.
 

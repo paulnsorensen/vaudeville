@@ -6,7 +6,9 @@ Uses mock-ralph pattern to avoid real claude/ralph calls.
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import subprocess
 from argparse import Namespace
 from pathlib import Path
@@ -130,8 +132,8 @@ class TestParseJudgeSignal:
 class TestAbandonRule:
     """Test rule abandonment: tier update, file search, reason logging."""
 
-    def test_abandon_sets_tier_disabled_in_project_path(self, tmp_path: Path) -> None:
-        """Abandon updates tier to disabled in project .vaudeville/rules/ path."""
+    def test_abandon_sets_tier_disabled_in_rules_dir(self, tmp_path: Path) -> None:
+        """Abandon updates tier to disabled in the specified rules_dir."""
         from vaudeville.orchestrator import abandon_rule
 
         rules_dir = tmp_path / ".vaudeville" / "rules"
@@ -139,33 +141,25 @@ class TestAbandonRule:
         rule_file = rules_dir / "test-rule.yaml"
         rule_file.write_text("name: test-rule\ntier: shadow\nprompt: test\n")
 
-        abandon_rule("test-rule", "test reason", {}, str(tmp_path))
+        abandon_rule("test-rule", "test reason", {}, str(rules_dir))
 
         content = rule_file.read_text()
         assert "tier: disabled" in content
         assert "ABANDONED" in content
 
-    def test_abandon_fallback_to_user_path(self, tmp_path: Path) -> None:
-        """Abandon falls back to ~/.vaudeville/rules/ if project path missing."""
+    def test_abandon_log_dir_derived_from_rules_dir(self, tmp_path: Path) -> None:
+        """log_dir is derived as rules_dir/../logs."""
         from vaudeville.orchestrator import abandon_rule
 
-        # Mock user home path — rules live under ~/.vaudeville/rules/
-        user_home = tmp_path / "user_rules"
-        user_home.mkdir()
-        rule_dir = user_home / ".vaudeville" / "rules"
-        rule_dir.mkdir(parents=True)
-        rule_file = rule_dir / "test-rule.yaml"
-        rule_file.write_text("name: test-rule\ntier: shadow\nprompt: test\n")
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
+        rule_file = rules_dir / "test-rule.yaml"
+        rule_file.write_text("name: test-rule\ntier: shadow\n")
 
-        with patch("os.path.expanduser") as mock_expand:
-            mock_expand.side_effect = lambda p: str(user_home) if p == "~" else p
-            project_path = tmp_path / "project"
-            project_path.mkdir()
+        abandon_rule("test-rule", "stale", {}, str(rules_dir))
 
-            abandon_rule("test-rule", "test reason", {}, str(project_path))
-
-        content = rule_file.read_text()
-        assert "tier: disabled" in content
+        log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
+        assert log_file.exists()
 
     def test_abandon_appends_reason_comment(self, tmp_path: Path) -> None:
         """Abandon appends ISO UTC timestamp and reason as YAML comment."""
@@ -176,7 +170,7 @@ class TestAbandonRule:
         rule_file = rules_dir / "test-rule.yaml"
         rule_file.write_text("name: test-rule\ntier: shadow\nprompt: test\n")
 
-        abandon_rule("test-rule", "rule is impossible", {}, str(tmp_path))
+        abandon_rule("test-rule", "rule is impossible", {}, str(rules_dir))
 
         content = rule_file.read_text()
         assert "# ABANDONED" in content
@@ -192,7 +186,7 @@ class TestAbandonRule:
         rule_file.write_text("name: test-rule\ntier: shadow\nprompt: test\n")
 
         reason = "first line\nsecond line\nthird line"
-        abandon_rule("test-rule", reason, {}, str(tmp_path))
+        abandon_rule("test-rule", reason, {}, str(rules_dir))
 
         content = rule_file.read_text()
         assert "first line second line third line" in content
@@ -207,7 +201,7 @@ class TestAbandonRule:
         rule_file.write_text("name: test-rule\ntier: shadow\nprompt: test\n")
 
         metrics: dict[str, object] = {"precision": 0.8, "recall": 0.75}
-        abandon_rule("test-rule", "stagnant", metrics, str(tmp_path))
+        abandon_rule("test-rule", "stagnant", metrics, str(rules_dir))
 
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         assert log_file.exists()
@@ -230,7 +224,7 @@ class TestAbandonRule:
         rule_file = rules_dir / "test-rule.yaml"
         rule_file.write_bytes(b"name: test-rule\nprompt: test")  # no trailing newline
 
-        abandon_rule("test-rule", "stagnant", {}, str(tmp_path))
+        abandon_rule("test-rule", "stagnant", {}, str(rules_dir))
 
         content = rule_file.read_text()
         assert "tier: disabled" in content
@@ -247,7 +241,7 @@ class TestAbandonRule:
         rule_file = rules_dir / "test-rule.yaml"
         rule_file.write_text("name: test-rule\ntier: shadow\nprompt: test\n")
 
-        abandon_rule("test-rule", "test", {}, str(tmp_path))
+        abandon_rule("test-rule", "test", {}, str(rules_dir))
 
         log_dir = tmp_path / ".vaudeville" / "logs"
         assert log_dir.exists()
@@ -255,17 +249,13 @@ class TestAbandonRule:
     def test_abandon_missing_rule_file_raises_filenotfound(
         self, tmp_path: Path
     ) -> None:
-        """Abandon raises FileNotFoundError if rule file not found in any path."""
+        """Abandon raises FileNotFoundError if rule file not found in rules_dir."""
         from vaudeville.orchestrator import abandon_rule
 
-        project_path = tmp_path / "project"
-        project_path.mkdir()
+        nonexistent_rules_dir = tmp_path / ".vaudeville" / "rules"
 
-        with patch("os.path.expanduser") as mock_expand:
-            mock_expand.return_value = str(tmp_path / "user_rules")
-
-            with pytest.raises(FileNotFoundError):
-                abandon_rule("nonexistent-rule", "test", {}, str(project_path))
+        with pytest.raises(FileNotFoundError):
+            abandon_rule("nonexistent-rule", "test", {}, str(nonexistent_rules_dir))
 
 
 class FakeRalphRunner:
@@ -317,6 +307,8 @@ class TestOrchestrateTune:
         )
 
         runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
 
         # Design response (writes empty plan signal)
         def design_side_effect() -> None:
@@ -353,6 +345,7 @@ class TestOrchestrateTune:
             project_root=str(tmp_path),
             commands_dir=str(tmp_path / "commands"),
             runner=runner,
+            rules_dir=str(rules_dir),
         )
 
         assert rc == 0
@@ -371,6 +364,8 @@ class TestOrchestrateTune:
         design_dir = str(tmp_path / "commands" / "design")
         tune_dir = str(tmp_path / "commands" / "tune")
         judge_dir = str(tmp_path / "commands" / "judge")
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
 
         # Round 1: design
         def r1_design() -> None:
@@ -439,6 +434,7 @@ class TestOrchestrateTune:
             project_root=str(tmp_path),
             commands_dir=commands_dir,
             runner=runner,
+            rules_dir=str(rules_dir),
         )
 
         assert rc == 0
@@ -460,6 +456,8 @@ class TestOrchestrateTune:
         )
 
         runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
 
         # Round 1: design
         def r1_design() -> None:
@@ -533,13 +531,12 @@ class TestOrchestrateTune:
             project_root=str(tmp_path),
             commands_dir=str(tmp_path / "commands"),
             runner=runner,
+            rules_dir=str(rules_dir),
         )
 
         assert rc == 0
 
         # Verify round 2 design was called with new thresholds
-        # Check that second design call has --p_min 0.97, --r_min 0.88, --f1_min 0.92
-        # Design is 3rd call (0-indexed: 2), 4th call is tune (3), 5th is judge (4)
         design_call_r2 = runner.calls[3]  # index 3 is round 2, position 0 (design)
         assert "--p_min" in design_call_r2[1]
         p_min_idx = design_call_r2[1].index("--p_min")
@@ -601,6 +598,7 @@ class TestOrchestrateTune:
             project_root=str(tmp_path),
             commands_dir=str(tmp_path / "commands"),
             runner=runner,
+            rules_dir=str(rules_dir),
         )
 
         assert rc == 0
@@ -621,6 +619,8 @@ class TestOrchestrateTune:
         )
 
         runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
 
         # Round 1: design + tune + judge → CONTINUE_TUNE_MORE
         def design_side_effect() -> None:
@@ -676,6 +676,7 @@ class TestOrchestrateTune:
             project_root=str(tmp_path),
             commands_dir=str(tmp_path / "commands"),
             runner=runner,
+            rules_dir=str(rules_dir),
         )
 
         assert rc == 0
@@ -691,6 +692,8 @@ class TestOrchestrateTune:
         )
 
         runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
 
         # Design fails
         runner.add_response(
@@ -714,9 +717,95 @@ class TestOrchestrateTune:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(rules_dir),
             )
 
         assert "design" in str(exc_info.value).lower()
+
+    def test_orchestrate_tune_passes_rules_dir_to_ralph_args(
+        self, tmp_path: Path
+    ) -> None:
+        """--rules_dir is included in phase args passed to ralph."""
+        from vaudeville.orchestrator import Thresholds, orchestrate_tune
+
+        runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
+
+        def mk_empty_plan() -> None:
+            state_dir = tmp_path / "commands" / "tune" / "state"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            (state_dir / "test-rule.plan.md").write_text("EMPTY_PLAN\n")
+
+        runner.add_response(
+            mk_empty_plan,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="Design", stderr=""
+            ),
+        )
+        runner.add_response(
+            None,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="JUDGE_DONE", stderr=""
+            ),
+        )
+
+        orchestrate_tune(
+            "test-rule",
+            Thresholds(0.95, 0.80, 0.85),
+            rounds=1,
+            tuner_iters=5,
+            project_root=str(tmp_path),
+            commands_dir=str(tmp_path / "commands"),
+            runner=runner,
+            rules_dir=str(rules_dir),
+        )
+
+        design_args = runner.calls[0][1]
+        assert "--rules_dir" in design_args
+        idx = design_args.index("--rules_dir")
+        assert design_args[idx + 1] == str(rules_dir)
+
+    def test_orchestrate_tune_injects_env_var(self, tmp_path: Path) -> None:
+        """VAUDEVILLE_RULES_DIR env var is set when ralph runner is invoked."""
+        from vaudeville.orchestrator import Thresholds, orchestrate_tune
+
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
+        captured: dict[str, str | None] = {}
+
+        def mk_plan_and_capture() -> None:
+            captured["rules_dir"] = os.environ.get("VAUDEVILLE_RULES_DIR")
+            state_dir = tmp_path / "commands" / "tune" / "state"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            (state_dir / "test-rule.plan.md").write_text("EMPTY_PLAN\n")
+
+        runner = FakeRalphRunner()
+        runner.add_response(
+            mk_plan_and_capture,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="Design", stderr=""
+            ),
+        )
+        runner.add_response(
+            None,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="JUDGE_DONE", stderr=""
+            ),
+        )
+
+        orchestrate_tune(
+            "test-rule",
+            Thresholds(0.95, 0.80, 0.85),
+            rounds=1,
+            tuner_iters=5,
+            project_root=str(tmp_path),
+            commands_dir=str(tmp_path / "commands"),
+            runner=runner,
+            rules_dir=str(rules_dir),
+        )
+
+        assert captured["rules_dir"] == str(rules_dir)
 
 
 class TestOrchestrateGenerate:
@@ -732,10 +821,10 @@ class TestOrchestrateGenerate:
         )
 
         runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
 
         # Generate phase: writes 3 rule YAMLs
         def generate_side_effect() -> None:
-            rules_dir = tmp_path / ".vaudeville" / "rules"
             rules_dir.mkdir(parents=True, exist_ok=True)
             (rules_dir / "rule1.yaml").write_text("name: rule1\ntier: shadow\n")
             (rules_dir / "rule2.yaml").write_text("name: rule2\ntier: shadow\n")
@@ -764,6 +853,7 @@ class TestOrchestrateGenerate:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(rules_dir),
             )
 
         assert rc == 0
@@ -776,10 +866,10 @@ class TestOrchestrateGenerate:
         )
 
         runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
 
         # Generate: writes 3 rules
         def generate_side_effect() -> None:
-            rules_dir = tmp_path / ".vaudeville" / "rules"
             rules_dir.mkdir(parents=True, exist_ok=True)
             (rules_dir / "good1.yaml").write_text("name: good1\ntier: shadow\n")
             (rules_dir / "good2.yaml").write_text("name: good2\ntier: shadow\n")
@@ -844,6 +934,7 @@ class TestOrchestrateGenerate:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(rules_dir),
             )
 
         assert rc == 0
@@ -922,7 +1013,143 @@ class TestOrchestrateGenerate:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(tmp_path / ".vaudeville" / "rules"),
             )
+
+    def test_orchestrate_generate_uses_rules_dir_for_snapshot(
+        self, tmp_path: Path
+    ) -> None:
+        """Snapshot uses rules_dir, not project_root/.vaudeville/rules."""
+        from vaudeville.orchestrator import Thresholds, orchestrate_generate
+
+        runner = FakeRalphRunner()
+        custom_rules_dir = tmp_path / "custom" / "rules"
+
+        def generate_side_effect() -> None:
+            custom_rules_dir.mkdir(parents=True, exist_ok=True)
+            (custom_rules_dir / "new-rule.yaml").write_text(
+                "name: new-rule\ntier: shadow\n"
+            )
+
+        runner.add_response(
+            generate_side_effect,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="Generated", stderr=""
+            ),
+        )
+
+        thresholds = Thresholds(p_min=0.95, r_min=0.80, f1_min=0.85)
+
+        with patch("vaudeville.orchestrator._eval_rule", return_value=thresholds):
+            rc = orchestrate_generate(
+                instructions="test",
+                thresholds=thresholds,
+                rounds=1,
+                tuner_iters=5,
+                mode="shadow",
+                project_root=str(tmp_path),
+                commands_dir=str(tmp_path / "commands"),
+                runner=runner,
+                rules_dir=str(custom_rules_dir),
+            )
+
+        assert rc == 0
+        # 1 call (generate) + eval returned passing → no tune
+        assert len(runner.calls) == 1
+
+    def test_orchestrate_generate_passes_rules_dir_to_designer(
+        self, tmp_path: Path
+    ) -> None:
+        """--rules_dir is included in the generate phase args."""
+        from vaudeville.orchestrator import Thresholds, orchestrate_generate
+
+        runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+
+        runner.add_response(
+            None,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="Generated", stderr=""
+            ),
+        )
+
+        with patch(
+            "vaudeville.orchestrator._eval_rule",
+            return_value=Thresholds(0.95, 0.80, 0.85),
+        ):
+            orchestrate_generate(
+                instructions="test",
+                thresholds=Thresholds(0.95, 0.80, 0.85),
+                rounds=1,
+                tuner_iters=5,
+                mode="shadow",
+                project_root=str(tmp_path),
+                commands_dir=str(tmp_path / "commands"),
+                runner=runner,
+                rules_dir=str(rules_dir),
+            )
+
+        gen_args = runner.calls[0][1]
+        assert "--rules_dir" in gen_args
+        idx = gen_args.index("--rules_dir")
+        assert gen_args[idx + 1] == str(rules_dir)
+
+
+class TestScopeFlag:
+    """Test --scope flag parsing and rules_dir resolution."""
+
+    def test_scope_default_is_global(self) -> None:
+        """Default scope is 'global' when not specified."""
+        from vaudeville.__main__ import _build_tune_parser
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command")
+        _build_tune_parser(sub)
+        args = parser.parse_args(["tune", "myrule"])
+
+        assert args.scope == "global"
+
+    def test_scope_global_resolves_to_home_rules(self) -> None:
+        """scope='global' resolves to ~/.vaudeville/rules."""
+        from vaudeville.__main__ import _resolve_rules_dir
+
+        with patch(
+            "os.path.expanduser",
+            side_effect=lambda p: "/home/user" if p == "~" else p,
+        ):
+            rules_dir = _resolve_rules_dir("global", None)
+
+        assert rules_dir.endswith(".vaudeville/rules")
+        assert "/home/user" in rules_dir
+
+    def test_scope_project_without_git_root_exits_2(self) -> None:
+        """scope='project' with no git root exits with code 2."""
+        from vaudeville.__main__ import cmd_tune
+
+        args = Namespace(
+            rule="r",
+            p_min=0.95,
+            r_min=0.80,
+            f1_min=0.85,
+            rounds=1,
+            tuner_iters=5,
+            scope="project",
+        )
+
+        with patch("vaudeville.__main__._strict_project_root", return_value=None):
+            with patch("vaudeville.__main__._find_commands_dir", return_value="/cmd"):
+                with pytest.raises(SystemExit) as exc_info:
+                    cmd_tune(args)
+
+        assert exc_info.value.code == 2
+
+    def test_scope_project_resolves_to_project_rules(self) -> None:
+        """scope='project' with a git root resolves to project/.vaudeville/rules."""
+        from vaudeville.__main__ import _resolve_rules_dir
+
+        rules_dir = _resolve_rules_dir("project", "/tmp/proj")
+
+        assert rules_dir == "/tmp/proj/.vaudeville/rules"
 
 
 class TestCmdRewire:
@@ -942,16 +1169,18 @@ class TestCmdRewire:
                 f1_min=0.85,
                 rounds=2,
                 tuner_iters=10,
+                scope="global",
             )
 
-            with patch("vaudeville.__main__._find_project_root", return_value="/proj"):
+            with patch(
+                "vaudeville.__main__._strict_project_root", return_value="/proj"
+            ):
                 with patch(
                     "vaudeville.__main__._find_commands_dir",
                     return_value="/proj/commands",
                 ):
                     cmd_tune(args)
 
-        # Verify orchestrate_tune was called with rounds=2, tuner_iters=10
         assert mock_orch.called
         call_kwargs = mock_orch.call_args[1]
         assert call_kwargs["rounds"] == 2
@@ -972,9 +1201,12 @@ class TestCmdRewire:
                 live=True,
                 rounds=3,
                 tuner_iters=10,
+                scope="global",
             )
 
-            with patch("vaudeville.__main__._find_project_root", return_value="/proj"):
+            with patch(
+                "vaudeville.__main__._strict_project_root", return_value="/proj"
+            ):
                 with patch(
                     "vaudeville.__main__._find_commands_dir",
                     return_value="/proj/commands",

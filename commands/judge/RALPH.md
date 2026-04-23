@@ -16,6 +16,7 @@ args:
   - p_min
   - r_min
   - f1_min
+  - rules_dir
 ---
 
 # vaudeville judge

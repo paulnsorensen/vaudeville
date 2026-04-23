@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.text import Text
 
 from vaudeville import orchestrator
+from vaudeville.cli_rules import attach_rule_parsers, dispatch_rule_command
 from vaudeville.core.paths import find_project_root as _core_find_project_root
 from vaudeville.orchestrator import RalphError, Thresholds
 from vaudeville.server import latency_text, styled_table
@@ -278,6 +279,7 @@ def _build_generate_parser(sub: Any) -> None:
 
 
 def _dispatch(args: argparse.Namespace) -> None:
+
     if args.command == "watch":
         cmd_watch(args)
     elif args.command == "setup":
@@ -288,6 +290,8 @@ def _dispatch(args: argparse.Namespace) -> None:
         sys.exit(cmd_tune(args))
     elif args.command == "generate":
         sys.exit(cmd_generate(args))
+    elif dispatch_rule_command(args):
+        pass
 
 
 def main() -> None:
@@ -308,6 +312,14 @@ def main() -> None:
 
     _build_tune_parser(sub)
     _build_generate_parser(sub)
+    attach_rule_parsers(sub)
+
+    try:
+        import argcomplete
+
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
 
     args = parser.parse_args()
     if args.command is None:

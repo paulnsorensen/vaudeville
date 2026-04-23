@@ -21,6 +21,7 @@ Vaudeville runs a local inference daemon (Phi-4-mini, 3.8B params, int4) that cl
 ## Install
 
 ```
+/plugin marketplace add paulnsorensen/vaudeville
 /plugin install vaudeville@paulnsorensen
 ```
 

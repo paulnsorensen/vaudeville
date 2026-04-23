@@ -10,6 +10,7 @@ build/
 .pytest_cache/
 .ruff_cache/
 .coverage
+coverage.xml
 htmlcov/
 .DS_Store
 .orphaned_at

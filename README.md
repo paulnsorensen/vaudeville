@@ -47,7 +47,7 @@ This detects your platform (Apple Silicon or x86_64) and downloads the appropria
 
 ## Uninstall
 
-`/plugin remove vaudeville` removes the plugin files but does not clean up the standalone `vaudeville` CLI shim or the `argcomplete` helper that `/vaudeville:setup` installed into `~/.local/bin`. To remove them:
+`/plugin remove vaudeville` removes the plugin files but does not clean up the standalone `vaudeville` CLI shim or the `argcomplete` helper that `/vaudeville:setup` installed into uv's tool bin (often `~/.local/bin`). To remove them:
 
 ```bash
 uv tool uninstall vaudeville

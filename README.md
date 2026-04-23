@@ -38,7 +38,7 @@ This detects your platform (Apple Silicon or x86_64) and downloads the appropria
 1. Copy the bundled rules to your global rules directory:
    ```bash
    mkdir -p ~/.vaudeville/rules
-   cp ~/.claude/plugins/cache/paulnsorensen/vaudeville/*/examples/rules/*.yaml ~/.vaudeville/rules/
+   cp ~/.claude/plugins/**/paulnsorensen/vaudeville/**/examples/rules/*.yaml ~/.vaudeville/rules/
    ```
 
 2. Start a new Claude Code session — the daemon launches automatically on `SessionStart`.

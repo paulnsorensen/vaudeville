@@ -120,7 +120,7 @@ def _print_stats_human(result: dict[str, Any], console: Console | None = None) -
     con = console if console is not None else _console
     total = result["total"]
     if total == 0:
-        print("No events recorded yet.")
+        con.print("No events recorded yet.")
         return
 
     con.rule("Vaudeville Stats", style="bold cyan")

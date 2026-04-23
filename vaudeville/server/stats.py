@@ -111,15 +111,7 @@ def _bucket_for_latency(lat: float) -> str:
 
 def _latency_stats(latencies: list[float]) -> dict[str, Any]:
     sorted_lat = sorted(latencies)
-    n = len(sorted_lat)
-
-    if n == 1:
-        p50 = p95 = sorted_lat[0]
-    else:
-        quantiles = statistics.quantiles(sorted_lat, n=100)
-        p50 = quantiles[49]
-        p95 = quantiles[94]
-
+    p50, p95 = _percentiles(sorted_lat)
     histogram = _empty_histogram()
 
     for lat in sorted_lat:

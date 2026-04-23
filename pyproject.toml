@@ -65,6 +65,7 @@ omit = [
 
 [dependency-groups]
 dev = [
+    "diff-cover>=9.6.0",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",

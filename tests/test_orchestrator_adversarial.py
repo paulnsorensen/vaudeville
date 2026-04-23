@@ -326,7 +326,7 @@ class TestAbandonRuleAdversarial:
 
     def test_locate_rule_yaml_wins_over_yml(self, tmp_path: Path) -> None:
         """.yaml candidate comes before .yml in the candidate list → yaml wins."""
-        from vaudeville.orchestrator import _locate_rule_file
+        from vaudeville.core.rules import locate_rule_file as _locate_rule_file
 
         rules_dir = tmp_path / ".vaudeville" / "rules"
         rules_dir.mkdir(parents=True)
@@ -340,7 +340,7 @@ class TestAbandonRuleAdversarial:
 
     def test_locate_rule_only_yml_extension(self, tmp_path: Path) -> None:
         """Only .yml exists → returned correctly."""
-        from vaudeville.orchestrator import _locate_rule_file
+        from vaudeville.core.rules import locate_rule_file as _locate_rule_file
 
         rules_dir = tmp_path / ".vaudeville" / "rules"
         rules_dir.mkdir(parents=True)
@@ -352,7 +352,7 @@ class TestAbandonRuleAdversarial:
 
     def test_locate_rule_home_fallback(self, tmp_path: Path) -> None:
         """Rule not in project path but exists in home fallback."""
-        from vaudeville.orchestrator import _locate_rule_file
+        from vaudeville.core.rules import locate_rule_file as _locate_rule_file
 
         user_home = tmp_path / "fakehome"
         home_rules = user_home / ".vaudeville" / "rules"
@@ -371,7 +371,7 @@ class TestAbandonRuleAdversarial:
         assert found == home_file
 
     def test_locate_rule_missing_everywhere_raises(self, tmp_path: Path) -> None:
-        from vaudeville.orchestrator import _locate_rule_file
+        from vaudeville.core.rules import locate_rule_file as _locate_rule_file
 
         with patch("os.path.expanduser", return_value=str(tmp_path / "fakehome")):
             with pytest.raises(FileNotFoundError):

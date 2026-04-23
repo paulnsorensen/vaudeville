@@ -9,14 +9,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from vaudeville.server.tui import (
+    confidence_text as _confidence_text,
+    tier_text as _tier_text,
+    verdict_text as _verdict_text,
+)
 from vaudeville.server.watch import (
     _MAX_ROWS,
     _build_table,
-    _confidence_text,
     _parse_ts_display,
     _sanitize_display,
-    _tier_text,
-    _verdict_text,
     watch,
 )
 

@@ -39,6 +39,39 @@ coverage *args:
 check: fmt-check lint type-check
     @echo "All checks passed ✓"
 
+# Full validation pipeline (rtk-wrapped). Agents MUST run this before completion.
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    base="${VAUDEVILLE_BUILD_BASE:-origin/main}"
+    if ! git rev-parse --verify "$base" >/dev/null 2>&1; then
+        base="main"
+    fi
+    echo "→ autoformat (ruff format)"
+    uv run rtk ruff format .
+    echo "→ lint with autofix (ruff check --fix)"
+    uv run rtk ruff check --fix .
+    echo "→ typecheck (mypy --strict)"
+    uv run rtk mypy --strict vaudeville/ tests/
+    echo "→ tests + coverage (xml + term)"
+    uv run rtk pytest \
+        --cov=vaudeville \
+        --cov-config=pyproject.toml \
+        --cov-report=xml:coverage.xml \
+        --cov-fail-under=90 || {
+        echo "→ coverage failed — per-file breakdown:"
+        uv run coverage report --show-missing
+        exit 1
+    }
+    echo "→ enforce 90% line coverage on new lines vs ${base}"
+    uv run diff-cover coverage.xml \
+        --compare-branch="${base}" \
+        --fail-under=95 || {
+        echo "→ diff-cover failed — details above."
+        exit 1
+    }
+    echo "build ✓"
+
 # Run ruff linter
 lint:
     uv run ruff check .

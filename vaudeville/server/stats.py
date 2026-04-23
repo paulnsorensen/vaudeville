@@ -47,6 +47,15 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
     }
 
 
+def _percentiles(latencies: list[float]) -> tuple[float, float]:
+    """Return (p50, p95) for *latencies*. Handles the n==1 special case."""
+    n = len(latencies)
+    if n == 1:
+        return latencies[0], latencies[0]
+    quantiles = statistics.quantiles(sorted(latencies), n=100)
+    return quantiles[49], quantiles[94]
+
+
 def _summarize_rules(
     events: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
@@ -65,29 +74,34 @@ def _summarize_rules(
         total = data["total"]
         violations = data["violations"]
         pass_rate = ((total - violations) / total) * 100 if total else 0.0
+        p50, p95 = _percentiles(data["latencies"])
         summaries[name] = {
             "total": total,
             "violations": violations,
             "pass_rate": round(pass_rate, 1),
             "avg_latency_ms": round(statistics.mean(data["latencies"]), 1),
+            "p50_latency_ms": round(p50, 1),
+            "p95_latency_ms": round(p95, 1),
         }
     return summaries
+
+
+def _parse_line(line: str) -> dict[str, Any] | None:
+    stripped = line.strip()
+    if not stripped:
+        return None
+    try:
+        evt: dict[str, Any] = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    return evt
 
 
 def _parse_events(log_path: str) -> list[dict[str, Any]]:
     if not os.path.exists(log_path):
         return []
-    events: list[dict[str, Any]] = []
     with open(log_path) as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                events.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                continue
-    return events
+        return [evt for line in f if (evt := _parse_line(line)) is not None]
 
 
 def _bucket_for_latency(lat: float) -> str:
@@ -99,15 +113,7 @@ def _bucket_for_latency(lat: float) -> str:
 
 def _latency_stats(latencies: list[float]) -> dict[str, Any]:
     sorted_lat = sorted(latencies)
-    n = len(sorted_lat)
-
-    if n == 1:
-        p50 = p95 = sorted_lat[0]
-    else:
-        quantiles = statistics.quantiles(sorted_lat, n=100)
-        p50 = quantiles[49]
-        p95 = quantiles[94]
-
+    p50, p95 = _percentiles(sorted_lat)
     histogram = _empty_histogram()
 
     for lat in sorted_lat:

@@ -5,7 +5,8 @@ SLM-powered hook enforcement plugin for Claude Code. Uses Phi-4-mini (3.8B, int4
 ## Build & Test
 
 ```bash
-just check        # lint + typecheck + test
+just build        # FULL validation: autoformat + lint(+autofix) + typecheck + tests + coverage + 90% diff-cover. ALL AGENTS RUN THIS.
+just check        # lint + typecheck only (no autofix, no tests) — fast pre-commit smoke test
 just coverage     # tests with line coverage report (fails under 70%)
 just test         # tests only
 just lint         # ruff check + format check
@@ -16,8 +17,10 @@ just eval         # run eval harness against bundled rules
 
 ## Quality Gates
 
-- `just check` must pass before committing
-- `just coverage` for coverage verification
+- **`just build` is the canonical validation command.** All agents (cook, press, age sub-agents, fromage pipeline, ad-hoc edits) MUST run `just build` and confirm a clean exit before declaring work complete. Do not substitute `just check` or partial subsets — `build` is the single source of truth.
+- `just build` autoformats, autofixes lint, runs the full pytest suite with coverage, and fails if new/changed lines vs `origin/main` fall below 90% line coverage.
+- All heavy subcommands inside `just build` are wrapped with `rtk` so token consumption stays bounded when run from a Claude Code session.
+- `just check` remains available as a fast pre-commit smoke test, but is NOT a substitute for `just build` before completion.
 
 ### Coverage Policy
 

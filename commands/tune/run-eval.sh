@@ -7,4 +7,4 @@ if [ -z "$RULE_NAME" ]; then
     exit 1
 fi
 
-uv run python -m vaudeville.eval --rule "$RULE_NAME" 2>&1 | tail -n 100
+uv run python -m vaudeville.eval_cli --rule "$RULE_NAME" 2>&1 | tail -n 100

@@ -2,15 +2,15 @@
 agent: claude -p --model claude-sonnet-4-6 --allowedTools Read,Bash --disallowedTools=mcp
 commands:
   - name: rule
-    run: ./commands/judge/read-rule.sh {{ args.rule_name }}
+    run: ./read-rule.sh {{ args.rule_name }}
   - name: results
-    run: ./commands/judge/read-tune-results.sh {{ args.rule_name }}
+    run: ./read-tune-results.sh {{ args.rule_name }}
   - name: last-eval
-    run: ./commands/judge/last-eval-log.sh {{ args.rule_name }}
+    run: ./last-eval-log.sh {{ args.rule_name }}
   - name: plan
-    run: ./commands/judge/read-plan.sh {{ args.rule_name }}
+    run: ./read-plan.sh {{ args.rule_name }}
   - name: prior-judge
-    run: ./commands/judge/read-judge-log.sh {{ args.rule_name }}
+    run: ./read-judge-log.sh {{ args.rule_name }}
 args:
   - rule_name
   - p_min

@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event UserPromptSubmit",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event UserPromptSubmit",
             "timeout": 30,
             "statusMessage": "Evaluating UserPromptSubmit rules..."
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PreToolUse",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PreToolUse",
             "timeout": 30,
             "statusMessage": "Evaluating PreToolUse rules..."
           }
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PermissionRequest",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PermissionRequest",
             "timeout": 30,
             "statusMessage": "Evaluating PermissionRequest rules..."
           }
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PermissionDenied",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PermissionDenied",
             "timeout": 30,
             "statusMessage": "Evaluating PermissionDenied rules..."
           }
@@ -69,7 +69,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostToolUse",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostToolUse",
             "timeout": 30,
             "statusMessage": "Evaluating PostToolUse rules..."
           }
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostToolUseFailure",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostToolUseFailure",
             "timeout": 30,
             "statusMessage": "Evaluating PostToolUseFailure rules..."
           }
@@ -94,7 +94,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Notification",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Notification",
             "timeout": 30,
             "statusMessage": "Evaluating Notification rules..."
           }
@@ -106,7 +106,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SubagentStart",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SubagentStart",
             "timeout": 30,
             "statusMessage": "Evaluating SubagentStart rules..."
           }
@@ -118,7 +118,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SubagentStop",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SubagentStop",
             "timeout": 30,
             "statusMessage": "Evaluating SubagentStop rules..."
           }
@@ -130,7 +130,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TaskCreated",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TaskCreated",
             "timeout": 30,
             "statusMessage": "Evaluating TaskCreated rules..."
           }
@@ -142,7 +142,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TaskCompleted",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TaskCompleted",
             "timeout": 30,
             "statusMessage": "Evaluating TaskCompleted rules..."
           }
@@ -154,7 +154,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Stop",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Stop",
             "timeout": 30,
             "statusMessage": "Evaluating Stop rules..."
           }
@@ -166,7 +166,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event StopFailure",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event StopFailure",
             "timeout": 30,
             "statusMessage": "Evaluating StopFailure rules..."
           }
@@ -178,7 +178,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TeammateIdle",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event TeammateIdle",
             "timeout": 30,
             "statusMessage": "Evaluating TeammateIdle rules..."
           }
@@ -190,7 +190,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event InstructionsLoaded",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event InstructionsLoaded",
             "timeout": 30,
             "statusMessage": "Evaluating InstructionsLoaded rules..."
           }
@@ -202,7 +202,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event ConfigChange",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event ConfigChange",
             "timeout": 30,
             "statusMessage": "Evaluating ConfigChange rules..."
           }
@@ -214,7 +214,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event CwdChanged",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event CwdChanged",
             "timeout": 30,
             "statusMessage": "Evaluating CwdChanged rules..."
           }
@@ -226,7 +226,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event FileChanged",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event FileChanged",
             "timeout": 30,
             "statusMessage": "Evaluating FileChanged rules..."
           }
@@ -238,7 +238,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event WorktreeCreate",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event WorktreeCreate",
             "timeout": 30,
             "statusMessage": "Evaluating WorktreeCreate rules..."
           }
@@ -250,7 +250,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event WorktreeRemove",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event WorktreeRemove",
             "timeout": 30,
             "statusMessage": "Evaluating WorktreeRemove rules..."
           }
@@ -262,7 +262,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PreCompact",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PreCompact",
             "timeout": 30,
             "statusMessage": "Evaluating PreCompact rules..."
           }
@@ -274,7 +274,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostCompact",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event PostCompact",
             "timeout": 30,
             "statusMessage": "Evaluating PostCompact rules..."
           }
@@ -286,7 +286,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Elicitation",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event Elicitation",
             "timeout": 30,
             "statusMessage": "Evaluating Elicitation rules..."
           }
@@ -298,7 +298,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event ElicitationResult",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event ElicitationResult",
             "timeout": 30,
             "statusMessage": "Evaluating ElicitationResult rules..."
           }
@@ -310,7 +310,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SessionEnd",
+            "command": "${VAUDEVILLE_PYTHON:-python3} \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event SessionEnd",
             "timeout": 30,
             "statusMessage": "Evaluating SessionEnd rules..."
           }

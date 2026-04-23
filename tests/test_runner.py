@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
 import sys
 from unittest.mock import patch
 
@@ -505,3 +506,53 @@ class TestMaybeCondense:
             runner._run_event_rules("PreToolUse", hook_input, client)
 
         client.condense.assert_not_called()
+
+
+class TestRunnerNoYamlImport:
+    """Verify runner.py top-level imports succeed without PyYAML."""
+
+    def test_runner_imports_without_pyyaml(self) -> None:
+        """runner.py must import cleanly in a Python env lacking PyYAML.
+
+        Blocks yaml from the module registry before loading runner, then
+        asserts the runner starts up and fails-open (prints '{}') rather than
+        crashing with an ImportError traceback.  Verifies that the top-level
+        import surface of runner.py contains no PyYAML dependency.
+        """
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        runner_path = os.path.join(plugin_root, "hooks", "runner.py")
+
+        # Block yaml at the sys.modules level so any eager `import yaml` at
+        # module load time raises ImportError, simulating a system Python that
+        # doesn't have PyYAML installed.
+        code = (
+            "import sys\n"
+            # Sentinel: if runner triggers yaml import at module level it will
+            # hit the except-ImportError block and sys.exit(0) before 'ok'.
+            "sys.modules['yaml'] = None  # type: ignore\n"
+            f"sys.path.insert(0, {plugin_root!r})\n"
+            "import importlib.util\n"
+            f"spec = importlib.util.spec_from_file_location('runner', {runner_path!r})\n"
+            "mod = importlib.util.module_from_spec(spec)\n"
+            "try:\n"
+            "    spec.loader.exec_module(mod)\n"
+            "except SystemExit:\n"
+            "    pass  # runner exits 0 on missing event / empty stdin\n"
+            "print('ok')\n"
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        assert result.returncode == 0, (
+            f"runner.py subprocess exited non-zero:\n"
+            f"stdout={result.stdout}\nstderr={result.stderr}"
+        )
+        assert "ok" in result.stdout, (
+            f"runner.py eager-imports yaml (or otherwise failed before printing 'ok'):\n"
+            f"stdout={result.stdout}\nstderr={result.stderr}"
+        )

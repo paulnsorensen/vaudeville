@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from typing import TYPE_CHECKING
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
@@ -26,17 +27,17 @@ if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
 try:
-    from vaudeville.core import (
-        ClassifyResponse,
-        Rule,
-        VaudevilleClient,
-        find_project_root,
-        prepare_text,
-    )  # noqa: E402
+    from vaudeville.core.client import VaudevilleClient  # noqa: E402
+    from vaudeville.core.paths import find_project_root  # noqa: E402
+    from vaudeville.core.protocol import ClassifyResponse  # noqa: E402
+    from vaudeville.core.truncation import prepare_text  # noqa: E402
 except ImportError as _exc:
     print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
     print("{}")
     sys.exit(0)
+
+if TYPE_CHECKING:
+    from vaudeville.core.rules import Rule
 
 MIN_TEXT_LENGTH = 50
 _DEBUG = os.environ.get("VAUDEVILLE_DEBUG", "") == "1"
@@ -110,7 +111,7 @@ def main() -> None:
 
 def _load_rules_for_event(event: str) -> list:
     """Auto-discover all rules matching an event via layered resolution."""
-    from vaudeville.core import load_rules_layered  # noqa: E402
+    from vaudeville.core.rules import load_rules_layered  # noqa: E402
 
     project_root = find_project_root()
     all_rules = load_rules_layered(project_root)

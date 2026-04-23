@@ -1,5 +1,3 @@
-"""Rule management CLI commands for vaudeville."""
-
 from __future__ import annotations
 
 import argparse
@@ -155,12 +153,15 @@ def cmd_delete(args: argparse.Namespace) -> None:
             print(f"Rule {args.name!r} exists in multiple locations:")
             for i, p in enumerate(paths, 1):
                 print(f"  {i}. {p}")
-            raw = input("Delete which? (1/2/all): ").strip().lower()
+            raw = input(f"Delete which? (1-{len(paths)}/all): ").strip().lower()
             if raw == "all":
                 pass
             else:
                 try:
-                    paths = [paths[int(raw) - 1]]
+                    idx = int(raw) - 1
+                    if not (0 <= idx < len(paths)):
+                        raise IndexError
+                    paths = [paths[idx]]
                 except (ValueError, IndexError):
                     print("Invalid choice. Aborted.")
                     return
@@ -234,7 +235,8 @@ def cmd_disable(args: argparse.Namespace) -> None:
         print(f"Rule {args.name!r} not found.", file=sys.stderr)
         sys.exit(1)
     content = path.read_text()
-    current = _load_tier(path)
+    m = re.search(r"^tier:\s*(\S+)", content, re.MULTILINE)
+    current = m.group(1) if m else "shadow"
     if current == "disabled":
         print(f"Rule {args.name!r} is already disabled.")
         return
@@ -261,7 +263,8 @@ def cmd_enable(args: argparse.Namespace) -> None:
         print(f"Rule {args.name!r} not found.", file=sys.stderr)
         sys.exit(1)
     content = path.read_text()
-    current = _load_tier(path)
+    m = re.search(r"^tier:\s*(\S+)", content, re.MULTILINE)
+    current = m.group(1) if m else "shadow"
     if current != "disabled":
         print(f"Rule {args.name!r} is already enabled (tier: {current!r}).")
         return
@@ -312,7 +315,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
                 load_rule_file(p)
                 print(f"OK      {name}")
             except Exception as exc:
-                print(f"INVALID {name}: {exc}")
+                print(f"INVALID {name}: {exc}", file=sys.stderr)
                 errors += 1
     if errors:
         sys.exit(1)
@@ -326,8 +329,6 @@ def cmd_completion(args: argparse.Namespace) -> None:
 
 
 def attach_rule_parsers(sub: Any) -> None:
-    """Register all rule management subparsers with argcomplete support."""
-
     def _name(p: Any) -> Any:
         action = p.add_argument("name", help="Rule name")
         action.completer = _rule_names_completer
@@ -379,7 +380,7 @@ _RULE_COMMANDS: dict[str, _CmdHandler] = {
 
 
 def dispatch_rule_command(args: argparse.Namespace) -> bool:
-    """Dispatch to a rule management command. Returns True if the command was handled."""
+    """Returns True if handled, False if command unknown."""
     handler = _RULE_COMMANDS.get(args.command)
     if handler is None:
         return False

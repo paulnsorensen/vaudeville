@@ -276,7 +276,6 @@ def locate_rule_file(rule_name: str, project_root: str | None = None) -> Path:
 def locate_all_rule_files(
     rule_name: str, project_root: str | None = None
 ) -> list[Path]:
-    """Return all matching rule YAML paths across project and home search dirs."""
     home = os.path.expanduser("~")
     candidates: list[Path] = []
     if project_root:
@@ -325,12 +324,11 @@ def list_rules_with_source(project_root: str | None = None) -> list[tuple[Rule, 
 
 
 def load_rule_file(path: str | Path) -> Rule | None:
-    """Public wrapper: load and parse a single rule YAML. Returns None for drafts."""
+    """Returns None for drafts."""
     return _load_rule_file(str(path))
 
 
 def _parse_test_cases(raw: object, rule_name: str, labels: list[str]) -> list[EvalCase]:
-    """Parse and validate test_cases list from rule YAML."""
     if not raw:
         return []
     if not isinstance(raw, list):

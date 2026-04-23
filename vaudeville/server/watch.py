@@ -15,6 +15,14 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
+from vaudeville.server.tui import (
+    confidence_text as _confidence_text,
+    latency_text as _latency_text,
+    styled_table,
+    tier_text as _tier_text,
+    verdict_text as _verdict_text,
+)
+
 _EVENTS_LOG = os.path.join(
     os.path.expanduser("~"), ".vaudeville", "logs", "events.jsonl"
 )
@@ -51,34 +59,6 @@ def _to_float(value: object) -> float:
         return 0.0
 
 
-def _verdict_text(verdict: str) -> Text:
-    if verdict == "violation":
-        return Text(verdict, style="bold red")
-    return Text(verdict, style="bold green")
-
-
-def _tier_text(tier: str) -> Text:
-    if tier == "shadow":
-        return Text(tier, style="dim")
-    if tier == "warn":
-        return Text(tier, style="yellow")
-    return Text(tier, style="bold green")
-
-
-# Confidence heat-map thresholds. Red is reserved for violation verdicts.
-_CONFIDENCE_HIGH = 0.8
-_CONFIDENCE_MEH = 0.5
-
-
-def _confidence_text(confidence: float) -> Text:
-    formatted = f"{confidence:.2f}"
-    if confidence >= _CONFIDENCE_HIGH:
-        return Text(formatted, style="green")
-    if confidence >= _CONFIDENCE_MEH:
-        return Text(formatted, style="yellow")
-    return Text(formatted, style="dim")
-
-
 def _sanitize_display(value: object) -> Text:
     """Return *value* as single-line Text, with newlines flattened to spaces."""
     text = (
@@ -92,10 +72,9 @@ def _sanitize_display(value: object) -> Text:
 
 def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table:
     total_seen, violations = totals
-    table = Table(
+    table = styled_table(
         title="Vaudeville \u2014 Live Rule Firings",
         caption=f"Session: {total_seen} events, {violations} violations",
-        expand=True,
     )
     table.add_column("Time", style="dim", min_width=_TIME_MIN_WIDTH, no_wrap=True)
     table.add_column("Rule", min_width=_RULE_MIN_WIDTH, overflow="fold")
@@ -125,7 +104,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
             _tier_text(evt.get("tier", "enforce")),
             _verdict_text(evt.get("verdict", "?")),
             _confidence_text(_to_float(evt.get("confidence", 0))),
-            f"{_to_float(evt.get('latency_ms', 0)):.1f}",
+            _latency_text(_to_float(evt.get("latency_ms", 0))),
             _sanitize_display(evt.get("reason", "")),
             _sanitize_display(evt.get("input_snippet", "")),
         )

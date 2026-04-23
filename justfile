@@ -48,22 +48,28 @@ build:
         base="main"
     fi
     echo "→ autoformat (ruff format)"
-    rtk uv run ruff format .
+    uv run rtk ruff format .
     echo "→ lint with autofix (ruff check --fix)"
-    rtk uv run ruff check --fix .
+    uv run rtk ruff check --fix .
     echo "→ typecheck (mypy --strict)"
-    rtk uv run mypy --strict vaudeville/ tests/
+    uv run rtk mypy --strict vaudeville/ tests/
     echo "→ tests + coverage (xml + term)"
-    rtk uv run pytest \
+    uv run rtk pytest \
         --cov=vaudeville \
         --cov-config=pyproject.toml \
         --cov-report=xml:coverage.xml \
-        --cov-report=term-missing \
-        --cov-fail-under=70
+        --cov-fail-under=90 || {
+        echo "→ coverage failed — per-file breakdown:"
+        uv run coverage report --show-missing
+        exit 1
+    }
     echo "→ enforce 90% line coverage on new lines vs ${base}"
-    rtk uv run diff-cover coverage.xml \
+    uv run diff-cover coverage.xml \
         --compare-branch="${base}" \
-        --fail-under=90
+        --fail-under=95 || {
+        echo "→ diff-cover failed — details above."
+        exit 1
+    }
     echo "build ✓"
 
 # Run ruff linter

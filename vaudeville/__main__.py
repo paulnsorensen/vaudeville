@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 """Vaudeville CLI entry point.
 
 Usage: uv run python -m vaudeville <command>
@@ -11,6 +12,7 @@ import os
 import sys
 from typing import Any
 
+import argcomplete
 from rich.console import Console
 from rich.text import Text
 
@@ -286,14 +288,10 @@ def main() -> None:
 
     _build_tune_parser(sub)
     _build_generate_parser(sub)
+
     attach_rule_parsers(sub)
 
-    try:
-        import argcomplete
-
-        argcomplete.autocomplete(parser)
-    except ImportError:
-        pass
+    argcomplete.autocomplete(parser)
 
     args = parser.parse_args()
     if args.command is None:

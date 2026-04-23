@@ -45,6 +45,23 @@ This detects your platform (Apple Silicon or x86_64) and downloads the appropria
 
 3. Try it: ask Claude to explain something. If the response opens with hedging ("this should work") or dismisses a test failure, the rule fires and you'll see a warning or block.
 
+## Uninstall
+
+`/plugin remove vaudeville` removes the plugin files but does not clean up the standalone `vaudeville` CLI shim or the `argcomplete` helper that `/vaudeville:setup` installed into uv's tool bin (often `~/.local/bin`). To remove them:
+
+```bash
+uv tool uninstall vaudeville
+uv tool uninstall argcomplete
+```
+
+If you added the tab-completion activation line to your shell rc (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`), remove it as well — it references `register-python-argcomplete`, which will no longer exist.
+
+To also clear the downloaded model and rules:
+
+```bash
+rm -rf ~/.vaudeville
+```
+
 ## Bundled Rules
 
 The plugin ships a set of example rules in [`examples/rules/`](examples/rules/). **They are examples, not active configuration** — the rule loader reads from `~/.vaudeville/rules/` (global) and `<project>/.vaudeville/rules/`, so nothing fires until you copy the ones you want into one of those directories (see Quick Start step 1).

@@ -128,3 +128,21 @@ class TestMain:
                 main()
 
         mock_gen.assert_called_once()
+
+    def test_argcomplete_autocomplete_invoked(self) -> None:
+        empty: dict[str, object] = {"total": 0}
+        with (
+            patch("sys.argv", ["vaudeville", "stats"]),
+            patch("vaudeville.__main__.argcomplete.autocomplete") as mock_autocomp,
+            patch("vaudeville.server.aggregate_events", return_value=empty) as mock_agg,
+        ):
+            from vaudeville.__main__ import main
+
+            main()
+
+        mock_autocomp.assert_called_once()
+        parser_arg = mock_autocomp.call_args.args[0]
+        import argparse
+
+        assert isinstance(parser_arg, argparse.ArgumentParser)
+        mock_agg.assert_called_once()

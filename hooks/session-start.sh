@@ -35,7 +35,20 @@ fi
 
 # Per-UID runtime directory (0700) prevents other users from intercepting socket
 RUNTIME_DIR="/tmp/vaudeville-$(id -u)"
-mkdir -m 0700 "${RUNTIME_DIR}" 2>/dev/null || true
+if [ -d "${RUNTIME_DIR}" ]; then
+  # Verify ownership — if owned by a different uid, remove and recreate
+  DIR_OWNER=$(stat -c '%u' "${RUNTIME_DIR}" 2>/dev/null || stat -f '%u' "${RUNTIME_DIR}" 2>/dev/null || echo "")
+  if [ -n "${DIR_OWNER}" ] && [ "${DIR_OWNER}" != "$(id -u)" ]; then
+    echo "[vaudeville] ${RUNTIME_DIR} is owned by uid ${DIR_OWNER}, not $(id -u) — removing and recreating" >&2
+    rm -rf "${RUNTIME_DIR}" 2>/dev/null || true
+    if ! mkdir -m 0700 "${RUNTIME_DIR}"; then
+      echo "[vaudeville] Failed to recreate ${RUNTIME_DIR} — aborting daemon spawn" >&2
+      exit 1
+    fi
+  fi
+else
+  mkdir -m 0700 "${RUNTIME_DIR}" 2>/dev/null || true
+fi
 
 SOCKET_PATH="${RUNTIME_DIR}/vaudeville.sock"
 PID_FILE="${RUNTIME_DIR}/vaudeville.pid"

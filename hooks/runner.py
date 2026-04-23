@@ -33,7 +33,7 @@ try:
         find_project_root,
         prepare_text,
     )  # noqa: E402
-except ImportError as _exc:
+except Exception as _exc:
     print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
     print("{}")
     sys.exit(0)

@@ -2,14 +2,24 @@
 
 Per-UID directory in /tmp with 0700 permissions prevents other local
 users from intercepting the Unix socket or tampering with state files.
+
+On non-POSIX platforms (Windows) ``os.getuid`` is absent; fall back to a
+best-effort path using ``tempfile.gettempdir()`` and ``getpass.getuser()``.
 """
 
 from __future__ import annotations
 
+import getpass
 import os
 import subprocess
+import tempfile
 
-RUNTIME_DIR = f"/tmp/vaudeville-{os.getuid()}"
+if hasattr(os, "getuid"):
+    RUNTIME_DIR = f"/tmp/vaudeville-{os.getuid()}"
+else:
+    # Windows / non-POSIX fallback: use the system temp dir with username
+    RUNTIME_DIR = os.path.join(tempfile.gettempdir(), f"vaudeville-{getpass.getuser()}")
+
 # VAUDEVILLE_SOCKET may be set by SessionStart via CLAUDE_ENV_FILE to avoid
 # re-deriving the path in each hook. Treat empty string as unset.
 SOCKET_PATH = os.environ.get("VAUDEVILLE_SOCKET") or os.path.join(

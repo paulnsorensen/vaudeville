@@ -1133,6 +1133,41 @@ class TestCoverageEdgeCases:
         assert "good-rule" in out
         assert "README" not in out
 
+    def test_delete_single_confirmed(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        p = _write_rule(_home_rules(tmp_path), "my-rule")
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            with patch("builtins.input", return_value="y"):
+                with patch("sys.stdin") as ms:
+                    ms.isatty.return_value = True
+                    cmd_delete(Namespace(name="my-rule", yes=False))
+        assert not p.exists()
+
+    def test_delete_multiple_index_select(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        ph = _write_rule(_home_rules(tmp_path), "dup-rule")
+        pp = _write_rule(_proj_rules(tmp_path), "dup-rule")
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            with patch("builtins.input", return_value="1"):
+                with patch("sys.stdin") as ms:
+                    ms.isatty.return_value = True
+                    cmd_delete(Namespace(name="dup-rule", yes=False))
+        assert not ph.exists() or not pp.exists()
+
     def test_delete_multiple_all(
         self,
         tmp_path: Path,

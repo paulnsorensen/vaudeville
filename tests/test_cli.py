@@ -42,6 +42,28 @@ class TestCmdStats:
             allowed_rules={"no-hedging"},
         )
 
+    def test_stats_no_rules_disables_filter(self) -> None:
+        from argparse import Namespace
+
+        mock_result = {"total": 0}
+        with (
+            patch(
+                "vaudeville.__main__.load_rules_layered",
+                return_value={},
+            ),
+            patch(
+                "vaudeville.server.aggregate_events", return_value=mock_result
+            ) as mock_agg,
+        ):
+            from vaudeville.__main__ import cmd_stats
+
+            cmd_stats(Namespace(log_path="/tmp/test.jsonl", json=False))
+
+        mock_agg.assert_called_once_with(
+            "/tmp/test.jsonl",
+            allowed_rules=None,
+        )
+
     def test_stats_json_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         from argparse import Namespace
 

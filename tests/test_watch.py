@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vaudeville.server.tui import (
+from vaudeville.tui import (
     confidence_text as _confidence_text,
     tier_text as _tier_text,
     verdict_text as _verdict_text,

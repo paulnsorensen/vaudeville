@@ -244,6 +244,29 @@ def cmd_show(args: argparse.Namespace) -> None:
     _print_rule_human(rule, path)
 
 
+def _confirm_delete_target(name: str, paths: list[Path]) -> list[Path] | None:
+    if len(paths) > 1:
+        _console.print(f"Rule {name!r} exists in multiple locations:")
+        for i, p in enumerate(paths, 1):
+            _console.print(f"  {i}. {p}")
+        raw = input(f"Delete which? (1-{len(paths)}/all): ").strip().lower()
+        if raw != "all":
+            try:
+                idx = int(raw) - 1
+                if not (0 <= idx < len(paths)):
+                    raise IndexError
+                return [paths[idx]]
+            except (ValueError, IndexError):
+                _console.print("Invalid choice. Aborted.")
+                return None
+        return paths
+    resp = input(f"Delete {paths[0]}? [y/N] ").strip().lower()
+    if resp != "y":
+        _console.print("Aborted.")
+        return None
+    return paths
+
+
 def cmd_delete(args: argparse.Namespace) -> None:
     project_root = _find_project_root()
     paths = locate_all_rule_files(args.name, project_root)
@@ -257,27 +280,10 @@ def cmd_delete(args: argparse.Namespace) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        if len(paths) > 1:
-            _console.print(f"Rule {args.name!r} exists in multiple locations:")
-            for i, p in enumerate(paths, 1):
-                _console.print(f"  {i}. {p}")
-            raw = input(f"Delete which? (1-{len(paths)}/all): ").strip().lower()
-            if raw == "all":
-                pass
-            else:
-                try:
-                    idx = int(raw) - 1
-                    if not (0 <= idx < len(paths)):
-                        raise IndexError
-                    paths = [paths[idx]]
-                except (ValueError, IndexError):
-                    _console.print("Invalid choice. Aborted.")
-                    return
-        else:
-            resp = input(f"Delete {paths[0]}? [y/N] ").strip().lower()
-            if resp != "y":
-                _console.print("Aborted.")
-                return
+        confirmed = _confirm_delete_target(args.name, paths)
+        if confirmed is None:
+            return
+        paths = confirmed
     for p in paths:
         p.unlink()
         _console.print(f"Deleted {p}")
@@ -398,6 +404,16 @@ def cmd_path(args: argparse.Namespace) -> None:
     _console.print(str(path))
 
 
+def _validate_rule_file(p: Path, name: str) -> bool:
+    try:
+        load_rule_file(p)
+        _console.print(f"OK      {name}")
+        return True
+    except Exception as exc:
+        print(f"INVALID {name}: {exc}", file=sys.stderr)
+        return False
+
+
 def cmd_validate(args: argparse.Namespace) -> None:
     project_root = _find_project_root()
     if args.name:
@@ -419,11 +435,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
                 continue
             p = Path(rules_dir) / filename
             name = filename.rsplit(".", 1)[0]
-            try:
-                load_rule_file(p)
-                _console.print(f"OK      {name}")
-            except Exception as exc:
-                print(f"INVALID {name}: {exc}", file=sys.stderr)
+            if not _validate_rule_file(p, name):
                 errors += 1
     if errors:
         sys.exit(1)

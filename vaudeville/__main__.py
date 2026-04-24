@@ -52,9 +52,10 @@ def cmd_stats(args: argparse.Namespace) -> None:
     """Print aggregated classification statistics."""
     from vaudeville.server import aggregate_events
 
+    rules = load_rules_layered(_find_project_root())
     result = aggregate_events(
         args.log_path,
-        allowed_rules=set(load_rules_layered(_find_project_root()).keys()),
+        allowed_rules=set(rules.keys()) if rules else None,
     )
 
     if args.json:

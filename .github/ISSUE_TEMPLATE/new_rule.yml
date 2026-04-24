@@ -1,0 +1,61 @@
+name: New Bundled Rule
+description: Propose a rule to include in the bundled examples
+labels: ["rule"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bundled rules need a `.yaml` rule file and test cases with at least one positive (fires) and one negative (doesn't fire) example. See [`examples/rules/`](https://github.com/paulnsorensen/vaudeville/tree/main/examples/rules) for the format.
+
+  - type: input
+    id: rule_name
+    attributes:
+      label: Proposed rule name
+      placeholder: "e.g. scope-creep-detector"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: event
+    attributes:
+      label: Hook event
+      options:
+        - Stop
+        - PreToolUse
+        - PostToolUse
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What behavior does this rule catch?
+      description: Describe what the assistant does wrong that this rule fires on.
+    validations:
+      required: true
+
+  - type: textarea
+    id: positive_example
+    attributes:
+      label: Positive example (should fire)
+      description: Paste an assistant response or tool call that the rule should classify as a violation.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: negative_example
+    attributes:
+      label: Negative example (should not fire)
+      description: Paste an example that should pass cleanly.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: rule_yaml
+    attributes:
+      label: Draft rule YAML (optional)
+      description: If you have a draft, paste it here.
+      render: yaml

@@ -90,7 +90,7 @@ install-cli:
     arch=$(uname -m)
     if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
         backend="mlx"
-        with_args=(--with "mlx-lm>=0.31.0,<0.32")
+        with_args=(--with "mlx-lm>=0.31.0")
     else
         backend="gguf"
         with_args=(--with "llama-cpp-python>=0.3.4" --with "huggingface-hub>=0.24.0")

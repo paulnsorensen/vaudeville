@@ -953,7 +953,8 @@ class TestAttachRuleParsers:
         args = parser.parse_args(["completion", "bash"])
         assert args.shell == "bash"
 
-    def test_list_negative_poll_interval_rejected(self) -> None:
+    @pytest.mark.parametrize("value", ["-1", "0", "nan", "inf", "-inf"])
+    def test_list_invalid_poll_interval_rejected(self, value: str) -> None:
         import argparse
 
         from vaudeville.cli_rules import attach_rule_parsers
@@ -963,31 +964,7 @@ class TestAttachRuleParsers:
         attach_rule_parsers(sub)
 
         with pytest.raises(SystemExit):
-            parser.parse_args(["list", "--poll-interval", "-1"])
-
-    def test_list_nan_poll_interval_rejected(self) -> None:
-        import argparse
-
-        from vaudeville.cli_rules import attach_rule_parsers
-
-        parser = argparse.ArgumentParser()
-        sub = parser.add_subparsers(dest="cmd")
-        attach_rule_parsers(sub)
-
-        with pytest.raises(SystemExit):
-            parser.parse_args(["list", "--poll-interval", "nan"])
-
-    def test_list_inf_poll_interval_rejected(self) -> None:
-        import argparse
-
-        from vaudeville.cli_rules import attach_rule_parsers
-
-        parser = argparse.ArgumentParser()
-        sub = parser.add_subparsers(dest="cmd")
-        attach_rule_parsers(sub)
-
-        with pytest.raises(SystemExit):
-            parser.parse_args(["list", "--poll-interval", "inf"])
+            parser.parse_args(["list", "--poll-interval", value])
 
 
 # ---------------------------------------------------------------------------

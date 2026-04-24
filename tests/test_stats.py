@@ -97,7 +97,6 @@ def test_per_rule_breakdown(tmp_path: pathlib.Path) -> None:
 
 
 def test_filters_to_existing_rules(tmp_path: pathlib.Path) -> None:
-    """Only currently existing rules are included in stats output."""
     events = [
         _make_event(rule="no-hedging", verdict="clean", latency_ms=50.0),
         _make_event(rule="deleted-rule", verdict="violation", latency_ms=200.0),

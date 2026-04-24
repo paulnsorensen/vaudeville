@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -55,7 +56,7 @@ def _rule_names_completer(prefix: str, **_: object) -> list[str]:
 
 def _positive_poll_interval(value: str) -> float:
     interval = float(value)
-    if interval <= 0:
+    if not math.isfinite(interval) or interval <= 0:
         raise argparse.ArgumentTypeError("poll interval must be > 0")
     return interval
 
@@ -135,8 +136,9 @@ def _add_list_subparser(sub: Any) -> None:
     lp = sub.add_parser("list", help="List all rules")
     lp.add_argument("--tier", choices=VALID_TIERS, help="Filter by tier")
     lp.add_argument("--event", help="Filter by event type")
-    lp.add_argument("--json", action="store_true", help="Output raw JSON")
-    lp.add_argument(
+    output_group = lp.add_mutually_exclusive_group()
+    output_group.add_argument("--json", action="store_true", help="Output raw JSON")
+    output_group.add_argument(
         "--live",
         action="store_true",
         help="Continuously refresh rule list like the watch TUI",

@@ -916,23 +916,31 @@ class TestAttachRuleParsers:
         sub = parser.add_subparsers(dest="cmd")
         attach_rule_parsers(sub)
         args = parser.parse_args(
-            [
-                "list",
-                "--tier",
-                "warn",
-                "--event",
-                "Stop",
-                "--json",
-                "--live",
-                "--poll-interval",
-                "0.2",
-            ]
+            ["list", "--tier", "warn", "--event", "Stop", "--json"]
         )
         assert args.tier == "warn"
         assert args.event == "Stop"
         assert args.json is True
-        assert args.live is True
-        assert args.poll_interval == 0.2
+        assert args.live is False
+
+        parser2 = argparse.ArgumentParser()
+        sub2 = parser2.add_subparsers(dest="cmd")
+        attach_rule_parsers(sub2)
+        args2 = parser2.parse_args(["list", "--live", "--poll-interval", "0.2"])
+        assert args2.live is True
+        assert args2.json is False
+        assert args2.poll_interval == 0.2
+
+    def test_list_json_live_mutually_exclusive(self) -> None:
+        import argparse
+
+        from vaudeville.cli_rules import attach_rule_parsers
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        attach_rule_parsers(sub)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["list", "--json", "--live"])
 
     def test_completion_choices_registered(self) -> None:
         import argparse
@@ -956,6 +964,30 @@ class TestAttachRuleParsers:
 
         with pytest.raises(SystemExit):
             parser.parse_args(["list", "--poll-interval", "-1"])
+
+    def test_list_nan_poll_interval_rejected(self) -> None:
+        import argparse
+
+        from vaudeville.cli_rules import attach_rule_parsers
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        attach_rule_parsers(sub)
+
+        with pytest.raises(SystemExit):
+            parser.parse_args(["list", "--poll-interval", "nan"])
+
+    def test_list_inf_poll_interval_rejected(self) -> None:
+        import argparse
+
+        from vaudeville.cli_rules import attach_rule_parsers
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        attach_rule_parsers(sub)
+
+        with pytest.raises(SystemExit):
+            parser.parse_args(["list", "--poll-interval", "inf"])
 
 
 # ---------------------------------------------------------------------------

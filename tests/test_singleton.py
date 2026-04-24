@@ -60,6 +60,49 @@ class TestClientSocketPath:
         )
 
 
+class TestPathsWithoutGetuid:
+    """paths.py must not raise when os.getuid is absent (non-POSIX / Windows)."""
+
+    def test_import_paths_without_getuid_does_not_raise(self) -> None:
+        """Monkeypatching away os.getuid must not cause an AttributeError on import."""
+        import importlib
+        import types
+
+        original_getuid = getattr(os, "getuid", None)
+
+        # Remove getuid to simulate a non-POSIX environment
+        if hasattr(os, "getuid"):
+            del os.getuid  # type: ignore[attr-defined]
+
+        # Remove cached module so it will be re-executed
+        paths_modules = [k for k in sys.modules if "vaudeville.core.paths" in k]
+        saved = {k: sys.modules.pop(k) for k in paths_modules}
+        # Also remove parent packages so submodule reimport is clean
+        core_modules = {
+            k: sys.modules.pop(k)
+            for k in list(sys.modules)
+            if k in ("vaudeville.core", "vaudeville")
+        }
+
+        try:
+            import vaudeville.core.paths as paths_mod  # re-import without getuid
+
+            # Should succeed and produce a non-empty RUNTIME_DIR
+            assert paths_mod.RUNTIME_DIR, "RUNTIME_DIR must be non-empty"
+            assert paths_mod.SOCKET_PATH, "SOCKET_PATH must be non-empty"
+        finally:
+            # Restore getuid and original modules
+            if original_getuid is not None:
+                os.getuid = original_getuid  # type: ignore[attr-defined]
+            # Restore original modules so the rest of the test suite is unaffected
+            for k, v in saved.items():
+                sys.modules[k] = v
+            for k, v in core_modules.items():
+                sys.modules[k] = v
+            # Reload with getuid present to restore to the normal state
+            importlib.reload(sys.modules["vaudeville.core.paths"])
+
+
 class TestVaudevilleClientNoArgs:
     def test_constructor_accepts_no_arguments(self) -> None:
         """VaudevilleClient() must work with zero arguments."""

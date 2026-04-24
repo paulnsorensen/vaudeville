@@ -384,6 +384,51 @@ class TestRunPipeline:
         assert "fail open" in capsys.readouterr().err
 
 
+class TestRunnerImportFailOpen:
+    """runner.py top-level import guard must fail-open on any exception, not just ImportError."""
+
+    def test_attribute_error_on_import_exits_0_and_warns(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Simulates AttributeError raised during 'from vaudeville.core import ...'."""
+        import types
+
+        hooks_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks"
+        )
+
+        # Build a fake vaudeville.core that raises AttributeError on import
+        fake_vaudeville = types.ModuleType("vaudeville")
+        fake_core = types.ModuleType("vaudeville.core")
+
+        def _raise(*args: object, **kwargs: object) -> None:
+            raise AttributeError("module 'os' has no attribute 'getuid'")
+
+        fake_core.__getattr__ = _raise  # type: ignore[attr-defined]
+
+        with (
+            patch.dict(
+                sys.modules,
+                {"vaudeville": fake_vaudeville, "vaudeville.core": fake_core},
+            ),
+            patch.dict(os.environ, {"VAUDEVILLE_SKIP": "0"}, clear=False),
+        ):
+            # Re-execute the runner module body to trigger the top-level try/except
+            runner_path = os.path.join(hooks_dir, "runner.py")
+            with open(runner_path) as f:
+                runner_code = f.read()
+            module_globals: dict = {
+                "__name__": "__not_main__",
+                "__file__": runner_path,
+            }
+            with pytest.raises(SystemExit) as exc_info:
+                exec(compile(runner_code, runner_path, "exec"), module_globals)  # noqa: S102
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "fail open" in captured.err
+
+
 class TestMaybeCondense:
     """Tests for _maybe_condense — SLM condensing gate."""
 

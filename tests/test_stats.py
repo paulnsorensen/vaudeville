@@ -96,6 +96,20 @@ def test_per_rule_breakdown(tmp_path: pathlib.Path) -> None:
     assert syc["pass_rate"] == 100.0
 
 
+def test_filters_to_existing_rules(tmp_path: pathlib.Path) -> None:
+    """Only currently existing rules are included in stats output."""
+    events = [
+        _make_event(rule="no-hedging", verdict="clean", latency_ms=50.0),
+        _make_event(rule="deleted-rule", verdict="violation", latency_ms=200.0),
+    ]
+    path = _write_events(tmp_path, events)
+    result = aggregate_events(path, allowed_rules={"no-hedging"})
+
+    assert result["total"] == 1
+    assert list(result["rules"].keys()) == ["no-hedging"]
+    assert result["latency"]["mean_ms"] == 50.0
+
+
 def test_latency_percentiles(tmp_path: pathlib.Path) -> None:
     """Latency p50/p95/mean are computed correctly."""
     events = [_make_event(latency_ms=float(i)) for i in range(1, 101)]

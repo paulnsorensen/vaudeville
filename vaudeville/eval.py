@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 import yaml
 
 from .core import ClassifyResult, EvalCase, Rule, compute_confidence, parse_verdict
+from .core.protocol import CLASSIFY_MAX_TOKENS
 from .server import (
-    CLASSIFY_MAX_TOKENS,
     InferenceBackend,
     LogprobBackend,
     condense_text,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from argparse import Namespace
 from pathlib import Path
+from typing import Literal
 from unittest.mock import patch
 
 import pytest
@@ -226,7 +227,13 @@ class TestLoadRuleFile:
 
 class TestCmdList:
     def _args(self, **kwargs: object) -> Namespace:
-        defaults = {"tier": None, "event": None, "json": False}
+        defaults = {
+            "tier": None,
+            "event": None,
+            "json": False,
+            "live": False,
+            "poll_interval": 0.5,
+        }
         defaults.update(kwargs)  # type: ignore[arg-type]
         return Namespace(**defaults)
 
@@ -312,6 +319,28 @@ class TestCmdList:
             cmd_list(self._args())
         assert "No rules found." in capsys.readouterr().out
 
+    def test_live_output_uses_refresh_loop(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        _write_rule(_home_rules(tmp_path), "rule-a")
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            patch("vaudeville.cli_rules._run_list_live") as mock_live,
+        ):
+            cmd_list(self._args(live=True, poll_interval=0.2))
+        mock_live.assert_called_once_with(
+            project_root=str(tmp_path / "proj"),
+            tier=None,
+            event=None,
+            poll_interval=0.2,
+        )
+
 
 # ---------------------------------------------------------------------------
 # CLI: cmd_show
@@ -378,7 +407,44 @@ class TestCmdShow:
         ):
             cmd_show(Namespace(name="my-rule", json=False))
         out = capsys.readouterr().out
-        assert "test_cases: 2" in out
+        assert "test_cases:" not in out
+
+    def test_hides_prompt_footer_variants(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules_dir = _home_rules(tmp_path)
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        path = rules_dir / "footer-rule.yaml"
+        data = {
+            "name": "footer-rule",
+            "event": "Stop",
+            "tier": "warn",
+            "threshold": 0.5,
+            "action": "warn",
+            "message": "{reason}",
+            "prompt": (
+                "Header line\n\n"
+                "Now classify:\n"
+                "{text}\n\n"
+                "VERDICT: violation or clean\n"
+                "REASON: one sentence\n"
+            ),
+            "labels": ["violation", "clean"],
+        }
+        path.write_text(yaml.dump(data))
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_show(Namespace(name="footer-rule", json=False))
+        out = capsys.readouterr().out
+        assert "Header line" in out
+        assert "Now classify" not in out
+        assert "VERDICT: violation or clean" not in out
 
 
 # ---------------------------------------------------------------------------
@@ -850,11 +916,23 @@ class TestAttachRuleParsers:
         sub = parser.add_subparsers(dest="cmd")
         attach_rule_parsers(sub)
         args = parser.parse_args(
-            ["list", "--tier", "warn", "--event", "Stop", "--json"]
+            [
+                "list",
+                "--tier",
+                "warn",
+                "--event",
+                "Stop",
+                "--json",
+                "--live",
+                "--poll-interval",
+                "0.2",
+            ]
         )
         assert args.tier == "warn"
         assert args.event == "Stop"
         assert args.json is True
+        assert args.live is True
+        assert args.poll_interval == 0.2
 
     def test_completion_choices_registered(self) -> None:
         import argparse
@@ -867,6 +945,18 @@ class TestAttachRuleParsers:
         args = parser.parse_args(["completion", "bash"])
         assert args.shell == "bash"
 
+    def test_list_negative_poll_interval_rejected(self) -> None:
+        import argparse
+
+        from vaudeville.cli_rules import attach_rule_parsers
+
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd")
+        attach_rule_parsers(sub)
+
+        with pytest.raises(SystemExit):
+            parser.parse_args(["list", "--poll-interval", "-1"])
+
 
 # ---------------------------------------------------------------------------
 # Additional coverage: not-found paths, edge cases
@@ -874,6 +964,49 @@ class TestAttachRuleParsers:
 
 
 class TestCoverageEdgeCases:
+    def test_run_list_live_updates_until_interrupted(self) -> None:
+        from vaudeville.cli_rules import _run_list_live
+
+        class _FakeLive:
+            instances: list["_FakeLive"] = []
+
+            def __init__(self, *_: object, **__: object) -> None:
+                self.updated: list[object] = []
+                _FakeLive.instances.append(self)
+
+            def __enter__(self) -> "_FakeLive":
+                return self
+
+            def __exit__(
+                self,
+                _exc_type: object,
+                _exc_val: object,
+                _exc_tb: object,
+            ) -> Literal[False]:
+                return False
+
+            def update(self, table: object) -> None:
+                self.updated.append(table)
+
+        with (
+            patch("vaudeville.cli_rules._list_rule_pairs", return_value=[]),
+            patch(
+                "vaudeville.cli_rules._build_list_table",
+                side_effect=["initial-table", "updated-table"],
+            ),
+            patch("rich.live.Live", _FakeLive),
+            patch("vaudeville.cli_rules.time.sleep", side_effect=KeyboardInterrupt),
+        ):
+            _run_list_live(
+                project_root="/tmp/proj",
+                tier=None,
+                event=None,
+                poll_interval=0.25,
+            )
+
+        assert len(_FakeLive.instances) == 1
+        assert _FakeLive.instances[0].updated == ["updated-table"]
+
     def test_promote_not_found_exits(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -919,8 +1052,8 @@ class TestCoverageEdgeCases:
         ):
             cmd_show(Namespace(name="ex-rule", json=False))
         out = capsys.readouterr().out
-        assert "examples (from prompt)" in out
-        assert "bad output" in out
+        assert "examples (from prompt)" not in out
+        assert "bad output" not in out
 
     def test_show_draft_exits(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -21,7 +21,9 @@ def _empty_histogram() -> dict[str, int]:
     return h
 
 
-def aggregate_events(log_path: str) -> dict[str, Any]:
+def aggregate_events(
+    log_path: str, allowed_rules: set[str] | None = None
+) -> dict[str, Any]:
     """Read *log_path* and return aggregated statistics.
 
     Returns a dict with keys: ``total``, ``rules``, ``latency``,
@@ -32,7 +34,13 @@ def aggregate_events(log_path: str) -> dict[str, Any]:
     if not events:
         return empty_result()
 
-    valid = [e for e in events if "latency_ms" in e and "ts" in e]
+    valid = [
+        e
+        for e in events
+        if "latency_ms" in e
+        and "ts" in e
+        and (allowed_rules is None or str(e.get("rule", "")) in allowed_rules)
+    ]
     if not valid:
         return empty_result()
 

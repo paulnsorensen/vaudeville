@@ -946,21 +946,16 @@ class TestDisabledTierSideEffects:
         assert "disabled-rule" in rules
         assert rules["disabled-rule"].tier == "disabled"
 
-    def test_dispatch_violation_disabled_tier_falls_into_enforce_branch(self) -> None:
-        """In hooks/runner.py, disabled tier falls into the else (enforce) branch.
-        This means a disabled rule can still block — a potential bug."""
-        # We test this by reading the runner logic, not importing it (it has heavy deps)
-        # Instead, verify the tier value is 'disabled' and document the risk
+    def test_disabled_tier_short_circuits_before_inference(self) -> None:
+        """Disabled rules are skipped at the top of _run_event_rules — no SLM call.
+
+        See tests/test_runner.py::TestRunPipeline::test_disabled_tier_skips_inference
+        for the behavioral assertion. This test pins the contract that 'disabled'
+        remains a valid tier value.
+        """
         from vaudeville.core.rules import VALID_TIERS
 
-        # disabled is a valid tier
         assert "disabled" in VALID_TIERS
-
-        # The runner's _dispatch_violation checks:
-        #   if rule.tier == "shadow": ...
-        #   if rule.tier == "warn": ...
-        #   else: enforce  ← disabled falls here!
-        # This is a logic gap — no guard for disabled tier in the hook runner
 
     def test_valid_tiers_contains_all_four(self) -> None:
         """VALID_TIERS contains all expected tiers including disabled."""

@@ -20,6 +20,50 @@ class TestCmdWatch:
 
 
 class TestCmdStats:
+    def test_stats_passes_current_rules_filter(self) -> None:
+        from argparse import Namespace
+
+        mock_result = {"total": 0}
+        with (
+            patch(
+                "vaudeville.__main__.load_rules_layered",
+                return_value={"no-hedging": object()},
+            ),
+            patch(
+                "vaudeville.server.aggregate_events", return_value=mock_result
+            ) as mock_agg,
+        ):
+            from vaudeville.__main__ import cmd_stats
+
+            cmd_stats(Namespace(log_path="/tmp/test.jsonl", json=False))
+
+        mock_agg.assert_called_once_with(
+            "/tmp/test.jsonl",
+            allowed_rules={"no-hedging"},
+        )
+
+    def test_stats_no_rules_disables_filter(self) -> None:
+        from argparse import Namespace
+
+        mock_result = {"total": 0}
+        with (
+            patch(
+                "vaudeville.__main__.load_rules_layered",
+                return_value={},
+            ),
+            patch(
+                "vaudeville.server.aggregate_events", return_value=mock_result
+            ) as mock_agg,
+        ):
+            from vaudeville.__main__ import cmd_stats
+
+            cmd_stats(Namespace(log_path="/tmp/test.jsonl", json=False))
+
+        mock_agg.assert_called_once_with(
+            "/tmp/test.jsonl",
+            allowed_rules=None,
+        )
+
     def test_stats_json_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         from argparse import Namespace
 
@@ -128,3 +172,21 @@ class TestMain:
                 main()
 
         mock_gen.assert_called_once()
+
+    def test_argcomplete_autocomplete_invoked(self) -> None:
+        empty: dict[str, object] = {"total": 0}
+        with (
+            patch("sys.argv", ["vaudeville", "stats"]),
+            patch("vaudeville.__main__.argcomplete.autocomplete") as mock_autocomp,
+            patch("vaudeville.server.aggregate_events", return_value=empty) as mock_agg,
+        ):
+            from vaudeville.__main__ import main
+
+            main()
+
+        mock_autocomp.assert_called_once()
+        parser_arg = mock_autocomp.call_args.args[0]
+        import argparse
+
+        assert isinstance(parser_arg, argparse.ArgumentParser)
+        mock_agg.assert_called_once()

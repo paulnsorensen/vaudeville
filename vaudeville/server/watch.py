@@ -15,7 +15,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from vaudeville.server.tui import (
+from vaudeville.tui import (
     confidence_text as _confidence_text,
     latency_text as _latency_text,
     styled_table,

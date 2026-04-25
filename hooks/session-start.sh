@@ -34,7 +34,8 @@ if ! command -v uv &>/dev/null; then
 fi
 
 # Per-UID runtime directory (0700) prevents other users from intercepting socket
-RUNTIME_DIR="/tmp/vaudeville-$(id -u)"
+# VAUDEVILLE_RUNTIME_DIR overrides the default (used by tests)
+RUNTIME_DIR="${VAUDEVILLE_RUNTIME_DIR:-/tmp/vaudeville-$(id -u)}"
 mkdir -m 0700 "${RUNTIME_DIR}" 2>/dev/null || true
 
 SOCKET_PATH="${RUNTIME_DIR}/vaudeville.sock"
@@ -102,6 +103,15 @@ fi
 cleanup_spawn_lock() { rm -rf "${SPAWN_LOCK}" 2>/dev/null; }
 trap cleanup_spawn_lock EXIT
 
+# Rotate log if larger than 50 MB (keeps one rotated sibling as .log.1)
+if [ -f "${LOG_FILE}" ]; then
+  _log_size=$(wc -c < "${LOG_FILE}")
+  if [ "${_log_size}" -gt $((50 * 1024 * 1024)) ]; then
+    mv "${LOG_FILE}" "${LOG_FILE}.1"
+    echo "[vaudeville] Log rotated (was ${_log_size} bytes) — old log at ${LOG_FILE}.1" >&2
+  fi
+fi
+
 # Spawn daemon with platform-appropriate backend and deps
 nohup uv run --project "${PLUGIN_ROOT}" --group "${DEP_GROUP}" \
   python -m vaudeville.server \
@@ -110,8 +120,22 @@ nohup uv run --project "${PLUGIN_ROOT}" --group "${DEP_GROUP}" \
   --backend "${BACKEND}" \
   >> "${LOG_FILE}" 2>&1 &
 DAEMON_PID=$!
-disown "${DAEMON_PID}"
+disown "${DAEMON_PID}" 2>/dev/null || true
 
 echo "[vaudeville] Daemon spawned (${BACKEND}, PID ${DAEMON_PID}, socket ${SOCKET_PATH})" >&2
+
+# Poll for socket to appear (30 x 0.1s = 3s) — detect silent spawn failures
+_socket_up=0
+for _ in $(seq 1 30); do
+  if [ -S "${SOCKET_PATH}" ]; then
+    _socket_up=1
+    break
+  fi
+  sleep 0.1
+done
+if [ "${_socket_up}" -eq 0 ]; then
+  echo "[vaudeville] WARNING: daemon did not come up within 3s — check ${LOG_FILE} for errors" >&2
+fi
+
 export_socket_path
 exit 0

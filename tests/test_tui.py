@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich import box
 from rich.table import Table
 
-from vaudeville.server.tui import latency_text, styled_table
+from vaudeville.tui import latency_text, styled_table
 
 
 class TestStyledTable:

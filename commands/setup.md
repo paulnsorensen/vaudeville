@@ -8,53 +8,110 @@ allowed-tools:
 
 Run the full setup sequence: install `uv` if missing, sync Python dependencies, and download the inference model.
 
+Each step below is a self-contained bash block. `~/.local/bin` is prepended to `PATH` at the top of each block so a freshly-installed `uv` (or `uv tool`-installed binary) is visible even if the user's shell rc hasn't been reloaded — Claude Code runs each block in a separate subshell, so `export PATH=...` does not persist across steps.
+
 ## Steps
 
-1. **Check for `uv`** — if not found, install it via the official installer:
+1. **Check for `uv`** — if not found, install it via the official installer. `set -o pipefail` ensures a silent `curl` failure does not masquerade as a successful install:
 
 ```bash
+set -o pipefail
+export PATH="$HOME/.local/bin:$PATH"
 if ! command -v uv &>/dev/null; then
   echo "Installing uv..."
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  # Reload PATH so uv is available immediately
-  export PATH="$HOME/.local/bin:$PATH"
+  curl -LsSf https://astral.sh/uv/install.sh | sh || {
+    echo "uv install failed — check network / TLS and re-run /vaudeville:setup" >&2
+    exit 1
+  }
 fi
 echo "uv $(uv --version)"
+
+# Enforce minimum uv version (0.4.27 introduced --group support)
+_uv_min="0.4.27"
+_uv_actual=$(uv --version | awk '{print $2}')
+if [ "$(printf '%s\n' "$_uv_min" "$_uv_actual" | sort -V | head -n1)" != "$_uv_min" ]; then
+  echo "ERROR: uv ${_uv_actual} is too old — vaudeville requires uv >= ${_uv_min}." >&2
+  echo "Upgrade with: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  exit 1
+fi
 ```
 
-2. **Sync dependencies** — install the correct backend for this architecture:
+2. **Sync dependencies** — install the correct backend for this OS+arch. MLX is Apple Silicon only; everything else (incl. Linux aarch64) uses gguf:
 
 ```bash
+export PATH="$HOME/.local/bin:$PATH"
+os=$(uname -s)
 arch=$(uname -m)
-case "$arch" in
-  arm64|aarch64)
-    echo "ARM64 detected — syncing mlx backend..."
-    uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group mlx
+if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
+  echo "Apple Silicon detected — syncing mlx backend..."
+  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group mlx
+else
+  echo "${os}/${arch} detected — syncing gguf backend..."
+  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group gguf
+fi
+```
+
+3. **Expose the `vaudeville` CLI on PATH** — editable install against the plugin root so `git pull` updates take effect immediately, with `--force` to handle plugin path changes on re-runs:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uv tool install --force --editable "${CLAUDE_PLUGIN_ROOT}"
+# Ensure uv's tool bin (~/.local/bin by default) is on PATH; idempotent.
+uv tool update-shell
+
+# Install argcomplete separately so `register-python-argcomplete` is on PATH
+# for the tab-completion activation line below. argcomplete is already a
+# runtime dep inside vaudeville's venv; this just exposes its helper script.
+uv tool install --force argcomplete
+```
+
+The `vaudeville` tool install only pulls core deps (argcomplete, loguru, pyyaml, rich). The backend (mlx/gguf) stays in the plugin's `uv sync` venv because only `vaudeville setup` needs it.
+
+**Activate tab completion** — print the shell-specific one-liner for the user to add to their shell rc (do not modify their rc automatically):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+shell_name="$(basename "${SHELL:-}")"
+case "$shell_name" in
+  bash)
+    cat <<'MSG'
+Add this line to ~/.bashrc to enable tab completion for `vaudeville`:
+
+  eval "$(register-python-argcomplete vaudeville)"
+MSG
     ;;
-  x86_64|amd64)
-    echo "x86_64 detected — syncing gguf backend..."
-    uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group gguf
+  zsh)
+    cat <<'MSG'
+Add these lines to ~/.zshrc to enable tab completion for `vaudeville`:
+
+  autoload -U +X bashcompinit && bashcompinit
+  eval "$(register-python-argcomplete vaudeville)"
+MSG
+    ;;
+  fish)
+    cat <<'MSG'
+Add this line to ~/.config/fish/config.fish to enable tab completion for `vaudeville`:
+
+  register-python-argcomplete --shell fish vaudeville | source
+MSG
     ;;
   *)
-    echo "Unknown architecture '$arch' — defaulting to gguf backend..."
-    uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group dev --group gguf
+    echo "Unrecognized shell '$shell_name' — see https://kislyuk.github.io/argcomplete/#activating-global-completion for activation."
     ;;
 esac
 ```
 
-3. **Download the model** (~2.4 GB, one-time) — prefer the installed CLI shim, fall back to the module:
+4. **Download the model** (~2.4 GB, one-time) — routed through the plugin venv that has the backend deps:
 
 ```bash
-if command -v vaudeville &>/dev/null; then
-  vaudeville setup
-else
-  uv run --project "${CLAUDE_PLUGIN_ROOT}" python -m vaudeville setup
-fi
+export PATH="$HOME/.local/bin:$PATH"
+uv run --project "${CLAUDE_PLUGIN_ROOT}" python -m vaudeville setup
 ```
 
-4. **Verify the daemon starts** — restart the session or run the session-start hook manually:
+5. **Verify the daemon starts** — restart the session or run the session-start hook manually:
 
 ```bash
+export PATH="$HOME/.local/bin:$PATH"
 bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh" < /dev/null
 ```
 

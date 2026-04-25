@@ -16,6 +16,10 @@ _NEGATION_VIOLATION_RE = re.compile(
     r"\b(?:no\s+violation|not\s+(?:a\s+)?violation|isn't\s+(?:a\s+)?violation|is\s+not\s+(?:a\s+)?violation)\b[.!?,;:)]*"
 )
 _VIOLATION_RE = re.compile(r"\bviolation\b")
+# Budget for a classify verdict: `VERDICT: <label>\nREASON: <one short sentence>`.
+# ~5 tokens for VERDICT line + ~20 for REASON gives a tight cap that prevents
+# Phi-4-mini from hallucinating extra sentences past the REASON line.
+CLASSIFY_MAX_TOKENS = 30
 
 
 @dataclass

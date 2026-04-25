@@ -7,7 +7,7 @@ from typing import Any
 from rich.console import Console
 from rich.text import Text
 
-from vaudeville.server import latency_text, styled_table
+from vaudeville.tui import latency_text, styled_table
 
 
 def render_rules_table(con: Console, rules: dict[str, Any], total: int) -> None:

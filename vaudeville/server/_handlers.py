@@ -6,7 +6,12 @@ import json
 import logging
 import time
 
-from ..core.protocol import ClassifyResult, compute_confidence, parse_verdict
+from ..core.protocol import (
+    CLASSIFY_MAX_TOKENS,
+    ClassifyResult,
+    compute_confidence,
+    parse_verdict,
+)
 from .condense import condense_text
 from .event_log import ClassificationEvent, EventLogger
 from .inference import (
@@ -17,11 +22,6 @@ from .inference import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Budget for a classify verdict: `VERDICT: <label>\nREASON: <one short sentence>`.
-# ~5 tokens for VERDICT line + ~20 for REASON gives a tight cap that prevents
-# Phi-4-mini from hallucinating extra sentences past the REASON line.
-CLASSIFY_MAX_TOKENS = 30
 
 
 def _run_inference(

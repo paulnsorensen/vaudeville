@@ -159,6 +159,179 @@ class TestDetectPlatform:
             assert _detect_platform() == "gguf"
 
 
+class TestCheckDiskSpace:
+    def test_sufficient_space_passes(self, tmp_path: Path) -> None:
+        cache_dir = str(tmp_path / ".cache" / "huggingface")
+        mock_usage = MagicMock(free=10_000_000_000)
+        with (
+            patch("vaudeville.setup.os.path.expanduser", return_value=cache_dir),
+            patch("vaudeville.setup.shutil.disk_usage", return_value=mock_usage),
+        ):
+            from vaudeville.setup import _check_disk_space
+
+            _check_disk_space()  # should not raise
+
+    def test_insufficient_space_exits_1(self, tmp_path: Path) -> None:
+        cache_dir = str(tmp_path / ".cache" / "huggingface")
+        mock_usage = MagicMock(free=1_000_000_000)
+        with (
+            patch("vaudeville.setup.os.path.expanduser", return_value=cache_dir),
+            patch("vaudeville.setup.shutil.disk_usage", return_value=mock_usage),
+        ):
+            from vaudeville.setup import _check_disk_space
+
+            with pytest.raises(SystemExit) as exc_info:
+                _check_disk_space()
+        assert exc_info.value.code == 1
+
+    def test_creates_cache_dir_if_missing(self, tmp_path: Path) -> None:
+        cache_dir = str(tmp_path / ".cache" / "huggingface")
+        mock_usage = MagicMock(free=10_000_000_000)
+        with (
+            patch("vaudeville.setup.os.path.expanduser", return_value=cache_dir),
+            patch("vaudeville.setup.shutil.disk_usage", return_value=mock_usage),
+        ):
+            from vaudeville.setup import _check_disk_space
+
+            _check_disk_space()
+        assert os.path.isdir(cache_dir)
+
+
+class TestEnableHfTransfer:
+    def test_sets_env_var_when_package_available(self) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "HF_HUB_ENABLE_HF_TRANSFER"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.dict("sys.modules", {"hf_transfer": MagicMock()}),
+        ):
+            from vaudeville.setup import _enable_hf_transfer
+
+            _enable_hf_transfer()
+            assert os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") == "1"
+
+    def test_prints_tip_when_package_missing(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        env = {k: v for k, v in os.environ.items() if k != "HF_HUB_ENABLE_HF_TRANSFER"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.dict("sys.modules", {"hf_transfer": None}),
+        ):
+            from vaudeville.setup import _enable_hf_transfer
+
+            _enable_hf_transfer()
+        assert "hf-transfer" in capsys.readouterr().out
+
+    def test_skips_when_env_already_set(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch.dict(os.environ, {"HF_HUB_ENABLE_HF_TRANSFER": "1"}):
+            from vaudeville.setup import _enable_hf_transfer
+
+            _enable_hf_transfer()
+        assert capsys.readouterr().out == ""
+
+
+class TestHandleHfDownloadError:
+    def _make_mock_errors(self) -> tuple[type, type, type]:
+        class MockGatedRepoError(Exception):
+            pass
+
+        class MockRepoNotFoundError(Exception):
+            pass
+
+        class MockHfHubHTTPError(Exception):
+            def __init__(self, status: int) -> None:
+                self.response = MagicMock(status_code=status)
+
+        return MockGatedRepoError, MockRepoNotFoundError, MockHfHubHTTPError
+
+    def _mock_hf_modules(
+        self,
+        gated: type,
+        not_found: type,
+        http_err: type,
+    ) -> dict[str, MagicMock]:
+        mock_errors = MagicMock(
+            GatedRepoError=gated,
+            RepositoryNotFoundError=not_found,
+            HfHubHTTPError=http_err,
+        )
+        mock_hub = MagicMock(errors=mock_errors)
+        return {"huggingface_hub": mock_hub, "huggingface_hub.errors": mock_errors}
+
+    def test_gated_repo_error_exits_1(self) -> None:
+        gated, not_found, http_err = self._make_mock_errors()
+        modules = self._mock_hf_modules(gated, not_found, http_err)
+        with patch.dict("sys.modules", modules):
+            from vaudeville.setup import _handle_hf_download_error
+
+            with pytest.raises(SystemExit) as exc_info:
+                _handle_hf_download_error(gated(), "my-repo")
+        assert exc_info.value.code == 1
+
+    def test_repo_not_found_error_exits_1(self) -> None:
+        gated, not_found, http_err = self._make_mock_errors()
+        modules = self._mock_hf_modules(gated, not_found, http_err)
+        with patch.dict("sys.modules", modules):
+            from vaudeville.setup import _handle_hf_download_error
+
+            with pytest.raises(SystemExit) as exc_info:
+                _handle_hf_download_error(not_found(), "my-repo")
+        assert exc_info.value.code == 1
+
+    def test_http_401_exits_1(self) -> None:
+        gated, not_found, http_err = self._make_mock_errors()
+        modules = self._mock_hf_modules(gated, not_found, http_err)
+        with patch.dict("sys.modules", modules):
+            from vaudeville.setup import _handle_hf_download_error
+
+            with pytest.raises(SystemExit) as exc_info:
+                _handle_hf_download_error(http_err(401), "my-repo")
+        assert exc_info.value.code == 1
+
+    def test_http_403_exits_1(self) -> None:
+        gated, not_found, http_err = self._make_mock_errors()
+        modules = self._mock_hf_modules(gated, not_found, http_err)
+        with patch.dict("sys.modules", modules):
+            from vaudeville.setup import _handle_hf_download_error
+
+            with pytest.raises(SystemExit) as exc_info:
+                _handle_hf_download_error(http_err(403), "my-repo")
+        assert exc_info.value.code == 1
+
+    def test_http_500_reraises(self) -> None:
+        gated, not_found, http_err = self._make_mock_errors()
+        modules = self._mock_hf_modules(gated, not_found, http_err)
+        exc = http_err(500)
+        with patch.dict("sys.modules", modules):
+            from vaudeville.setup import _handle_hf_download_error
+
+            with pytest.raises(type(exc)):
+                _handle_hf_download_error(exc, "my-repo")
+
+    def test_unrelated_exception_reraises(self) -> None:
+        gated, not_found, http_err = self._make_mock_errors()
+        modules = self._mock_hf_modules(gated, not_found, http_err)
+        exc = ValueError("unexpected")
+        with patch.dict("sys.modules", modules):
+            from vaudeville.setup import _handle_hf_download_error
+
+            with pytest.raises(ValueError, match="unexpected"):
+                _handle_hf_download_error(exc, "my-repo")
+
+    def test_import_error_fallback_reraises(self) -> None:
+        """When huggingface_hub.errors is not importable, reraises original exception."""
+        exc = RuntimeError("network failure")
+        with patch.dict(
+            "sys.modules", {"huggingface_hub": None, "huggingface_hub.errors": None}
+        ):
+            from vaudeville.setup import _handle_hf_download_error
+
+            with pytest.raises(RuntimeError, match="network failure"):
+                _handle_hf_download_error(exc, "my-repo")
+
+
 class TestSetupMLX:
     def test_calls_load_and_generate(self) -> None:
         mock_model = MagicMock()
@@ -172,6 +345,32 @@ class TestSetupMLX:
             _setup_mlx()
         mock_load.assert_called_once()
         mock_generate.assert_called_once()
+
+    def test_hf_error_handled(self) -> None:
+        class MockGatedRepoError(Exception):
+            pass
+
+        mock_errors = MagicMock(
+            GatedRepoError=MockGatedRepoError,
+            RepositoryNotFoundError=Exception,
+            HfHubHTTPError=Exception,
+        )
+        mock_hub = MagicMock(errors=mock_errors)
+        mock_load = MagicMock(side_effect=MockGatedRepoError())
+        mock_mlx = MagicMock(load=mock_load)
+        with patch.dict(
+            "sys.modules",
+            {
+                "mlx_lm": mock_mlx,
+                "huggingface_hub": mock_hub,
+                "huggingface_hub.errors": mock_errors,
+            },
+        ):
+            from vaudeville.setup import _setup_mlx
+
+            with pytest.raises(SystemExit) as exc_info:
+                _setup_mlx()
+        assert exc_info.value.code == 1
 
 
 class TestSetupGGUF:
@@ -196,6 +395,33 @@ class TestSetupGGUF:
             _setup_gguf()
         mock_hub.hf_hub_download.assert_called_once()
         mock_llm.create_chat_completion.assert_called_once()
+
+    def test_gated_repo_error_exits_1(self) -> None:
+        class MockGatedRepoError(Exception):
+            pass
+
+        mock_errors = MagicMock(
+            GatedRepoError=MockGatedRepoError,
+            RepositoryNotFoundError=Exception,
+            HfHubHTTPError=Exception,
+        )
+        mock_hub = MagicMock(
+            hf_hub_download=MagicMock(side_effect=MockGatedRepoError()),
+            errors=mock_errors,
+        )
+        with patch.dict(
+            "sys.modules",
+            {
+                "huggingface_hub": mock_hub,
+                "huggingface_hub.errors": mock_errors,
+                "llama_cpp": MagicMock(),
+            },
+        ):
+            from vaudeville.setup import _setup_gguf
+
+            with pytest.raises(SystemExit) as exc_info:
+                _setup_gguf()
+        assert exc_info.value.code == 1
 
 
 class TestEnsureRulesDir:
@@ -228,6 +454,8 @@ class TestSetupMain:
             patch("vaudeville.setup._detect_platform", return_value="mlx"),
             patch("vaudeville.setup._setup_mlx"),
             patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space"),
+            patch("vaudeville.setup._enable_hf_transfer"),
         ):
             from vaudeville.setup import main
 
@@ -239,6 +467,8 @@ class TestSetupMain:
             patch("vaudeville.setup._detect_platform", return_value="gguf"),
             patch("vaudeville.setup._setup_gguf"),
             patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space"),
+            patch("vaudeville.setup._enable_hf_transfer"),
         ):
             from vaudeville.setup import main
 
@@ -253,12 +483,42 @@ class TestSetupMain:
                 side_effect=ImportError("mlx_lm not found"),
             ),
             patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space"),
+            patch("vaudeville.setup._enable_hf_transfer"),
         ):
             from vaudeville.setup import main
 
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 1
+
+    def test_check_disk_space_called(self) -> None:
+        mock_check = MagicMock()
+        with (
+            patch("vaudeville.setup._detect_platform", return_value="gguf"),
+            patch("vaudeville.setup._setup_gguf"),
+            patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space", mock_check),
+            patch("vaudeville.setup._enable_hf_transfer"),
+        ):
+            from vaudeville.setup import main
+
+            main()
+        mock_check.assert_called_once()
+
+    def test_enable_hf_transfer_called(self) -> None:
+        mock_enable = MagicMock()
+        with (
+            patch("vaudeville.setup._detect_platform", return_value="gguf"),
+            patch("vaudeville.setup._setup_gguf"),
+            patch("vaudeville.setup._ensure_rules_dir"),
+            patch("vaudeville.setup._check_disk_space"),
+            patch("vaudeville.setup._enable_hf_transfer", mock_enable),
+        ):
+            from vaudeville.setup import main
+
+            main()
+        mock_enable.assert_called_once()
 
 
 # --- __main__.py _init_backend ---

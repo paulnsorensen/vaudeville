@@ -38,12 +38,29 @@ This detects your platform (Apple Silicon or x86_64) and downloads the appropria
 1. Copy the bundled rules to your global rules directory:
    ```bash
    mkdir -p ~/.vaudeville/rules
-   cp ~/.claude/plugins/cache/paulnsorensen/vaudeville/*/examples/rules/*.yaml ~/.vaudeville/rules/
+   cp ~/.claude/plugins/**/paulnsorensen/vaudeville/**/examples/rules/*.yaml ~/.vaudeville/rules/
    ```
 
 2. Start a new Claude Code session — the daemon launches automatically on `SessionStart`.
 
 3. Try it: ask Claude to explain something. If the response opens with hedging ("this should work") or dismisses a test failure, the rule fires and you'll see a warning or block.
+
+## Uninstall
+
+`/plugin remove vaudeville` removes the plugin files but does not clean up the standalone `vaudeville` CLI shim or the `argcomplete` helper that `/vaudeville:setup` installed into uv's tool bin (often `~/.local/bin`). To remove them:
+
+```bash
+uv tool uninstall vaudeville
+uv tool uninstall argcomplete
+```
+
+If you added the tab-completion activation line to your shell rc (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`), remove it as well — it references `register-python-argcomplete`, which will no longer exist.
+
+To also clear the downloaded model and rules:
+
+```bash
+rm -rf ~/.vaudeville
+```
 
 ## Bundled Rules
 
@@ -126,7 +143,7 @@ Edit `~/.vaudeville/logs/config.yaml` to change these. Raise `max_size_mb` if yo
 ## Requirements
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [uv](https://docs.astral.sh/uv/) >= 0.4.27 (Python package manager)
 - ~4 GB disk for the model
 - Apple Silicon (recommended — MLX backend, GPU-accelerated) or x86_64 (GGUF backend, CPU only, slower)
 

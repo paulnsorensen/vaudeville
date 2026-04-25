@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 """Vaudeville CLI entry point.
 
 Usage: uv run python -m vaudeville <command>
@@ -11,12 +12,14 @@ import os
 import sys
 from typing import Any
 
+import argcomplete
 from rich.console import Console
 
 from vaudeville import orchestrator
 from vaudeville._stats_rendering import print_stats_human
 from vaudeville.cli_rules import attach_rule_parsers, dispatch_rule_command
 from vaudeville.core.paths import find_project_root as _core_find_project_root
+from vaudeville.core.rules import load_rules_layered
 from vaudeville.orchestrator import RalphError, Thresholds
 
 
@@ -48,7 +51,11 @@ def cmd_stats(args: argparse.Namespace) -> None:
     """Print aggregated classification statistics."""
     from vaudeville.server import aggregate_events
 
-    result = aggregate_events(args.log_path)
+    rules = load_rules_layered(_find_project_root())
+    result = aggregate_events(
+        args.log_path,
+        allowed_rules=set(rules.keys()) if rules else None,
+    )
 
     if args.json:
         print(json.dumps(result, indent=2))
@@ -247,14 +254,10 @@ def main() -> None:
 
     _build_tune_parser(sub)
     _build_generate_parser(sub)
+
     attach_rule_parsers(sub)
 
-    try:
-        import argcomplete
-
-        argcomplete.autocomplete(parser)
-    except ImportError:
-        pass
+    argcomplete.autocomplete(parser)
 
     args = parser.parse_args()
     if args.command is None:

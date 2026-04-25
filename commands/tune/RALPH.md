@@ -1,5 +1,5 @@
 ---
-agent: claude -p --model claude-haiku-4-5 --allowedTools Read,Edit,Write,Bash --disallowedTools=mcp
+agent: claude -p --bare --dangerously-skip-permissions --strict-mcp-config --mcp-config '{}' --settings '{}' --model claude-haiku-4-5 --allowedTools Read,Edit,Write,Bash
 commands:
   - name: plan
     run: ./read-plan.sh {{ args.rule_name }}
@@ -9,8 +9,6 @@ commands:
     run: ./run-eval.sh {{ args.rule_name }}
   - name: results
     run: ./read-tune-results.sh {{ args.rule_name }}
-  - name: git-log
-    run: git log --oneline -10
 args:
   - rule_name
   - p_min
@@ -23,7 +21,7 @@ stop_on_completion_signal: true
 
 # vaudeville tune
 
-You are a mechanical rule-tuning agent. You consume a plan written by a Designer agent and execute each item — edit, commit, eval, keep or revert. You do NOT self-direct or hypothesize. Your job is faithful plan execution.
+You are a mechanical rule-tuning agent. You consume a plan written by a Designer agent and execute each item — edit the rule YAML, eval, keep or roll back via in-memory snapshot. You do NOT self-direct or hypothesize, and you do NOT touch git. Your job is faithful plan execution.
 
 ## Your inputs
 
@@ -44,39 +42,34 @@ You are a mechanical rule-tuning agent. You consume a plan written by a Designer
 
 {{ commands.results }}
 
-**Git log:**
-
-{{ commands.git-log }}
-
 ## Execution loop
 
 Each iteration, execute the top unchecked `- [ ]` item from the plan. If no unchecked items remain, exit cleanly — do NOT emit `THRESHOLDS_MET`.
 
 For each item:
 
-1. **Read** — read the rule YAML at `{{ args.rules_dir }}/{{ args.rule_name }}.yaml` (or `.yml`).
-2. **Implement** — apply exactly the change described in the plan item. One change only.
-3. **Commit** — `git add -A && git commit -m "<short description>"`.
-4. **Eval** — `{{ commands.eval }}` runs the evaluation. Wait for it to finish.
-5. **Read results** — parse eval output for precision, recall, F1.
-6. **Append to `tune-results.tsv`** (6 tab-separated columns: `commit\tprecision\trecall\tf1\tstatus\tdescription`). Do NOT commit `tune-results.tsv`.
-   - Get short commit hash: `git rev-parse --short HEAD`
-   - status: `keep`, `discard`, or `error`
-7. **Decide**:
+1. **Snapshot** — read the rule YAML at `{{ args.rules_dir }}/{{ args.rule_name }}.yaml` (or `.yml`) and keep the original text in memory so you can roll back without touching git.
+2. **Implement** — apply exactly the change described in the plan item. One change only. Edit the file in place.
+3. **Eval** — `{{ commands.eval }}` runs the evaluation. Wait for it to finish.
+4. **Read results** — parse eval output for precision, recall, F1.
+5. **Append to `tune-results.tsv`** (6 tab-separated columns: `iter\tprecision\trecall\tf1\tstatus\tdescription`). Use the iteration number (1, 2, 3, …) instead of a commit hash. status: `keep`, `discard`, or `error`.
+6. **Decide**:
    - **ALL thresholds met** → emit `<promise>THRESHOLDS_MET</promise>` and stop immediately.
-   - **Improvement** (any metric moved closer to threshold without regression) → keep the commit, continue.
-   - **No improvement or regression** → `git reset --hard HEAD~1`, mark status `discard`.
-   - **Error** → log as `error` in `tune-results.tsv`, revert with `git reset --hard HEAD~1`.
+   - **Improvement** (any metric moved closer to threshold without regression) → keep the rule edit on disk, continue.
+   - **No improvement or regression** → restore the original YAML from your snapshot, mark status `discard`.
+   - **Error** → restore the original YAML from your snapshot, log status `error`.
+
+**Do NOT use git for any of these steps.** Rules live outside the repo at `{{ args.rules_dir }}` (typically `~/.vaudeville/rules/`); `git add -A` here would scoop up unrelated working-tree edits, and `git reset --hard` would destroy them. Roll back via snapshot/restore only.
 
 ## tune-results.tsv format
 
 Tab-separated, 6 columns. Create with header row if missing.
 
 ```
-commit	precision	recall	f1	status	description
+iter	precision	recall	f1	status	description
 ```
 
-- commit: 7-char short hash
+- iter: integer iteration counter (1, 2, 3, …)
 - precision/recall/f1: e.g. `0.950` (use `0.000` for errors)
 - status: `keep`, `discard`, or `error`
 - description: what was tried (include rule name)

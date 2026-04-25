@@ -129,6 +129,10 @@ Both commands accept `--log-path` to point at a non-default events file.
 - `~/.vaudeville/logs/violations.jsonl` — subset where `verdict == "violation"`
 - `~/.vaudeville/logs/config.yaml` — retention settings (auto-created with defaults on first run)
 
+### What `watch` shows (and what it doesn't)
+
+`vaudeville watch` only shows real hook firings — classifications produced by Claude Code sessions running against your daemon. It does **not** show eval or tune classifications: when the eval harness or `vaudeville tune` connects to the daemon, it tags its requests with `log_event: false`, and the daemon skips writing them to `events.jsonl`. That keeps the watch stream a faithful picture of production hook traffic instead of being drowned in test-case sweeps.
+
 ### Retention
 
 Loguru rotates each log file when it reaches `max_size_mb` and deletes rotated siblings older than `retention_days`. Defaults:
@@ -139,6 +143,34 @@ retention_days: 7
 ```
 
 Edit `~/.vaudeville/logs/config.yaml` to change these. Raise `max_size_mb` if you want `stats` to reflect a longer window — `stats` reads only the live `events.jsonl`, not rotated siblings, so once rotation fires only post-rotation data is aggregated.
+
+## Tuning
+
+`vaudeville tune <rule>` runs an autonomous design → tune → judge loop that iterates a rule's prompt and test set against measured precision/recall/F1 thresholds. Each phase runs as an isolated `claude -p` subprocess via [ralphify](https://github.com/paulnsorensen/ralph).
+
+### Subprocess sandboxing
+
+Phase subprocesses are launched with `--bare` and an empty settings/MCP config. Concretely, each phase agent runs as:
+
+```
+claude -p --bare --dangerously-skip-permissions \
+  --strict-mcp-config --mcp-config '{}' \
+  --settings '{}' \
+  --model <phase-model> --allowedTools <tight whitelist>
+```
+
+What this means:
+
+- **`--bare`** — skip hooks, plugins, LSP, attribution, auto-memory, keychain reads, and CLAUDE.md auto-discovery. The user's `~/.claude/CLAUDE.md` (and any project-level `CLAUDE.md` that the cwd would walk up into) **does not** leak into ralph subprocesses.
+- **`--strict-mcp-config --mcp-config '{}'`** — only MCP servers from `--mcp-config` load, and the config is empty. No project, user, or auto-discovered MCPs.
+- **`--settings '{}'`** — no `~/.claude/settings.json` or `.claude/settings.local.json`.
+- **`--allowedTools`** — a tight per-phase whitelist (e.g., judge gets `Read,Bash`; design gets `Read,Write,Bash`).
+
+The result is a deterministic, dotfiles-free subprocess — the agent has only what its `RALPH.md` frontmatter explicitly grants, regardless of how the host environment is configured.
+
+### No-git Tuner
+
+The Tuner phase used to roll back rejected changes via `git add -A && git commit && git reset --hard HEAD~1`. It now snapshots the original rule YAML in memory and restores from that snapshot. No git operations from the Tuner — this is important because rules live outside the repo at `~/.vaudeville/rules/`, so the git roundtrip was never the right rollback mechanism, and `git add -A` could scoop up unrelated working-tree changes from concurrent dev work.
 
 ## Requirements
 

@@ -323,7 +323,7 @@ class TestAbandonRuleAdversarial:
 
     def test_locate_rule_yaml_wins_over_yml(self, tmp_path: Path) -> None:
         """.yaml candidate comes before .yml in the candidate list → yaml wins."""
-        from vaudeville.orchestrator import _locate_rule_file
+        from vaudeville.orchestrator._abandon import _locate_rule_file
 
         rules_dir = tmp_path / ".vaudeville" / "rules"
         rules_dir.mkdir(parents=True)
@@ -337,7 +337,7 @@ class TestAbandonRuleAdversarial:
 
     def test_locate_rule_only_yml_extension(self, tmp_path: Path) -> None:
         """Only .yml exists → returned correctly."""
-        from vaudeville.orchestrator import _locate_rule_file
+        from vaudeville.orchestrator._abandon import _locate_rule_file
 
         rules_dir = tmp_path / ".vaudeville" / "rules"
         rules_dir.mkdir(parents=True)
@@ -349,7 +349,7 @@ class TestAbandonRuleAdversarial:
 
     def test_locate_rule_ignores_other_scope_dir(self, tmp_path: Path) -> None:
         """Rule in project dir is not found when global rules_dir is passed."""
-        from vaudeville.orchestrator import _locate_rule_file
+        from vaudeville.orchestrator._abandon import _locate_rule_file
 
         project_rules = tmp_path / "project" / ".vaudeville" / "rules"
         project_rules.mkdir(parents=True)
@@ -362,7 +362,7 @@ class TestAbandonRuleAdversarial:
 
     def test_locate_rule_missing_everywhere_raises(self, tmp_path: Path) -> None:
         """Rule not found in the specified rules_dir raises FileNotFoundError."""
-        from vaudeville.orchestrator import _locate_rule_file
+        from vaudeville.orchestrator._abandon import _locate_rule_file
 
         rules_dir = tmp_path / ".vaudeville" / "rules"
 
@@ -891,7 +891,8 @@ class TestRalphRunnerAdversarial:
 
     def test_run_phase_nonzero_exit_includes_phase_name(self, tmp_path: Path) -> None:
         """RalphError message includes the phase name for diagnostics."""
-        from vaudeville.orchestrator import RalphError, _run_phase
+        from vaudeville.orchestrator import RalphError
+        from vaudeville.orchestrator._phase import _run_phase
 
         def failing_runner(
             ralph_dir: str, extra_args: list[str], project_root: str
@@ -993,33 +994,33 @@ class TestIsEmptyPlan:
     """Test the EMPTY_PLAN sentinel detection."""
 
     def test_plan_file_missing_returns_false(self, tmp_path: Path) -> None:
-        from vaudeville.orchestrator import _is_empty_plan
+        from vaudeville.orchestrator._phase import _is_empty_plan
 
         assert _is_empty_plan(tmp_path / "nonexistent.plan.md") is False
 
     def test_plan_file_with_empty_plan_returns_true(self, tmp_path: Path) -> None:
-        from vaudeville.orchestrator import _is_empty_plan
+        from vaudeville.orchestrator._phase import _is_empty_plan
 
         f = tmp_path / "rule.plan.md"
         f.write_text("EMPTY_PLAN\n")
         assert _is_empty_plan(f) is True
 
     def test_plan_file_with_content_returns_false(self, tmp_path: Path) -> None:
-        from vaudeville.orchestrator import _is_empty_plan
+        from vaudeville.orchestrator._phase import _is_empty_plan
 
         f = tmp_path / "rule.plan.md"
         f.write_text("# Design Plan\n1. Tune the prompt\n")
         assert _is_empty_plan(f) is False
 
     def test_plan_file_with_empty_plan_in_middle(self, tmp_path: Path) -> None:
-        from vaudeville.orchestrator import _is_empty_plan
+        from vaudeville.orchestrator._phase import _is_empty_plan
 
         f = tmp_path / "rule.plan.md"
         f.write_text("# Header\nEMPTY_PLAN\nsome other content\n")
         assert _is_empty_plan(f) is True
 
     def test_plan_file_empty_content_returns_false(self, tmp_path: Path) -> None:
-        from vaudeville.orchestrator import _is_empty_plan
+        from vaudeville.orchestrator._phase import _is_empty_plan
 
         f = tmp_path / "rule.plan.md"
         f.write_text("")
@@ -1028,7 +1029,7 @@ class TestIsEmptyPlan:
     def test_plan_file_empty_plan_with_surrounding_whitespace(
         self, tmp_path: Path
     ) -> None:
-        from vaudeville.orchestrator import _is_empty_plan
+        from vaudeville.orchestrator._phase import _is_empty_plan
 
         f = tmp_path / "rule.plan.md"
         f.write_text("  EMPTY_PLAN  \n")  # strip() handles this

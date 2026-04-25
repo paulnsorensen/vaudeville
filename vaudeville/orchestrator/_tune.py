@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from vaudeville.orchestrator import _abandon
 from vaudeville.orchestrator._phase import (
@@ -13,12 +15,19 @@ from vaudeville.orchestrator._phase import (
     Thresholds,
     _build_phase_args,
     _is_empty_plan,
+    _make_runner,
     _RalphRunner,
     _run_phase,
     _scoped_env,
     default_ralph_runner,
     parse_judge_signal,
+    tuner_promised_done,
 )
+
+if TYPE_CHECKING:
+    from vaudeville.orchestrator_tui import OrchestratorTUI
+
+_log = logging.getLogger("vaudeville.orchestrator")
 
 
 @dataclass(frozen=True)
@@ -40,27 +49,83 @@ def _run_tune_round(
     thresholds: Thresholds,
     plan_file: Path,
     skip_design: bool,
-) -> tuple[JudgeVerdict, str]:
-    """Run a single design→tune→judge round; return verdict and judge stdout."""
+    tui: OrchestratorTUI | None = None,
+) -> tuple[JudgeVerdict, str, bool]:
     phase_args = _build_phase_args(ctx.rule_name, thresholds, ctx.rules_dir)
     proj, runner = ctx.project_root, ctx.runner
 
     if not skip_design:
+        if tui:
+            tui.update_phase("design", ctx.rule_name)
         _run_phase("design", ctx.design_dir, ["-n", "1"] + phase_args, proj, runner)
 
+    tuner_promised = False
     if not _is_empty_plan(plan_file):
-        _run_phase(
+        if tui:
+            tui.update_phase("tune", ctx.rule_name)
+        tune_result = _run_phase(
             "tune",
             ctx.tune_dir,
             ["-n", str(ctx.tuner_iters)] + phase_args,
             proj,
             runner,
         )
+        tuner_promised = tuner_promised_done(tune_result.stdout)
 
+    if tui:
+        tui.update_phase("judge", ctx.rule_name)
     result: subprocess.CompletedProcess[str] = _run_phase(
         "judge", ctx.judge_dir, ["-n", "1"] + phase_args, proj, runner
     )
-    return parse_judge_signal(result.stdout), result.stdout
+    return parse_judge_signal(result.stdout), result.stdout, tuner_promised
+
+
+def _should_exit(
+    verdict: JudgeVerdict,
+    tuner_promised: bool,
+    plan_file: Path,
+    round_idx: int,
+) -> bool:
+    """Return True if the tune loop should stop after this round."""
+    if verdict.kind in ("JUDGE_DONE", "JUDGE_ABANDON"):
+        _log.info("exit: %s after round %d", verdict.kind, round_idx + 1)
+        return True
+    if tuner_promised and verdict.kind != "JUDGE_RAISE":
+        _log.info(
+            "exit: tuner promised THRESHOLDS_MET (verdict=%s, round=%d)",
+            verdict.kind,
+            round_idx + 1,
+        )
+        return True
+    if _is_empty_plan(plan_file) and verdict.kind.startswith("JUDGE_CONTINUE_"):
+        _log.info(
+            "exit: EMPTY_PLAN runaway guard (verdict=%s, round=%d)",
+            verdict.kind,
+            round_idx + 1,
+        )
+        return True
+    return False
+
+
+def _execute_round(
+    ctx: _TuneCtx,
+    thresholds: Thresholds,
+    plan_file: Path,
+    prev_verdict: JudgeVerdict,
+    round_idx: int,
+    rounds: int,
+    tui: OrchestratorTUI | None,
+) -> tuple[JudgeVerdict, str, bool]:
+    """Drive one design→tune→judge cycle, surfacing the round's verdict."""
+    if tui:
+        tui.update_phase("orchestrating", ctx.rule_name, round_idx + 1, rounds)
+    skip_design = prev_verdict.kind not in ("JUDGE_CONTINUE_RE_DESIGN", "JUDGE_RAISE")
+    verdict, judge_stdout, tuner_promised = _run_tune_round(
+        ctx, thresholds, plan_file, skip_design, tui=tui
+    )
+    if tui:
+        tui.update_verdict(verdict.kind)
+    return verdict, judge_stdout, tuner_promised
 
 
 def orchestrate_tune(
@@ -73,6 +138,7 @@ def orchestrate_tune(
     runner: _RalphRunner = default_ralph_runner,
     *,
     rules_dir: str,
+    tui: OrchestratorTUI | None = None,
 ) -> int:
     """Run designer → tuner → judge for up to `rounds` iterations."""
     ctx = _TuneCtx(
@@ -83,25 +149,20 @@ def orchestrate_tune(
         tune_dir=os.path.join(commands_dir, "tune"),
         judge_dir=os.path.join(commands_dir, "judge"),
         tuner_iters=tuner_iters,
-        runner=runner,
+        runner=_make_runner(runner, tui.append_line if tui else None),
     )
     plan_file = (
         Path(project_root) / "commands" / "tune" / "state" / f"{rule_name}.plan.md"
     )
-
     verdict = JudgeVerdict(kind="JUDGE_CONTINUE_RE_DESIGN")
     judge_stdout = ""
 
     with _scoped_env({"VAUDEVILLE_RULES_DIR": rules_dir}):
-        for _round in range(rounds):
-            skip_design = verdict.kind not in (
-                "JUDGE_CONTINUE_RE_DESIGN",
-                "JUDGE_RAISE",
+        for round_idx in range(rounds):
+            verdict, judge_stdout, tuner_promised = _execute_round(
+                ctx, thresholds, plan_file, verdict, round_idx, rounds, tui
             )
-            verdict, judge_stdout = _run_tune_round(
-                ctx, thresholds, plan_file, skip_design
-            )
-            if verdict.kind in ("JUDGE_DONE", "JUDGE_ABANDON"):
+            if _should_exit(verdict, tuner_promised, plan_file, round_idx):
                 break
             if verdict.kind == "JUDGE_RAISE" and verdict.raised is not None:
                 thresholds = verdict.raised

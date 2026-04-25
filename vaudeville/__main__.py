@@ -14,14 +14,13 @@ from typing import Any
 
 import argcomplete
 from rich.console import Console
-from rich.text import Text
 
 from vaudeville import orchestrator
+from vaudeville._stats_rendering import print_stats_human
 from vaudeville.cli_rules import attach_rule_parsers, dispatch_rule_command
 from vaudeville.core.paths import find_project_root as _core_find_project_root
 from vaudeville.core.rules import load_rules_layered
 from vaudeville.orchestrator import RalphError, Thresholds
-from vaudeville.tui import latency_text, styled_table
 
 
 _EVENTS_LOG = os.path.join(
@@ -69,6 +68,19 @@ def _find_project_root() -> str:
     return _core_find_project_root() or os.getcwd()
 
 
+def _strict_project_root() -> str | None:
+    return _core_find_project_root()
+
+
+def _resolve_rules_dir(scope: str, strict_root: str | None) -> str:
+    if scope == "global":
+        return os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
+    if strict_root is None:
+        print("error: --scope project requires a git project root", file=sys.stderr)
+        sys.exit(2)
+    return os.path.join(strict_root, ".vaudeville", "rules")
+
+
 def _find_commands_dir() -> str:
     """Return commands/ root, honoring VAUDEVILLE_COMMANDS_DIR if set."""
     override = os.environ.get("VAUDEVILLE_COMMANDS_DIR")
@@ -86,8 +98,10 @@ def _threshold_float(value: str) -> float:
 
 def cmd_tune(args: argparse.Namespace) -> int:
     """Tune a rule via the multi-phase design→tune→judge pipeline."""
-    project_root = _find_project_root()
+    strict_root = _strict_project_root()
+    project_root = strict_root or os.getcwd()
     commands_dir = _find_commands_dir()
+    rules_dir = _resolve_rules_dir(args.scope, strict_root)
     thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
     try:
         return orchestrator.orchestrate_tune(
@@ -97,6 +111,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
             tuner_iters=args.tuner_iters,
             project_root=project_root,
             commands_dir=commands_dir,
+            rules_dir=rules_dir,
         )
     except RalphError as e:
         print(str(e), file=sys.stderr)
@@ -105,8 +120,10 @@ def cmd_tune(args: argparse.Namespace) -> int:
 
 def cmd_generate(args: argparse.Namespace) -> int:
     """Generate new rules via the multi-phase design→tune→judge pipeline."""
-    project_root = _find_project_root()
+    strict_root = _strict_project_root()
+    project_root = strict_root or os.getcwd()
     commands_dir = _find_commands_dir()
+    rules_dir = _resolve_rules_dir(args.scope, strict_root)
     mode = "live" if args.live else "shadow"
     thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
     try:
@@ -118,77 +135,15 @@ def cmd_generate(args: argparse.Namespace) -> int:
             mode=mode,
             project_root=project_root,
             commands_dir=commands_dir,
+            rules_dir=rules_dir,
         )
     except RalphError as e:
         print(str(e), file=sys.stderr)
         return 2
 
 
-def _render_rules_table(con: Console, rules: dict[str, Any], total: int) -> None:
-    table = styled_table(
-        "Per-Rule Breakdown",
-        caption=f"{total} classifications",
-    )
-    table.add_column("Rule", justify="left")
-    for col in ("Total", "Violations", "Pass %", "Avg ms", "p50 ms", "p95 ms"):
-        table.add_column(col, justify="right")
-
-    for name, data in rules.items():
-        pass_rate = data["pass_rate"]
-        style = "green" if pass_rate >= 90 else "yellow" if pass_rate >= 50 else "red"
-        table.add_row(
-            name,
-            str(data["total"]),
-            str(data["violations"]),
-            Text(f"{pass_rate:.1f}%", style=style),
-            latency_text(data["avg_latency_ms"]),
-            latency_text(data["p50_latency_ms"]),
-            latency_text(data["p95_latency_ms"]),
-        )
-    con.print(table)
-
-
-def _render_latency_summary(con: Console, lat: dict[str, Any]) -> None:
-    summary = Text.assemble(
-        "Overall latency \u2014 p50: ",
-        (f"{lat['p50_ms']:.1f}ms", "bold"),
-        "   p95: ",
-        (f"{lat['p95_ms']:.1f}ms", "bold"),
-        "   mean: ",
-        (f"{lat['mean_ms']:.1f}ms", "bold"),
-    )
-    con.print(summary)
-    con.print()
-
-
-def _render_histogram(con: Console, histogram: dict[str, int]) -> None:
-    hist_table = styled_table("Latency Histogram")
-    hist_table.add_column("Bucket", justify="right")
-    hist_table.add_column("Count", justify="right")
-    hist_table.add_column("Bar")
-
-    max_count = max(histogram.values()) if histogram else 1
-    bar_width = 40
-    for bucket, count in histogram.items():
-        bar_len = int((count / max_count) * bar_width) if max_count else 0
-        hist_table.add_row(bucket, str(count), "\u2588" * bar_len)
-    con.print(hist_table)
-
-
 def _print_stats_human(result: dict[str, Any], console: Console | None = None) -> None:
-    con = console if console is not None else _console
-    total = result["total"]
-    if total == 0:
-        con.print("No events recorded yet.")
-        return
-
-    con.rule("Vaudeville Stats", style="bold cyan")
-    rules = result["rules"]
-    if rules:
-        _render_rules_table(con, rules, total)
-    lat = result["latency"]
-    _render_latency_summary(con, lat)
-    _render_histogram(con, lat["histogram"])
+    print_stats_human(result, console if console is not None else _console)
 
 
 def _add_log_path_arg(p: argparse.ArgumentParser) -> None:
@@ -231,6 +186,13 @@ def _add_pipeline_args(p: argparse.ArgumentParser) -> None:
         default=10,
         help="Ralph iterations for tune phase (default: 10)",
     )
+    p.add_argument(
+        "--scope",
+        choices=("project", "global"),
+        default="global",
+        help="Where the rule lives: project (.vaudeville/rules/) or "
+        "global (~/.vaudeville/rules/) [default: global]",
+    )
 
 
 def _build_tune_parser(sub: Any) -> None:
@@ -260,7 +222,6 @@ def _build_generate_parser(sub: Any) -> None:
 
 
 def _dispatch(args: argparse.Namespace) -> None:
-
     if args.command == "watch":
         cmd_watch(args)
     elif args.command == "setup":

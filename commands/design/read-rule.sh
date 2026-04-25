@@ -7,10 +7,15 @@ if [ -z "$RULE_NAME" ]; then
     exit 1
 fi
 
-if [ -f ".vaudeville/rules/$RULE_NAME.yaml" ]; then
-    cat ".vaudeville/rules/$RULE_NAME.yaml"
+RULES_DIR="${VAUDEVILLE_RULES_DIR:-.vaudeville/rules}"
+if [ -f "$RULES_DIR/$RULE_NAME.yaml" ]; then
+    cat "$RULES_DIR/$RULE_NAME.yaml"
+elif [ -f "$RULES_DIR/$RULE_NAME.yml" ]; then
+    cat "$RULES_DIR/$RULE_NAME.yml"
 elif [ -f "examples/rules/$RULE_NAME.yaml" ]; then
     cat "examples/rules/$RULE_NAME.yaml"
+elif [ -f "examples/rules/$RULE_NAME.yml" ]; then
+    cat "examples/rules/$RULE_NAME.yml"
 else
     echo "(no rule file found for $RULE_NAME)"
 fi

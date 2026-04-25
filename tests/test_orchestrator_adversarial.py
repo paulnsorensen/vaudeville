@@ -84,11 +84,11 @@ class TestParseJudgeSignalAdversarial:
             parse_judge_signal("JUDGE_RAISE 1.1 0.8 0.85")
 
     def test_judge_raise_nan_raises(self) -> None:
-        """NaN satisfies 0.0 <= nan <= 1.0 == False, so it should be caught."""
+        """'nan' contains letters so [\d.]+ regex rejects it — malformed error fires."""
         from vaudeville.orchestrator import JudgeParseError, parse_judge_signal
 
-        # nan: float('nan') comparison always False -> not all(...) -> raises
-        with pytest.raises(JudgeParseError):
+        # 'nan' does not match [\d.]+ in _RAISE_RE → malformed error (not out-of-range)
+        with pytest.raises(JudgeParseError, match="malformed"):
             parse_judge_signal("JUDGE_RAISE nan 0.8 0.85")
 
     def test_judge_raise_scientific_notation_rejected_by_regex(self) -> None:
@@ -181,7 +181,7 @@ class TestAbandonRuleAdversarial:
         rule_file = rules_dir / "no-tier.yaml"
         rule_file.write_text("name: no-tier\nprompt: test\n")
 
-        abandon_rule("no-tier", "no tier line test", {}, str(tmp_path))
+        abandon_rule("no-tier", "no tier line test", {}, str(rules_dir))
 
         content = rule_file.read_text()
         assert "tier: disabled" in content
@@ -196,7 +196,7 @@ class TestAbandonRuleAdversarial:
         rule_file = rules_dir / "already-disabled.yaml"
         rule_file.write_text("name: already-disabled\ntier: disabled\nprompt: test\n")
 
-        abandon_rule("already-disabled", "already off", {}, str(tmp_path))
+        abandon_rule("already-disabled", "already off", {}, str(rules_dir))
 
         content = rule_file.read_text()
         # Should still have exactly one tier: disabled, not two
@@ -217,17 +217,13 @@ class TestAbandonRuleAdversarial:
             "name: multiline\ntier: shadow\nprompt: |\n  check tier: warn level\n"
         )
 
-        abandon_rule("multiline", "multiline tier test", {}, str(tmp_path))
+        abandon_rule("multiline", "multiline tier test", {}, str(rules_dir))
 
         content = rule_file.read_text()
-        # Both occurrences of 'tier: ...' get replaced — this is a BUG
-        # The test documents the actual behavior (both replaced)
-        tier_count = content.count("tier: disabled")
-        # If only 1, the regex correctly targeted only the YAML field
-        # If 2, the multiline string's 'tier:' was also corrupted
-        assert tier_count >= 1  # at minimum the real field is fixed
-        # Document the actual count for scoring
-        _ = tier_count  # used for observation
+        # The YAML multiline continuation "  check tier: warn level" is indented,
+        # so it does NOT match ^tier:\s*\S+ (MULTILINE anchor). Only the real field
+        # is replaced. Bug previously claimed 2 replacements — bug is now fixed.
+        assert content.count("tier: disabled") == 1
 
     def test_abandon_reason_with_double_quotes_serializes_as_valid_json(
         self, tmp_path: Path
@@ -240,13 +236,13 @@ class TestAbandonRuleAdversarial:
         (rules_dir / "qrule.yaml").write_text("name: qrule\ntier: shadow\n")
 
         reason = 'contains "quoted" text and \\backslash'
-        abandon_rule("qrule", reason, {}, str(tmp_path))
+        abandon_rule("qrule", reason, {}, str(rules_dir))
 
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         line = log_file.read_text().strip()
         entry = json.loads(line)
-        # Newlines removed from reason but content otherwise preserved
-        assert '"quoted"' in entry["reason"] or "quoted" in entry["reason"]
+        # json.dumps preserves double quotes via escaping; they round-trip correctly
+        assert '"quoted"' in entry["reason"]
 
     def test_abandon_reason_with_backslash_produces_valid_json(
         self, tmp_path: Path
@@ -258,11 +254,12 @@ class TestAbandonRuleAdversarial:
         rules_dir.mkdir(parents=True)
         (rules_dir / "bsrule.yaml").write_text("name: bsrule\ntier: shadow\n")
 
-        abandon_rule("bsrule", "path\\to\\thing", {}, str(tmp_path))
+        abandon_rule("bsrule", "path\\to\\thing", {}, str(rules_dir))
 
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         entry = json.loads(log_file.read_text().strip())
-        assert "path" in entry["reason"]
+        # Backslashes preserved via json.dumps escaping; full string round-trips
+        assert entry["reason"] == "path\\to\\thing"
 
     def test_abandon_reason_with_carriage_return_sanitized(
         self, tmp_path: Path
@@ -274,7 +271,7 @@ class TestAbandonRuleAdversarial:
         rules_dir.mkdir(parents=True)
         (rules_dir / "crrule.yaml").write_text("name: crrule\ntier: shadow\n")
 
-        abandon_rule("crrule", "line one\r\nline two", {}, str(tmp_path))
+        abandon_rule("crrule", "line one\r\nline two", {}, str(rules_dir))
 
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         entry = json.loads(log_file.read_text().strip())
@@ -290,7 +287,7 @@ class TestAbandonRuleAdversarial:
         (rules_dir / "longrule.yaml").write_text("name: longrule\ntier: shadow\n")
 
         reason = "x" * 10240
-        abandon_rule("longrule", reason, {}, str(tmp_path))
+        abandon_rule("longrule", reason, {}, str(rules_dir))
 
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         entry = json.loads(log_file.read_text().strip())
@@ -305,7 +302,7 @@ class TestAbandonRuleAdversarial:
         rule_file = rules_dir / "crlf.yaml"
         rule_file.write_bytes(b"name: crlf\r\ntier: shadow\r\nprompt: test\r\n")
 
-        abandon_rule("crlf", "crlf test", {}, str(tmp_path))
+        abandon_rule("crlf", "crlf test", {}, str(rules_dir))
 
         content = rule_file.read_text()
         assert "tier: disabled" in content
@@ -319,14 +316,14 @@ class TestAbandonRuleAdversarial:
         rule_file = rules_dir / "empty.yaml"
         rule_file.write_text("")
 
-        abandon_rule("empty", "empty file", {}, str(tmp_path))
+        abandon_rule("empty", "empty file", {}, str(rules_dir))
 
         content = rule_file.read_text()
         assert "tier: disabled" in content
 
     def test_locate_rule_yaml_wins_over_yml(self, tmp_path: Path) -> None:
         """.yaml candidate comes before .yml in the candidate list → yaml wins."""
-        from vaudeville.core.rules import locate_rule_file as _locate_rule_file
+        from vaudeville.orchestrator import _locate_rule_file
 
         rules_dir = tmp_path / ".vaudeville" / "rules"
         rules_dir.mkdir(parents=True)
@@ -335,47 +332,42 @@ class TestAbandonRuleAdversarial:
         yaml_file.write_text("name: myrule-yaml\n")
         yml_file.write_text("name: myrule-yml\n")
 
-        found = _locate_rule_file("myrule", str(tmp_path))
+        found = _locate_rule_file("myrule", str(rules_dir))
         assert found == yaml_file
 
     def test_locate_rule_only_yml_extension(self, tmp_path: Path) -> None:
         """Only .yml exists → returned correctly."""
-        from vaudeville.core.rules import locate_rule_file as _locate_rule_file
+        from vaudeville.orchestrator import _locate_rule_file
 
         rules_dir = tmp_path / ".vaudeville" / "rules"
         rules_dir.mkdir(parents=True)
         yml_file = rules_dir / "myrule.yml"
         yml_file.write_text("name: myrule\n")
 
-        found = _locate_rule_file("myrule", str(tmp_path))
+        found = _locate_rule_file("myrule", str(rules_dir))
         assert found == yml_file
 
-    def test_locate_rule_home_fallback(self, tmp_path: Path) -> None:
-        """Rule not in project path but exists in home fallback."""
-        from vaudeville.core.rules import locate_rule_file as _locate_rule_file
+    def test_locate_rule_ignores_other_scope_dir(self, tmp_path: Path) -> None:
+        """Rule in project dir is not found when global rules_dir is passed."""
+        from vaudeville.orchestrator import _locate_rule_file
 
-        user_home = tmp_path / "fakehome"
-        home_rules = user_home / ".vaudeville" / "rules"
-        home_rules.mkdir(parents=True)
-        home_file = home_rules / "homerule.yaml"
-        home_file.write_text("name: homerule\n")
+        project_rules = tmp_path / "project" / ".vaudeville" / "rules"
+        project_rules.mkdir(parents=True)
+        (project_rules / "myrule.yaml").write_text("name: myrule\n")
 
-        project = tmp_path / "project"
-        project.mkdir()
+        global_rules = tmp_path / "global" / ".vaudeville" / "rules"
 
-        with patch(
-            "os.path.expanduser",
-            side_effect=lambda p: str(user_home) if p == "~" else p,
-        ):
-            found = _locate_rule_file("homerule", str(project))
-        assert found == home_file
+        with pytest.raises(FileNotFoundError):
+            _locate_rule_file("myrule", str(global_rules))
 
     def test_locate_rule_missing_everywhere_raises(self, tmp_path: Path) -> None:
-        from vaudeville.core.rules import locate_rule_file as _locate_rule_file
+        """Rule not found in the specified rules_dir raises FileNotFoundError."""
+        from vaudeville.orchestrator import _locate_rule_file
 
-        with patch("os.path.expanduser", return_value=str(tmp_path / "fakehome")):
-            with pytest.raises(FileNotFoundError):
-                _locate_rule_file("ghost", str(tmp_path))
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+
+        with pytest.raises(FileNotFoundError):
+            _locate_rule_file("ghost", str(rules_dir))
 
     def test_abandon_multiple_calls_append_multiple_jsonl_entries(
         self, tmp_path: Path
@@ -388,8 +380,8 @@ class TestAbandonRuleAdversarial:
         (rules_dir / "r1.yaml").write_text("name: r1\ntier: shadow\n")
         (rules_dir / "r2.yaml").write_text("name: r2\ntier: shadow\n")
 
-        abandon_rule("r1", "first", {}, str(tmp_path))
-        abandon_rule("r2", "second", {}, str(tmp_path))
+        abandon_rule("r1", "first", {}, str(rules_dir))
+        abandon_rule("r2", "second", {}, str(rules_dir))
 
         log_file = tmp_path / ".vaudeville" / "logs" / "abandoned.jsonl"
         lines = [ln for ln in log_file.read_text().strip().split("\n") if ln]
@@ -470,6 +462,7 @@ class TestOrchestrateTuneAdversarial:
             project_root=str(tmp_path),
             commands_dir=str(tmp_path / "commands"),
             runner=runner,
+            rules_dir=str(tmp_path / ".vaudeville" / "rules"),
         )
         assert rc == 0
         assert len(runner.calls) == 0
@@ -492,6 +485,7 @@ class TestOrchestrateTuneAdversarial:
             project_root=str(tmp_path),
             commands_dir=str(tmp_path / "commands"),
             runner=runner,
+            rules_dir=str(rules_dir),
         )
 
         # Rule should NOT be disabled (abandon never called)
@@ -513,6 +507,7 @@ class TestOrchestrateTuneAdversarial:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(tmp_path / ".vaudeville" / "rules"),
             )
 
     def test_no_judge_signal_in_stdout_raises_judge_parse_error(
@@ -546,6 +541,7 @@ class TestOrchestrateTuneAdversarial:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(tmp_path / ".vaudeville" / "rules"),
             )
 
     def test_empty_stdout_from_judge_raises_judge_parse_error(
@@ -568,7 +564,7 @@ class TestOrchestrateTuneAdversarial:
         runner.add_side_effect(mk_plan, _ok("Design done"))
         runner.add_response(_ok(""))  # empty stdout
 
-        with pytest.raises(JudgeParseError):
+        with pytest.raises(JudgeParseError, match="no JUDGE_"):
             orchestrate_tune(
                 "rule",
                 Thresholds(0.9, 0.8, 0.85),
@@ -577,6 +573,7 @@ class TestOrchestrateTuneAdversarial:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(tmp_path / ".vaudeville" / "rules"),
             )
 
     def test_abandon_on_round_1_disables_rule(self, tmp_path: Path) -> None:
@@ -606,6 +603,7 @@ class TestOrchestrateTuneAdversarial:
             project_root=str(tmp_path),
             commands_dir=str(tmp_path / "commands"),
             runner=runner,
+            rules_dir=str(rules_dir),
         )
 
         # Only 2 calls: design + judge (no tune, plan was EMPTY)
@@ -617,6 +615,8 @@ class TestOrchestrateTuneAdversarial:
         from vaudeville.orchestrator import Thresholds, orchestrate_tune
 
         runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
 
         def mk_plan() -> None:
             state_dir = tmp_path / "commands" / "tune" / "state"
@@ -639,6 +639,7 @@ class TestOrchestrateTuneAdversarial:
             project_root=str(tmp_path),
             commands_dir=str(tmp_path / "commands"),
             runner=runner,
+            rules_dir=str(rules_dir),
         )
         assert rc == 0
         assert len(runner.calls) == 6
@@ -650,6 +651,8 @@ class TestOrchestrateTuneAdversarial:
         runner = FakeRalphRunner()
         commands_dir = str(tmp_path / "commands")
         design_dir = str(tmp_path / "commands" / "design")
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
 
         def mk_plan() -> None:
             state_dir = tmp_path / "commands" / "tune" / "state"
@@ -671,6 +674,7 @@ class TestOrchestrateTuneAdversarial:
             project_root=str(tmp_path),
             commands_dir=commands_dir,
             runner=runner,
+            rules_dir=str(rules_dir),
         )
 
         # Verify design was only called once (round 1)
@@ -694,7 +698,7 @@ class TestOrchestrateGenerateAdversarial:
         # Generate creates no new files
         runner.add_response(_ok("Generated 0 rules"))
 
-        with patch("vaudeville.orchestrator._eval_rule") as mock_eval:
+        with patch("vaudeville.orchestrator._abandon._eval_rule") as mock_eval:
             rc = orchestrate_generate(
                 instructions="nothing",
                 thresholds=Thresholds(0.9, 0.8, 0.85),
@@ -704,6 +708,7 @@ class TestOrchestrateGenerateAdversarial:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(tmp_path / ".vaudeville" / "rules"),
             )
 
         assert rc == 0
@@ -731,7 +736,7 @@ class TestOrchestrateGenerateAdversarial:
         runner.add_side_effect(mk_plan, _ok("Design"))
         runner.add_response(_ok("Judge\nJUDGE_DONE"))
 
-        with patch("vaudeville.orchestrator._eval_rule", return_value=None):
+        with patch("vaudeville.orchestrator._abandon._eval_rule", return_value=None):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=Thresholds(0.9, 0.8, 0.85),
@@ -741,6 +746,7 @@ class TestOrchestrateGenerateAdversarial:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(rules_dir),
             )
 
         assert rc == 0
@@ -763,7 +769,9 @@ class TestOrchestrateGenerateAdversarial:
 
         # Return metrics exactly at threshold
         exact_result = Thresholds(p_min=0.9, r_min=0.8, f1_min=0.85)
-        with patch("vaudeville.orchestrator._eval_rule", return_value=exact_result):
+        with patch(
+            "vaudeville.orchestrator._abandon._eval_rule", return_value=exact_result
+        ):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -773,6 +781,7 @@ class TestOrchestrateGenerateAdversarial:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(rules_dir),
             )
 
         assert rc == 0
@@ -803,7 +812,9 @@ class TestOrchestrateGenerateAdversarial:
 
         # p_min is 0.8999 < 0.9 threshold
         below_result = Thresholds(p_min=0.8999, r_min=0.8, f1_min=0.85)
-        with patch("vaudeville.orchestrator._eval_rule", return_value=below_result):
+        with patch(
+            "vaudeville.orchestrator._abandon._eval_rule", return_value=below_result
+        ):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -813,6 +824,7 @@ class TestOrchestrateGenerateAdversarial:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(rules_dir),
             )
 
         assert rc == 0
@@ -842,7 +854,9 @@ class TestOrchestrateGenerateAdversarial:
             eval_call_count += 1
             return thresholds  # all pass
 
-        with patch("vaudeville.orchestrator._eval_rule", side_effect=mock_eval):
+        with patch(
+            "vaudeville.orchestrator._abandon._eval_rule", side_effect=mock_eval
+        ):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -852,6 +866,7 @@ class TestOrchestrateGenerateAdversarial:
                 project_root=str(tmp_path),
                 commands_dir=str(tmp_path / "commands"),
                 runner=runner,
+                rules_dir=str(rules_dir),
             )
 
         assert rc == 0

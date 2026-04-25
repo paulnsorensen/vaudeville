@@ -55,6 +55,7 @@ def _run_tune_round(
     proj, runner = ctx.project_root, ctx.runner
 
     if not skip_design:
+        _abandon.capture_eval_log(ctx.rule_name, proj)
         if tui:
             tui.update_phase("design", ctx.rule_name)
         _run_phase("design", ctx.design_dir, ["-n", "1"] + phase_args, proj, runner)

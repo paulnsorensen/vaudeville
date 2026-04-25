@@ -14,6 +14,150 @@ from conftest import FakeRalphRunner
 class TestOrchestrateTune:
     """Test the tune orchestration loop: round1 DONE, multi-round CONTINUE, RAISE, ABANDON."""
 
+    def test_capture_eval_log_runs_before_design_phase(self, tmp_path: Path) -> None:
+        """Each design round prefills .vaudeville/logs/eval-{rule}.log so the
+        Designer never falls back to writing 'Run eval first' meta-items that
+        the mechanical Tuner cannot execute."""
+        from unittest.mock import patch
+
+        from vaudeville.orchestrator import (
+            Thresholds,
+            orchestrate_tune,
+        )
+
+        runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
+
+        captured_calls: list[tuple[str, str]] = []
+
+        def fake_capture(rule_name: str, project_root: str) -> str:
+            captured_calls.append((rule_name, project_root))
+            return "fake eval stdout"
+
+        def design_side_effect() -> None:
+            # Design must observe the prefilled log on disk, so it should
+            # have been written before this side-effect runs.
+            log_path = tmp_path / ".vaudeville" / "logs" / "eval-test-rule.log"
+            assert log_path.parent.exists() or log_path.exists() or captured_calls, (
+                "capture_eval_log must be invoked before the design ralph call"
+            )
+            state_dir = tmp_path / "commands" / "tune" / "state"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            (state_dir / "test-rule.plan.md").write_text("EMPTY_PLAN\n")
+
+        runner.add_response(
+            design_side_effect,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="", stderr=""
+            ),
+        )
+        runner.add_response(
+            None,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="JUDGE_DONE", stderr=""
+            ),
+        )
+
+        with patch(
+            "vaudeville.orchestrator._abandon.capture_eval_log",
+            side_effect=fake_capture,
+        ):
+            rc = orchestrate_tune(
+                "test-rule",
+                Thresholds(p_min=0.95, r_min=0.80, f1_min=0.85),
+                rounds=1,
+                tuner_iters=5,
+                project_root=str(tmp_path),
+                commands_dir=str(tmp_path / "commands"),
+                runner=runner,
+                rules_dir=str(rules_dir),
+            )
+
+        assert rc == 0
+        assert captured_calls == [("test-rule", str(tmp_path))]
+
+    def test_capture_eval_log_skipped_when_design_skipped(self, tmp_path: Path) -> None:
+        """JUDGE_CONTINUE_TUNE_MORE skips design AND skips eval-log prefill —
+        we don't want to re-run eval if the Designer isn't going to read it."""
+        from unittest.mock import patch
+
+        from vaudeville.orchestrator import (
+            Thresholds,
+            orchestrate_tune,
+        )
+
+        runner = FakeRalphRunner()
+        rules_dir = tmp_path / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
+
+        captured_calls: list[tuple[str, str]] = []
+
+        def fake_capture(rule_name: str, project_root: str) -> str:
+            captured_calls.append((rule_name, project_root))
+            return "ok"
+
+        def r1_design() -> None:
+            state_dir = tmp_path / "commands" / "tune" / "state"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            (state_dir / "r.plan.md").write_text("- [ ] do thing\n")
+
+        runner.add_response(
+            r1_design,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="", stderr=""
+            ),
+        )
+        # tune
+        runner.add_response(
+            None,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="", stderr=""
+            ),
+        )
+        # judge → CONTINUE_TUNE_MORE (so round 2 skips design)
+        runner.add_response(
+            None,
+            subprocess.CompletedProcess(
+                args=["ralph"],
+                returncode=0,
+                stdout="JUDGE_CONTINUE_TUNE_MORE",
+                stderr="",
+            ),
+        )
+        # round 2 tune
+        runner.add_response(
+            None,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="", stderr=""
+            ),
+        )
+        # round 2 judge → DONE
+        runner.add_response(
+            None,
+            subprocess.CompletedProcess(
+                args=["ralph"], returncode=0, stdout="JUDGE_DONE", stderr=""
+            ),
+        )
+
+        with patch(
+            "vaudeville.orchestrator._abandon.capture_eval_log",
+            side_effect=fake_capture,
+        ):
+            orchestrate_tune(
+                "r",
+                Thresholds(p_min=0.95, r_min=0.80, f1_min=0.85),
+                rounds=2,
+                tuner_iters=5,
+                project_root=str(tmp_path),
+                commands_dir=str(tmp_path / "commands"),
+                runner=runner,
+                rules_dir=str(rules_dir),
+            )
+
+        # Only round 1 design ran → only one capture
+        assert len(captured_calls) == 1
+
     def test_orchestrate_tune_round1_done(self, tmp_path: Path) -> None:
         """Round 1: design → tune → judge returns JUDGE_DONE → exit cleanly."""
         from vaudeville.orchestrator import (

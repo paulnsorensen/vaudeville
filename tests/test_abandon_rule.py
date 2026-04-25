@@ -135,3 +135,74 @@ class TestAbandonRule:
 
         with pytest.raises(FileNotFoundError):
             abandon_rule("nonexistent-rule", "test", {}, str(nonexistent_rules_dir))
+
+
+class TestCaptureEvalLog:
+    """Test capture_eval_log: Designer prefill so it never sees '(no eval log found)'."""
+
+    def test_writes_eval_log_to_expected_path(self, tmp_path: Path) -> None:
+        """Stdout is teed to .vaudeville/logs/eval-{rule}.log under project_root."""
+        import subprocess
+        from unittest.mock import patch
+
+        from vaudeville.orchestrator._abandon import capture_eval_log
+
+        stdout = "precision=0.91 recall=0.85 f1=0.88\nconfusion: TP=10\n"
+        fake = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout)
+        with patch(
+            "vaudeville.orchestrator._abandon.subprocess.run", return_value=fake
+        ):
+            captured = capture_eval_log("git-gate", str(tmp_path))
+
+        log_path = tmp_path / ".vaudeville" / "logs" / "eval-git-gate.log"
+        assert log_path.exists()
+        assert "precision=0.91" in log_path.read_text()
+        assert captured == stdout
+
+    def test_overwrites_prior_log_each_call(self, tmp_path: Path) -> None:
+        """A fresh capture replaces stale Designer-visible content (no append)."""
+        import subprocess
+        from unittest.mock import patch
+
+        from vaudeville.orchestrator._abandon import capture_eval_log
+
+        log_dir = tmp_path / ".vaudeville" / "logs"
+        log_dir.mkdir(parents=True)
+        (log_dir / "eval-r.log").write_text("STALE")
+
+        fake = subprocess.CompletedProcess(args=[], returncode=0, stdout="FRESH")
+        with patch(
+            "vaudeville.orchestrator._abandon.subprocess.run", return_value=fake
+        ):
+            capture_eval_log("r", str(tmp_path))
+
+        assert (log_dir / "eval-r.log").read_text() == "FRESH"
+
+    def test_returns_empty_on_subprocess_filenotfound(self, tmp_path: Path) -> None:
+        """uv missing → fail-open with empty string, no log file written."""
+        from unittest.mock import patch
+
+        from vaudeville.orchestrator._abandon import capture_eval_log
+
+        with patch(
+            "vaudeville.orchestrator._abandon.subprocess.run",
+            side_effect=FileNotFoundError("uv"),
+        ):
+            assert capture_eval_log("r", str(tmp_path)) == ""
+
+        assert not (tmp_path / ".vaudeville" / "logs" / "eval-r.log").exists()
+
+    def test_creates_log_dir_if_missing(self, tmp_path: Path) -> None:
+        """First capture creates .vaudeville/logs/ for the project."""
+        import subprocess
+        from unittest.mock import patch
+
+        from vaudeville.orchestrator._abandon import capture_eval_log
+
+        fake = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok")
+        with patch(
+            "vaudeville.orchestrator._abandon.subprocess.run", return_value=fake
+        ):
+            capture_eval_log("r", str(tmp_path))
+
+        assert (tmp_path / ".vaudeville" / "logs").is_dir()

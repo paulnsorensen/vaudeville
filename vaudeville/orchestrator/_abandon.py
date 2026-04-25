@@ -65,7 +65,14 @@ def _extract_abandon_reason(judge_stdout: str) -> str:
     return "\n".join(lines[:last_judge_idx]).strip()[-2000:]
 
 
-def _eval_rule(rule_name: str, project_root: str) -> Thresholds | None:
+def capture_eval_log(rule_name: str, project_root: str) -> str:
+    """Run eval_cli for `rule_name` and tee stdout to .vaudeville/logs/eval-{rule}.log.
+
+    Designer phases read this log via commands/design/last-eval-log.sh; without it
+    the Designer falls back to writing meta-instruction baseline plans ("Run eval
+    first") that the mechanical Tuner cannot execute. Returns the captured stdout
+    (empty string on subprocess failure — fail-open).
+    """
     try:
         out = subprocess.run(
             ["uv", "run", "python", "-m", "vaudeville.eval_cli", "--rule", rule_name],
@@ -75,6 +82,19 @@ def _eval_rule(rule_name: str, project_root: str) -> Thresholds | None:
             check=False,
         ).stdout
     except FileNotFoundError:
+        return ""
+    log_dir = Path(project_root) / ".vaudeville" / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / f"eval-{rule_name}.log").write_text(out)
+    except OSError:
+        pass
+    return out
+
+
+def _eval_rule(rule_name: str, project_root: str) -> Thresholds | None:
+    out = capture_eval_log(rule_name, project_root)
+    if not out:
         return None
     try:
         return Thresholds(

@@ -27,14 +27,12 @@ def example_rules() -> dict[str, Rule]:
 class TestLoadTestCases:
     def test_loads_all_suites(self, example_rules: dict[str, Rule]) -> None:
         suites = load_test_cases(example_rules)
-        assert "violation-detector" in suites
         assert "deferral-detector" in suites
-        assert "sycophancy-detector" in suites
-        assert "turn-waste-detector" in suites
+        assert "preexisting-fix-detector" in suites
 
     def test_cases_have_text_and_label(self, example_rules: dict[str, Rule]) -> None:
         suites = load_test_cases(example_rules)
-        for case in suites["violation-detector"]:
+        for case in suites["deferral-detector"]:
             assert isinstance(case.text, str)
             assert case.label in ("violation", "clean")
 

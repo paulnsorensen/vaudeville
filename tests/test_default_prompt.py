@@ -83,13 +83,32 @@ class TestBuildDefaultInstructions:
         formatted = _ANALYTICS_DIRECTIVE.format(analytics="test_pattern")
         assert "test_pattern" in formatted
 
-    def test_curated_bundle_covers_three_regressions(self) -> None:
-        """Curated bundle mentions hedging, premature completion, sycophancy."""
+    def test_curated_bundle_covers_recoverable_regressions(self) -> None:
+        """Curated bundle proposes recoverable targets and applies the impact filter."""
         from vaudeville.orchestrator._default_prompt import _CURATED_BUNDLE
 
-        assert "hedging" in _CURATED_BUNDLE
-        assert (
-            "premature completion" in _CURATED_BUNDLE.lower()
-            or "premature" in _CURATED_BUNDLE
+        assert "deferral" in _CURATED_BUNDLE.lower()
+        assert "commit" in _CURATED_BUNDLE.lower()
+        assert "pre-existing" in _CURATED_BUNDLE.lower()
+        assert "recoverab" in _CURATED_BUNDLE.lower()
+        assert "shadow" in _CURATED_BUNDLE.lower()
+
+    def test_curated_bundle_embeds_impact_filter(self) -> None:
+        """Curated bundle must surface the impact-filter doctrine to the designer."""
+        from vaudeville.orchestrator._default_prompt import (
+            _CURATED_BUNDLE,
+            _IMPACT_FILTER,
         )
-        assert "sycophancy" in _CURATED_BUNDLE or "dismissal" in _CURATED_BUNDLE
+
+        assert _IMPACT_FILTER in _CURATED_BUNDLE
+        assert "PreToolUse" in _IMPACT_FILTER
+        assert "Stop + enforce" in _IMPACT_FILTER
+
+    def test_analytics_directive_embeds_impact_filter(self) -> None:
+        """Analytics path must also apply the impact filter."""
+        from vaudeville.orchestrator._default_prompt import (
+            _ANALYTICS_DIRECTIVE,
+            _IMPACT_FILTER,
+        )
+
+        assert _IMPACT_FILTER in _ANALYTICS_DIRECTIVE

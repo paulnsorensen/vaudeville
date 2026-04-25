@@ -19,8 +19,9 @@ from rich.text import Text
 from vaudeville import orchestrator
 from vaudeville.cli_rules import attach_rule_parsers, dispatch_rule_command
 from vaudeville.core.paths import find_project_root as _core_find_project_root
+from vaudeville.core.rules import load_rules_layered
 from vaudeville.orchestrator import RalphError, Thresholds
-from vaudeville.server import latency_text, styled_table
+from vaudeville.tui import latency_text, styled_table
 
 
 _EVENTS_LOG = os.path.join(
@@ -51,7 +52,11 @@ def cmd_stats(args: argparse.Namespace) -> None:
     """Print aggregated classification statistics."""
     from vaudeville.server import aggregate_events
 
-    result = aggregate_events(args.log_path)
+    rules = load_rules_layered(_find_project_root())
+    result = aggregate_events(
+        args.log_path,
+        allowed_rules=set(rules.keys()) if rules else None,
+    )
 
     if args.json:
         print(json.dumps(result, indent=2))

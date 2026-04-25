@@ -64,7 +64,7 @@ class TestHandleRequest:
         the REASON line (e.g. "...confirmed fix.Are you familiar with..."),
         corrupting systemMessage output.
         """
-        from vaudeville.server import CLASSIFY_MAX_TOKENS
+        from vaudeville.core.protocol import CLASSIFY_MAX_TOKENS
 
         captured: dict[str, int] = {}
 
@@ -747,7 +747,7 @@ class TestCachedInferenceRouting:
         MLX backend's max_tokens=50 default after the uncached path was
         tightened to 30, letting run-on REASONs slip through on cache hits.
         """
-        from vaudeville.server import CLASSIFY_MAX_TOKENS
+        from vaudeville.core.protocol import CLASSIFY_MAX_TOKENS
 
         captured: dict[str, int] = {}
 
@@ -781,7 +781,7 @@ class TestCachedInferenceRouting:
 
     def test_classify_cached_max_tokens_is_tight_plain(self) -> None:
         """Cached plain path (no logprobs) must also cap at CLASSIFY_MAX_TOKENS."""
-        from vaudeville.server import CLASSIFY_MAX_TOKENS
+        from vaudeville.core.protocol import CLASSIFY_MAX_TOKENS
 
         captured: dict[str, int] = {}
 
@@ -911,8 +911,12 @@ class TestAcquirePidLock:
 @pytest.mark.skipif(
     platform.system() != "Darwin"
     or platform.machine() != "arm64"
-    or importlib.util.find_spec("mlx_lm") is None,
-    reason="MLX only available on Apple Silicon with mlx_lm installed",
+    or importlib.util.find_spec("mlx_lm") is None
+    or os.environ.get("VAUDEVILLE_RUN_MLX_SMOKE") != "1",
+    reason=(
+        "MLX smoke tests require Apple Silicon, mlx_lm installed, "
+        "and VAUDEVILLE_RUN_MLX_SMOKE=1"
+    ),
 )
 class TestMLXImportSmoke:
     """Verify real mlx_lm imports resolve — catches API drift."""

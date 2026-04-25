@@ -1,5 +1,3 @@
-"""Shared Rich UI primitives for vaudeville TUI components."""
-
 from __future__ import annotations
 
 from rich import box
@@ -8,7 +6,6 @@ from rich.text import Text
 
 
 def styled_table(title: str, caption: str | None = None) -> Table:
-    """Return a pre-configured Rich Table with the vaudeville house style."""
     return Table(
         title=title,
         caption=caption,
@@ -18,6 +15,7 @@ def styled_table(title: str, caption: str | None = None) -> Table:
         box=box.SIMPLE_HEAVY,
         expand=True,
         show_lines=False,
+        leading=0,
         padding=(0, 1),
     )
 

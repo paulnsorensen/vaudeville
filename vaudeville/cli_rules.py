@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
 from vaudeville.core.paths import find_project_root as _core_find_project_root
+from vaudeville.core.protocol import CLASSIFY_MAX_TOKENS
 from vaudeville.core.rules import (
     VALID_TIERS,
     Rule,
@@ -20,13 +26,24 @@ from vaudeville.core.rules import (
     rules_search_path,
     set_tier,
 )
+from vaudeville.tui import styled_table, tier_text
 
 _ACTIVE_TIERS = ("shadow", "warn", "enforce")
 _CmdHandler = Callable[[argparse.Namespace], None]
+_LIST_POLL_INTERVAL = 0.5
+_console = Console()
 
 
 def _find_project_root() -> str:
     return _core_find_project_root() or os.getcwd()
+
+
+def _human_prompt(prompt: str) -> str:
+    lines = prompt.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().lower().startswith("now classify"):
+            return "\n".join(lines[:i]).rstrip()
+    return prompt.rstrip()
 
 
 def _rule_names_completer(prefix: str, **_: object) -> list[str]:
@@ -37,14 +54,16 @@ def _rule_names_completer(prefix: str, **_: object) -> list[str]:
         return []
 
 
+def _positive_poll_interval(value: str) -> float:
+    interval = float(value)
+    if not math.isfinite(interval) or interval <= 0:
+        raise argparse.ArgumentTypeError("poll interval must be > 0")
+    return interval
+
+
 def cmd_list(args: argparse.Namespace) -> None:
     project_root = _find_project_root()
-    pairs = list_rules_with_source(project_root)
-    if args.tier:
-        pairs = [(r, s) for r, s in pairs if r.tier == args.tier]
-    if args.event:
-        pairs = [(r, s) for r, s in pairs if r.event == args.event]
-    pairs.sort(key=lambda x: x[0].name)
+    pairs = _list_rule_pairs(project_root, args.tier, args.event)
     if args.json:
         print(
             json.dumps(
@@ -62,46 +81,150 @@ def cmd_list(args: argparse.Namespace) -> None:
             )
         )
         return
-    if not pairs:
-        print("No rules found.")
-        return
-    hdr = f"{'Name':<35} {'Tier':<10} {'Event':<15} {'Threshold':>9}  Source"
-    print(hdr)
-    print("-" * len(hdr))
-    for rule, source in pairs:
-        print(
-            f"{rule.name:<35} {rule.tier:<10} {rule.event:<15} {rule.threshold:>9.2f}  {source}"
+    if args.live:
+        _run_list_live(
+            project_root=project_root,
+            tier=args.tier,
+            event=args.event,
+            poll_interval=args.poll_interval,
         )
+        return
+    _print_list_table(_console, pairs)
+
+
+def _list_rule_pairs(
+    project_root: str, tier: str | None, event: str | None
+) -> list[tuple[Rule, str]]:
+    pairs = list_rules_with_source(project_root)
+    if tier:
+        pairs = [(r, s) for r, s in pairs if r.tier == tier]
+    if event:
+        pairs = [(r, s) for r, s in pairs if r.event == event]
+    pairs.sort(key=lambda x: x[0].name)
+    return pairs
+
+
+def _build_list_table(pairs: list[tuple[Rule, str]]) -> Table:
+    table = styled_table(
+        "Vaudeville Rules",
+        caption=f"{len(pairs)} rule{'s' if len(pairs) != 1 else ''}",
+    )
+    table.add_column("Name", min_width=20, overflow="fold")
+    table.add_column("Tier", no_wrap=True)
+    table.add_column("Event", no_wrap=True)
+    table.add_column("Threshold", justify="right", no_wrap=True)
+    table.add_column("Source", ratio=1, overflow="fold")
+    for rule, source in pairs:
+        table.add_row(
+            rule.name,
+            tier_text(rule.tier),
+            rule.event,
+            f"{rule.threshold:.2f}",
+            source,
+        )
+    return table
+
+
+def _print_list_table(console: Console, pairs: list[tuple[Rule, str]]) -> None:
+    if not pairs:
+        console.print("No rules found.")
+        return
+    console.print(_build_list_table(pairs))
+
+
+def _add_list_subparser(sub: Any) -> None:
+    lp = sub.add_parser("list", help="List all rules")
+    lp.add_argument("--tier", choices=VALID_TIERS, help="Filter by tier")
+    lp.add_argument("--event", help="Filter by event type")
+    output_group = lp.add_mutually_exclusive_group()
+    output_group.add_argument("--json", action="store_true", help="Output raw JSON")
+    output_group.add_argument(
+        "--live",
+        action="store_true",
+        help="Continuously refresh rule list like the watch TUI",
+    )
+    lp.add_argument(
+        "--poll-interval",
+        type=_positive_poll_interval,
+        default=_LIST_POLL_INTERVAL,
+        help=f"Seconds between refreshes in --live mode (default: {_LIST_POLL_INTERVAL})",
+    )
+
+
+def _run_list_live(
+    project_root: str,
+    tier: str | None,
+    event: str | None,
+    poll_interval: float,
+) -> None:
+    from rich.live import Live
+
+    pairs = _list_rule_pairs(project_root, tier, event)
+    with Live(_build_list_table(pairs), refresh_per_second=4, console=_console) as live:
+        try:
+            while True:
+                pairs = _list_rule_pairs(project_root, tier, event)
+                live.update(_build_list_table(pairs))
+                time.sleep(poll_interval)
+        except KeyboardInterrupt:
+            return
+
+
+def _build_show_summary_table(rule: Rule, path: Path) -> Table:
+    home = os.path.expanduser("~")
+    display_path = str(path).replace(home, "~")
+    table = styled_table(rule.name)
+    table.add_column("Field", no_wrap=True)
+    table.add_column("Value", overflow="fold")
+    table.add_row("tier", tier_text(rule.tier))
+    table.add_row("event", rule.event)
+    table.add_row("action", rule.action)
+    table.add_row("threshold", f"{rule.threshold:.2f}")
+    table.add_row("labels", ", ".join(rule.labels))
+    table.add_row("path", display_path)
+    return table
 
 
 def _print_rule_human(rule: Rule, path: Path) -> None:
-    home = os.path.expanduser("~")
-    display_path = str(path).replace(home, "~")
-    print(rule.name)
-    print(f"  tier: {rule.tier:<12} event: {rule.event:<14} action: {rule.action}")
-    print(f"  threshold: {rule.threshold:<7} labels: {rule.labels}")
-    print(f"  path: {display_path}")
-    print()
-    print(f'  message: "{rule.message}"')
-    if rule.context:
-        print()
-        print("  context:")
-        for entry in rule.context:
-            for k, v in entry.items():
-                print(f"    - {k}: {v}")
-    if rule.test_cases:
-        print()
-        counts: dict[str, int] = {}
-        for tc in rule.test_cases:
-            counts[tc.label] = counts.get(tc.label, 0) + 1
-        counts_str = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
-        print(f"  test_cases: {len(rule.test_cases)} ({counts_str})")
-    examples = (rule.examples or rule.candidates)[:2]
-    if examples:
-        print()
-        print("  examples (from prompt):")
-        for ex in examples:
-            print(f'    [{ex.label}] "{ex.input[:80]}"')
+    _console.print(_build_show_summary_table(rule, path))
+    _console.print()
+    _console.print(Text("Message", style="bold"))
+    _console.print(f'"{rule.message}"')
+    _console.print()
+    _console.print(Text("Prompt", style="bold"))
+    _console.print(_human_prompt(rule.prompt))
+
+
+def _show_json(rule: Rule, path: Path) -> None:
+    sample_prompt, prefix_len = rule.split_prompt("{text}", "{context}")
+    print(
+        json.dumps(
+            {
+                "name": rule.name,
+                "tier": rule.tier,
+                "event": rule.event,
+                "threshold": rule.threshold,
+                "action": rule.action,
+                "message": rule.message,
+                "labels": rule.labels,
+                "test_case_count": len(rule.test_cases),
+                "path": str(path),
+                "context": rule.context,
+                "prompt": rule.prompt,
+                "prompt_example": sample_prompt,
+                "classify_max_tokens": CLASSIFY_MAX_TOKENS,
+                "payload_example": {
+                    "op": "classify",
+                    "prompt": sample_prompt,
+                    "rule": rule.name,
+                    "prefix_len": prefix_len,
+                    "tier": rule.tier,
+                    "input_text": "{raw input before prompt formatting}",
+                },
+            },
+            indent=2,
+        )
+    )
 
 
 def cmd_show(args: argparse.Namespace) -> None:
@@ -116,24 +239,32 @@ def cmd_show(args: argparse.Namespace) -> None:
         print(f"Rule {args.name!r} is a draft.", file=sys.stderr)
         sys.exit(1)
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "name": rule.name,
-                    "tier": rule.tier,
-                    "event": rule.event,
-                    "threshold": rule.threshold,
-                    "action": rule.action,
-                    "message": rule.message,
-                    "labels": rule.labels,
-                    "test_case_count": len(rule.test_cases),
-                    "path": str(path),
-                },
-                indent=2,
-            )
-        )
+        _show_json(rule, path)
         return
     _print_rule_human(rule, path)
+
+
+def _confirm_delete_target(name: str, paths: list[Path]) -> list[Path] | None:
+    if len(paths) > 1:
+        _console.print(f"Rule {name!r} exists in multiple locations:")
+        for i, p in enumerate(paths, 1):
+            _console.print(f"  {i}. {p}")
+        raw = input(f"Delete which? (1-{len(paths)}/all): ").strip().lower()
+        if raw != "all":
+            try:
+                idx = int(raw) - 1
+                if not (0 <= idx < len(paths)):
+                    raise IndexError
+                return [paths[idx]]
+            except (ValueError, IndexError):
+                _console.print("Invalid choice. Aborted.")
+                return None
+        return paths
+    resp = input(f"Delete {paths[0]}? [y/N] ").strip().lower()
+    if resp != "y":
+        _console.print("Aborted.")
+        return None
+    return paths
 
 
 def cmd_delete(args: argparse.Namespace) -> None:
@@ -149,30 +280,13 @@ def cmd_delete(args: argparse.Namespace) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        if len(paths) > 1:
-            print(f"Rule {args.name!r} exists in multiple locations:")
-            for i, p in enumerate(paths, 1):
-                print(f"  {i}. {p}")
-            raw = input(f"Delete which? (1-{len(paths)}/all): ").strip().lower()
-            if raw == "all":
-                pass
-            else:
-                try:
-                    idx = int(raw) - 1
-                    if not (0 <= idx < len(paths)):
-                        raise IndexError
-                    paths = [paths[idx]]
-                except (ValueError, IndexError):
-                    print("Invalid choice. Aborted.")
-                    return
-        else:
-            resp = input(f"Delete {paths[0]}? [y/N] ").strip().lower()
-            if resp != "y":
-                print("Aborted.")
-                return
+        confirmed = _confirm_delete_target(args.name, paths)
+        if confirmed is None:
+            return
+        paths = confirmed
     for p in paths:
         p.unlink()
-        print(f"Deleted {p}")
+        _console.print(f"Deleted {p}")
 
 
 def _load_tier(path: Path) -> str:
@@ -197,11 +311,11 @@ def cmd_promote(args: argparse.Namespace) -> None:
         sys.exit(1)
     idx = _ACTIVE_TIERS.index(current)
     if idx == len(_ACTIVE_TIERS) - 1:
-        print(f"Rule {args.name!r} is already at ceiling (enforce).")
+        _console.print(f"Rule {args.name!r} is already at ceiling (enforce).")
         return
     new_tier = _ACTIVE_TIERS[idx + 1]
     set_tier(args.name, new_tier, project_root)
-    print(f"Promoted {args.name!r}: {current} → {new_tier}")
+    _console.print(f"Promoted {args.name!r}: {current} → {new_tier}")
 
 
 def cmd_demote(args: argparse.Namespace) -> None:
@@ -220,11 +334,11 @@ def cmd_demote(args: argparse.Namespace) -> None:
         sys.exit(1)
     idx = _ACTIVE_TIERS.index(current)
     if idx == 0:
-        print(f"Rule {args.name!r} is already at floor (shadow).")
+        _console.print(f"Rule {args.name!r} is already at floor (shadow).")
         return
     new_tier = _ACTIVE_TIERS[idx - 1]
     set_tier(args.name, new_tier, project_root)
-    print(f"Demoted {args.name!r}: {current} → {new_tier}")
+    _console.print(f"Demoted {args.name!r}: {current} → {new_tier}")
 
 
 def cmd_disable(args: argparse.Namespace) -> None:
@@ -238,7 +352,7 @@ def cmd_disable(args: argparse.Namespace) -> None:
     m = re.search(r"^tier:\s*(\S+)", content, re.MULTILINE)
     current = m.group(1) if m else "shadow"
     if current == "disabled":
-        print(f"Rule {args.name!r} is already disabled.")
+        _console.print(f"Rule {args.name!r} is already disabled.")
         return
     new_content, count = re.subn(
         r"^tier:\s*\S+", "tier: disabled", content, flags=re.MULTILINE
@@ -250,7 +364,7 @@ def cmd_disable(args: argparse.Namespace) -> None:
         new_content += "\n"
     new_content += f"# previous-tier: {current}\n"
     path.write_text(new_content)
-    print(
+    _console.print(
         f"Disabled {args.name!r} (was {current!r}). Use 'vaudeville enable {args.name}' to restore."
     )
 
@@ -266,7 +380,7 @@ def cmd_enable(args: argparse.Namespace) -> None:
     m = re.search(r"^tier:\s*(\S+)", content, re.MULTILINE)
     current = m.group(1) if m else "shadow"
     if current != "disabled":
-        print(f"Rule {args.name!r} is already enabled (tier: {current!r}).")
+        _console.print(f"Rule {args.name!r} is already enabled (tier: {current!r}).")
         return
     pm = re.search(r"^# previous-tier:\s*(\S+)", content, re.MULTILINE)
     restore = pm.group(1) if pm else "shadow"
@@ -277,7 +391,7 @@ def cmd_enable(args: argparse.Namespace) -> None:
         r"^# previous-tier:[^\n]*\n?", "", new_content, flags=re.MULTILINE
     )
     path.write_text(new_content)
-    print(f"Enabled {args.name!r} (tier: {restore!r}).")
+    _console.print(f"Enabled {args.name!r} (tier: {restore!r}).")
 
 
 def cmd_path(args: argparse.Namespace) -> None:
@@ -287,7 +401,17 @@ def cmd_path(args: argparse.Namespace) -> None:
     except FileNotFoundError:
         print(f"Rule {args.name!r} not found.", file=sys.stderr)
         sys.exit(1)
-    print(path)
+    _console.print(str(path))
+
+
+def _validate_rule_file(p: Path, name: str) -> bool:
+    try:
+        load_rule_file(p)
+        _console.print(f"OK      {name}")
+        return True
+    except Exception as exc:
+        print(f"INVALID {name}: {exc}", file=sys.stderr)
+        return False
 
 
 def cmd_validate(args: argparse.Namespace) -> None:
@@ -296,7 +420,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
         try:
             path = locate_rule_file(args.name, project_root)
             load_rule_file(path)
-            print(f"OK      {args.name}")
+            _console.print(f"OK      {args.name}")
         except FileNotFoundError:
             print(f"NOT FOUND  {args.name}", file=sys.stderr)
             sys.exit(1)
@@ -311,11 +435,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
                 continue
             p = Path(rules_dir) / filename
             name = filename.rsplit(".", 1)[0]
-            try:
-                load_rule_file(p)
-                print(f"OK      {name}")
-            except Exception as exc:
-                print(f"INVALID {name}: {exc}", file=sys.stderr)
+            if not _validate_rule_file(p, name):
                 errors += 1
     if errors:
         sys.exit(1)
@@ -334,10 +454,7 @@ def attach_rule_parsers(sub: Any) -> None:
         action.completer = _rule_names_completer
         return action
 
-    lp = sub.add_parser("list", help="List all rules")
-    lp.add_argument("--tier", choices=VALID_TIERS, help="Filter by tier")
-    lp.add_argument("--event", help="Filter by event type")
-    lp.add_argument("--json", action="store_true", help="Output raw JSON")
+    _add_list_subparser(sub)
 
     sp = sub.add_parser("show", help="Show rule details")
     _name(sp)

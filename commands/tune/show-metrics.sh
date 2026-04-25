@@ -1,5 +1,7 @@
 #!/bin/bash
 set -euo pipefail
+# Resolve to project root — ralph runs ./scripts from the ralph_dir.
+cd "$(dirname "$0")/../.."
 
 RULE_NAME="${1:-}"
 

@@ -11,6 +11,7 @@ import contextlib
 import os
 import re
 import subprocess
+import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,6 +53,7 @@ class JudgeParseError(RuntimeError):
 _RalphRunner = Callable[[str, list[str], str], "subprocess.CompletedProcess[str]"]
 
 _RAISE_RE = re.compile(r"^JUDGE_RAISE\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)$")
+_PROMISE_RE = re.compile(r"<promise>\s*THRESHOLDS_MET\s*</promise>")
 EMPTY_PLAN = "EMPTY_PLAN"
 _VALID_KINDS: frozenset[JudgeKind] = frozenset(
     (
@@ -63,6 +65,10 @@ _VALID_KINDS: frozenset[JudgeKind] = frozenset(
         "JUDGE_CONTINUE_KEEP_STATE",
     )
 )
+
+
+def tuner_promised_done(output: str) -> bool:
+    return bool(_PROMISE_RE.search(output))
 
 
 def parse_judge_signal(output: str) -> JudgeVerdict:
@@ -90,17 +96,98 @@ def parse_judge_signal(output: str) -> JudgeVerdict:
     raise JudgeParseError("no JUDGE_* signal found in output")
 
 
-def default_ralph_runner(
-    ralph_dir: str, extra_args: list[str], project_root: str
+def _run_streaming(
+    cmd: list[str],
+    project_root: str,
+    on_line: Callable[[str], None],
 ) -> subprocess.CompletedProcess[str]:
-    """Run ralph with captured stdout/stderr. Caller prints output as needed."""
+    """Run cmd via Popen, fanning stdout lines through on_line in real time."""
+    proc = subprocess.Popen(
+        cmd,
+        cwd=project_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    def _read_stdout() -> None:
+        if proc.stdout is None:
+            return
+        for raw in proc.stdout:
+            stripped = raw.rstrip("\n")
+            stdout_lines.append(stripped)
+            on_line(stripped)
+
+    def _read_stderr() -> None:
+        if proc.stderr is None:
+            return
+        for raw in proc.stderr:
+            stderr_lines.append(raw.rstrip("\n"))
+
+    t_out = threading.Thread(target=_read_stdout)
+    t_err = threading.Thread(target=_read_stderr)
+    t_out.start()
+    t_err.start()
+    t_out.join()
+    t_err.join()
+    proc.wait()
+
+    return subprocess.CompletedProcess(
+        args=cmd,
+        returncode=proc.returncode,
+        stdout="\n".join(stdout_lines),
+        stderr="\n".join(stderr_lines),
+    )
+
+
+def default_ralph_runner(
+    ralph_dir: str,
+    extra_args: list[str],
+    project_root: str,
+    *,
+    on_line: Callable[[str], None] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run ralph, streaming output line-by-line via on_line when provided."""
     cmd = ["ralph", "run", ralph_dir, *extra_args]
     try:
-        return subprocess.run(
-            cmd, cwd=project_root, capture_output=True, text=True, check=False
-        )
+        if on_line is None:
+            return subprocess.run(
+                cmd, cwd=project_root, capture_output=True, text=True, check=False
+            )
+        return _run_streaming(cmd, project_root, on_line)
     except FileNotFoundError as e:
         raise RalphError(f"ralph not found: {e}") from e
+
+
+def _make_runner(
+    runner: _RalphRunner,
+    on_line: Callable[[str], None] | None = None,
+) -> _RalphRunner:
+    """Wrap runner to call on_line per stdout line (post-hoc for non-default runners)."""
+    if on_line is None:
+        return runner
+    if runner is default_ralph_runner:
+
+        def _streaming(
+            ralph_dir: str, extra_args: list[str], project_root: str
+        ) -> subprocess.CompletedProcess[str]:
+            return default_ralph_runner(
+                ralph_dir, extra_args, project_root, on_line=on_line
+            )
+
+        return _streaming
+
+    def _posthoc(
+        ralph_dir: str, extra_args: list[str], project_root: str
+    ) -> subprocess.CompletedProcess[str]:
+        result = runner(ralph_dir, extra_args, project_root)
+        for line in (result.stdout or "").splitlines():
+            on_line(line)
+        return result
+
+    return _posthoc
 
 
 def _build_threshold_args(thresholds: Thresholds) -> list[str]:

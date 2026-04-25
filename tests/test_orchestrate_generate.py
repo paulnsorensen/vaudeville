@@ -146,7 +146,7 @@ class TestOrchestrateGenerate:
 
     def test_eval_rule_parses_metrics_from_stdout(self) -> None:
         """_eval_rule parses precision/recall/f1 regex matches from subprocess stdout."""
-        from vaudeville.orchestrator import _eval_rule
+        from vaudeville.orchestrator._abandon import _eval_rule
 
         fake = subprocess.CompletedProcess(
             args=["uv"],
@@ -163,7 +163,7 @@ class TestOrchestrateGenerate:
 
     def test_eval_rule_returns_none_when_metrics_missing(self) -> None:
         """Missing precision/recall/f1 tokens → None (no crash)."""
-        from vaudeville.orchestrator import _eval_rule
+        from vaudeville.orchestrator._abandon import _eval_rule
 
         fake = subprocess.CompletedProcess(
             args=["uv"], returncode=1, stdout="no metrics here", stderr="boom"
@@ -173,14 +173,14 @@ class TestOrchestrateGenerate:
 
     def test_eval_rule_returns_none_when_uv_missing(self) -> None:
         """FileNotFoundError from subprocess.run → None (graceful degrade)."""
-        from vaudeville.orchestrator import _eval_rule
+        from vaudeville.orchestrator._abandon import _eval_rule
 
         with patch("subprocess.run", side_effect=FileNotFoundError("uv not found")):
             assert _eval_rule("rule", "/proj") is None
 
     def test_extract_abandon_reason_strips_signal_line(self) -> None:
         """_extract_abandon_reason returns prose above JUDGE_* signal line."""
-        from vaudeville.orchestrator import _extract_abandon_reason
+        from vaudeville.orchestrator._abandon import _extract_abandon_reason
 
         stdout = "analysis line one\nanalysis line two\nJUDGE_ABANDON"
         reason = _extract_abandon_reason(stdout)
@@ -188,7 +188,7 @@ class TestOrchestrateGenerate:
 
     def test_extract_abandon_reason_empty_when_signal_first(self) -> None:
         """Judge output starting with signal → empty reason."""
-        from vaudeville.orchestrator import _extract_abandon_reason
+        from vaudeville.orchestrator._abandon import _extract_abandon_reason
 
         assert _extract_abandon_reason("JUDGE_ABANDON") == ""
 

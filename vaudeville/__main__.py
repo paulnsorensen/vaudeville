@@ -98,21 +98,28 @@ def _threshold_float(value: str) -> float:
 
 def cmd_tune(args: argparse.Namespace) -> int:
     """Tune a rule via the multi-phase design→tune→judge pipeline."""
+    import contextlib
+
+    from vaudeville.orchestrator_tui import OrchestratorTUI
+
     strict_root = _strict_project_root()
     project_root = strict_root or os.getcwd()
     commands_dir = _find_commands_dir()
     rules_dir = _resolve_rules_dir(args.scope, strict_root)
     thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
+    tui: OrchestratorTUI | None = OrchestratorTUI() if sys.stdout.isatty() else None
     try:
-        return orchestrator.orchestrate_tune(
-            rule_name=args.rule,
-            thresholds=thresholds,
-            rounds=args.rounds,
-            tuner_iters=args.tuner_iters,
-            project_root=project_root,
-            commands_dir=commands_dir,
-            rules_dir=rules_dir,
-        )
+        with tui or contextlib.nullcontext():
+            return orchestrator.orchestrate_tune(
+                rule_name=args.rule,
+                thresholds=thresholds,
+                rounds=args.rounds,
+                tuner_iters=args.tuner_iters,
+                project_root=project_root,
+                commands_dir=commands_dir,
+                rules_dir=rules_dir,
+                tui=tui,
+            )
     except RalphError as e:
         print(str(e), file=sys.stderr)
         return 2
@@ -120,23 +127,30 @@ def cmd_tune(args: argparse.Namespace) -> int:
 
 def cmd_generate(args: argparse.Namespace) -> int:
     """Generate new rules via the multi-phase design→tune→judge pipeline."""
+    import contextlib
+
+    from vaudeville.orchestrator_tui import OrchestratorTUI
+
     strict_root = _strict_project_root()
     project_root = strict_root or os.getcwd()
     commands_dir = _find_commands_dir()
     rules_dir = _resolve_rules_dir(args.scope, strict_root)
     mode = "live" if args.live else "shadow"
     thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
+    tui: OrchestratorTUI | None = OrchestratorTUI() if sys.stdout.isatty() else None
     try:
-        return orchestrator.orchestrate_generate(
-            instructions=args.instructions,
-            thresholds=thresholds,
-            rounds=args.rounds,
-            tuner_iters=args.tuner_iters,
-            mode=mode,
-            project_root=project_root,
-            commands_dir=commands_dir,
-            rules_dir=rules_dir,
-        )
+        with tui or contextlib.nullcontext():
+            return orchestrator.orchestrate_generate(
+                instructions=args.instructions,
+                thresholds=thresholds,
+                rounds=args.rounds,
+                tuner_iters=args.tuner_iters,
+                mode=mode,
+                project_root=project_root,
+                commands_dir=commands_dir,
+                rules_dir=rules_dir,
+                tui=tui,
+            )
     except RalphError as e:
         print(str(e), file=sys.stderr)
         return 2
@@ -211,7 +225,10 @@ def _build_generate_parser(sub: Any) -> None:
     )
     p.add_argument(
         "instructions",
-        help="Description of what the rule should detect",
+        nargs="?",
+        default=None,
+        help="Description of what the rule should detect "
+        "(omit to use session-analytics or curated bundle)",
     )
     p.add_argument(
         "--live",

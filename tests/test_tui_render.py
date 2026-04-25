@@ -141,6 +141,35 @@ class TestOrchestratorTUIRender:
         mock_start.assert_called_once()
         mock_stop.assert_called_once()
 
+    def test_has_spinner_for_visible_progress(self) -> None:
+        """TUI exposes a Rich Spinner so users can see activity during silent ralph waits."""
+        from rich.console import Console
+        from rich.spinner import Spinner
+        from vaudeville.orchestrator_tui import OrchestratorTUI
+
+        tui = OrchestratorTUI(console=Console(record=True, width=80))
+        assert isinstance(tui._spinner, Spinner)
+
+    def test_rich_protocol_returns_layout(self) -> None:
+        """__rich__ returns the same renderable Live polls per refresh tick."""
+        from rich.console import Console
+        from rich.layout import Layout
+        from vaudeville.orchestrator_tui import OrchestratorTUI
+
+        tui = OrchestratorTUI(console=Console(record=True, width=80))
+        tui.update_phase("tune", rule="git-gate")
+        layout = tui.__rich__()
+        assert isinstance(layout, Layout)
+
+    def test_live_polls_self_for_auto_refresh(self) -> None:
+        """Live's renderable is the TUI itself so refresh ticks animate the spinner."""
+        from rich.console import Console
+        from vaudeville.orchestrator_tui import OrchestratorTUI
+
+        tui = OrchestratorTUI(console=Console(record=True, width=80))
+        assert tui._live.renderable is tui
+        assert tui._live.refresh_per_second >= 10
+
     def test_concurrent_updates_serialized_under_lock(self) -> None:
         """append_line + update_verdict from many threads never overlap _live.update."""
         import time

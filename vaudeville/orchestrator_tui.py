@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
+from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
@@ -39,7 +40,12 @@ class OrchestratorTUI:
         self._status = _Status()
         self._tail: deque[str] = deque(maxlen=20)
         self._lock = threading.Lock()
-        self._live = Live(console=self._console, refresh_per_second=4)
+        self._spinner = Spinner("dots", style="cyan")
+        self._live = Live(self, console=self._console, refresh_per_second=10)
+
+    def __rich__(self) -> Layout:
+        with self._lock:
+            return self._render_locked()
 
     def __enter__(self) -> OrchestratorTUI:
         self._live.start()
@@ -60,17 +66,17 @@ class OrchestratorTUI:
             self._status.rule = rule
             self._status.rnd = rnd
             self._status.total_rounds = total_rounds
-            self._live.update(self._render_locked())
+            self._live.update(self)
 
     def update_verdict(self, verdict: str) -> None:
         with self._lock:
             self._status.last_verdict = verdict
-            self._live.update(self._render_locked())
+            self._live.update(self)
 
     def append_line(self, line: str) -> None:
         with self._lock:
             self._tail.append(line.rstrip("\r\n"))
-            self._live.update(self._render_locked())
+            self._live.update(self)
 
     def _render(self) -> Layout:
         with self._lock:
@@ -112,10 +118,11 @@ class OrchestratorTUI:
             mid.append_text(verdict_text(s.last_verdict))
 
         header = Table.grid(expand=True, padding=(0, 1))
+        header.add_column(width=2)
         header.add_column()
         header.add_column(justify="center")
         header.add_column(justify="right", style="dim")
-        header.add_row(phase_text, mid, elapsed_str)
+        header.add_row(self._spinner, phase_text, mid, elapsed_str)
         return header
 
     def _render_tail(self) -> Text:

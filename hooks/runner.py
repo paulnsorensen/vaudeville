@@ -174,9 +174,6 @@ def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
 
 def _dispatch_violation(rule: Rule, result: ClassifyResponse) -> bool:
     """Handle a tier-aware violation. Returns True if the rule loop should continue."""
-    if rule.tier == "disabled":
-        return True
-
     if rule.tier == "shadow":
         _dbg(
             "shadow %s: %s (%.2f)",
@@ -202,6 +199,10 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
     rules = _load_rules_for_event(event)
     condensed: dict[str, str] = {}
     for rule in rules:
+        if rule.tier == "disabled":
+            _dbg("skipping disabled rule: %s", rule.name)
+            continue
+
         text = extract_text_from_dict(hook_input, rule.context)
         if not text or len(text) < MIN_TEXT_LENGTH:
             continue

@@ -383,6 +383,35 @@ class TestRunPipeline:
         assert exc_info.value.code == 0
         assert "fail open" in capsys.readouterr().err
 
+    def test_disabled_tier_skips_inference(self) -> None:
+        """Disabled rules must not invoke classify or condense — zero SLM cost."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.rules import Rule
+
+        mock_rule = Rule(
+            name="test-disabled",
+            event="Stop",
+            prompt="Check: {text}",
+            context=[{"field": "body"}],
+            action="block",
+            message="{reason}",
+            threshold=0.5,
+            tier="disabled",
+        )
+        mock_client = MagicMock()
+        hook_input = {"body": "x" * 100}
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[mock_rule]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            runner._run_event_rules("Stop", hook_input, mock_client)
+
+        assert exc_info.value.code == 0
+        mock_client.classify.assert_not_called()
+        mock_client.condense.assert_not_called()
+
 
 class TestMaybeCondense:
     """Tests for _maybe_condense — SLM condensing gate."""

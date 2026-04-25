@@ -61,14 +61,34 @@ The analyzer checks 8 pattern categories:
 | Code write volume | PostToolUse | Code write events counted by language |
 | Repeated commands | SessionStart | Bash commands repeated many times |
 
-### Step 3: Present findings and triage
+### Step 3: Filter out useless suggestions
 
-Present results as a numbered list. For each suggestion:
+Before presenting, drop any suggestion where the event × tier combination
+cannot change behavior. Inference happens *after* the event fires, so:
+
+| Event | Useful as | Drop if |
+|-------|-----------|---------|
+| `PreToolUse` | `enforce: block` to prevent the action | rarely useless |
+| `PostToolUse` | `enforce: block` to force fix-up | `shadow`/`warn` for irreversible writes |
+| `Stop` | `enforce: block` to force Claude to continue working | `shadow`/`warn` for past-tense damage that can't be fixed in another turn |
+| `UserPromptSubmit` | `warn` for context injection | almost never useless |
+
+A suggestion that fires at `Stop + shadow/warn` for a violation Claude
+cannot fix in a follow-up turn (turn-waste, time-already-spent patterns) is
+**performance theater** — the rule sees the corpse but can't resurrect it.
+Either reframe the suggestion as a PreToolUse hard hook, recommend
+`enforce: block`, or drop it.
+
+### Step 4: Present findings and triage
+
+Present results as a numbered list. For each suggestion include the recommended
+tier and why that tier (not a less aggressive one):
 
 ```
 N. [PRIORITY] Title
-   Event: X | Type: Y
+   Event: X | Tier: warn|enforce | Type: Y
    Finding: <one sentence>
+   Why this tier: <why warn isn't enough, or why enforce isn't appropriate>
    Examples: <top 3 from data>
 ```
 
@@ -76,7 +96,7 @@ End with: "Which suggestions would you like me to implement? (all / numbers / no
 
 The user may want all, some, or none.
 
-### Step 4: Implement selected hooks
+### Step 5: Implement selected hooks
 
 For each suggestion the user approves, route through the unified `vaudeville:add-hook`
 skill. It handles the SLM-vs-JS routing decision automatically:
@@ -141,3 +161,8 @@ User: suggest some hooks for me
 - vaudeville:add-hook is invoked per suggestion — if the user approves 5 hooks, that's
   5 sequential Skill invocations. Batch acknowledgment is fine but implementation
   is serial.
+- The analyzer surfaces patterns; the impact filter (Step 3) decides if a
+  pattern is hookable. A high-frequency pattern that fires only at
+  `Stop + warn` for unrecoverable behavior (the turn-waste/todo-smuggler
+  pattern) should be dropped, not presented — counting bad behavior is not
+  the same as preventing it.

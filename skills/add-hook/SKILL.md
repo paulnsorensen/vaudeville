@@ -60,16 +60,39 @@ If the request could reasonably go either way, ask:
 >
 > Which fits your use case?
 
-### Step 3: Surface the tradeoff, then spawn the right agent
+### Step 3: Run the "will this hook actually matter?" filter
 
-Before spawning, tell the user which type was chosen and why:
+Before routing, sanity-check that the hook can change behavior. The runner
+does inference *after* the event fires, so post-hoc events (Stop, PostToolUse)
+cannot un-do the action — they can only force a continuation or surface a nudge.
+
+| Event | Best tier for impact | When the hook is useless |
+|-------|---------------------|--------------------------|
+| `PreToolUse` | `enforce` (block) | Almost never useless — true prevention point |
+| `PostToolUse` | `enforce` (block) | `shadow`/`warn` after a bad write — file is already on disk |
+| `Stop` | `enforce` (block) — forces continuation | `shadow`/`warn` for unrecoverable past-tense violations (e.g., "you wasted this turn") |
+| `UserPromptSubmit` | `warn` (inject context) | Rarely needs blocking |
+
+**Reject the request if** the proposed combination is `Stop + shadow/warn` for
+a past-tense violation that can't be fixed in a future turn (the canonical
+"performance theater" pattern). Tell the user: "This would fire after the
+behavior already happened. To actually prevent it, we'd need to either
+(a) move it to PreToolUse, or (b) ship at `enforce: block` so Claude is forced
+to continue the turn until it's resolved. Which do you want?"
+
+### Step 4: Surface the tradeoff, then spawn the right agent
+
+Before spawning, tell the user which type was chosen, why, and at what tier:
 
 - "Routing to **vaudeville:slm-rule-writer** because detecting [X] requires
-  understanding intent — a regex would miss variations."
+  understanding intent — a regex would miss variations. Defaulting to
+  `tier: warn` since this is the user's first version and untuned rules
+  shouldn't hard-block."
 - "Routing to **vaudeville:hard-hook-writer** because blocking [X] is a structural
   pattern match — fast and deterministic."
 - "Hooks are runtime-enforced — Claude cannot override them, unlike
-  CLAUDE.md instructions."
+  CLAUDE.md instructions. But tier matters: `shadow` is invisible, `warn`
+  is a nudge, `enforce: block` actually prevents."
 
 Then spawn the named agent:
 
@@ -142,3 +165,8 @@ This skill only does routing and tradeoff communication.
   language content has high false-positive rates
 - If the user explicitly says "JS hook" or "SLM rule", routing is trivial —
   skip the tradeoff explanation and spawn directly
+- **Past-tense violations are a trap**: rules like "detect when Claude wasted
+  the turn" or "detect TODO smuggling" fire at `Stop`/`PostToolUse` — by
+  which point the damage is already done. Refuse to ship these at
+  `shadow`/`warn` unless the next turn can plausibly fix the situation. If
+  it can't, push the user toward PreToolUse prevention or `enforce: block`.

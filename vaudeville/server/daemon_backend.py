@@ -79,7 +79,12 @@ class DaemonBackend:
         return ClassifyResult(text=text, logprobs=logprobs)
 
     def _send_classify(self, prompt: str) -> dict[str, object]:
-        payload = json.dumps({"prompt": prompt, "rule": "eval"}).encode() + b"\n"
+        # log_event=False keeps eval/tune classifications out of events.jsonl
+        # so `vaudeville watch` only shows real hook firings.
+        payload = (
+            json.dumps({"prompt": prompt, "rule": "eval", "log_event": False}).encode()
+            + b"\n"
+        )
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
                 sock.settimeout(CONNECT_TIMEOUT)

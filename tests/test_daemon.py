@@ -160,6 +160,64 @@ class TestHandleRequestEventLogging:
         response = json.loads(handle_request(data, backend))
         assert response["verdict"] == "clean"
 
+    def test_log_event_false_suppresses_events_write(self, tmp_path: str) -> None:
+        """Eval/tune requests set log_event=False so they skip events.jsonl."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend(verdict="clean", reason="ok")
+            data = json.dumps(
+                {"prompt": "eval input", "rule": "eval", "log_event": False}
+            ).encode()
+            handle_request(data, backend, event_logger=el)
+            time.sleep(0.05)
+
+            events_path = Path(logs_dir) / "events.jsonl"
+            assert not events_path.exists() or events_path.read_text() == ""
+        finally:
+            el.close()
+
+    def test_log_event_false_suppresses_violations_write(self, tmp_path: str) -> None:
+        """Eval violation requests with log_event=False skip violations.jsonl too."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend(verdict="violation", reason="bad")
+            data = json.dumps(
+                {"prompt": "p", "rule": "eval", "log_event": False}
+            ).encode()
+            handle_request(data, backend, event_logger=el)
+            time.sleep(0.05)
+
+            violations_path = Path(logs_dir) / "violations.jsonl"
+            assert not violations_path.exists() or violations_path.read_text() == ""
+        finally:
+            el.close()
+
+    def test_log_event_default_true_preserves_hook_behavior(
+        self, tmp_path: str
+    ) -> None:
+        """Real hook requests omit log_event and still write to events.jsonl."""
+        from pathlib import Path
+
+        logs_dir = str(Path(tmp_path) / "logs")
+        el = EventLogger(config=LogConfig(), logs_dir=logs_dir)
+        try:
+            backend = MockBackend(verdict="clean", reason="ok")
+            data = json.dumps({"prompt": "hook input", "rule": "no-hedging"}).encode()
+            handle_request(data, backend, event_logger=el)
+            time.sleep(0.05)
+
+            events_path = Path(logs_dir) / "events.jsonl"
+            assert events_path.exists()
+            assert len(events_path.read_text().strip().splitlines()) == 1
+        finally:
+            el.close()
+
     def test_rule_defaults_to_empty(self, tmp_path: str) -> None:
         """Missing rule field in request defaults to empty string."""
         from pathlib import Path

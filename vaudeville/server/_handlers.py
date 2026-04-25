@@ -94,17 +94,20 @@ def _handle_classify(
         safe_reason,
     )
 
-    evt = ClassificationEvent(
-        rule=rule,
-        verdict=response.verdict,
-        confidence=confidence,
-        latency_ms=elapsed_ms,
-        prompt_chars=len(prompt),
-        reason=response.reason,
-        input_snippet=input_text[:500],
-        tier=tier,
-    )
-    if event_logger is not None:
+    # Eval/tune harness sets log_event=False so test-case classifications
+    # don't pollute `vaudeville watch`. Default True preserves hook behavior.
+    log_event = bool(request.get("log_event", True))
+    if event_logger is not None and log_event:
+        evt = ClassificationEvent(
+            rule=rule,
+            verdict=response.verdict,
+            confidence=confidence,
+            latency_ms=elapsed_ms,
+            prompt_chars=len(prompt),
+            reason=response.reason,
+            input_snippet=input_text[:500],
+            tier=tier,
+        )
         event_logger.log_event(evt)
 
     return _response(response.verdict, response.reason, confidence)

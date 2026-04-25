@@ -69,7 +69,7 @@ class OrchestratorTUI:
 
     def append_line(self, line: str) -> None:
         with self._lock:
-            self._tail.append(line.rstrip())
+            self._tail.append(line.rstrip("\r\n"))
             self._live.update(self._render_locked())
 
     def _render(self) -> Layout:

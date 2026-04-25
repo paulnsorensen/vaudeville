@@ -326,6 +326,41 @@ GROUP BY day, hour
 ORDER BY day DESC, hour;
 ```
 
+### Filter by project cwd
+Restrict any query to a single project by matching `cwd LIKE '%<keyword>%'`.
+Substitute `<keyword>` with a fragment of the project's working directory
+(e.g. `vaudeville`, `port-louis`). This is the same pattern
+`vaudeville.analytics.query_session_patterns(project_filter=...)` uses.
+
+```sql
+-- Top bash commands scoped to one project
+SELECT bash_cmd, count(*) AS uses
+FROM tool_uses
+WHERE tool_name = 'Bash'
+  AND bash_cmd IS NOT NULL
+  AND cwd LIKE '%vaudeville%'
+GROUP BY bash_cmd
+ORDER BY uses DESC
+LIMIT 10;
+
+-- Top tool uses scoped to one project
+SELECT tool_name, count(*) AS uses
+FROM tool_uses
+WHERE cwd LIKE '%vaudeville%'
+GROUP BY tool_name
+ORDER BY uses DESC
+LIMIT 10;
+
+-- Permission denials scoped to one project (join through sessions.project)
+SELECT pd.content, count(*) AS cnt
+FROM permission_denials pd
+JOIN sessions s ON pd.sessionId = s.sessionId
+WHERE s.project LIKE '%vaudeville%'
+GROUP BY pd.content
+ORDER BY cnt DESC
+LIMIT 5;
+```
+
 ## Pre-built query scripts
 
 For common analytics questions, use these scripts instead of writing inline SQL

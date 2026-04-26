@@ -19,10 +19,10 @@ All mechanical operations (locate, read, write, delete) are handled by the CLI.
 ## Available CLI commands
 
 ```bash
-vaudeville list [--tier shadow|warn|enforce|disabled] [--event Stop] [--json]
+vaudeville list [--tier disabled|shadow|log|warn|block] [--event Stop] [--json]
 vaudeville show <name> [--json]
-vaudeville promote <name>       # shadow → warn → enforce
-vaudeville demote <name>        # enforce → warn → shadow
+vaudeville promote <name>       # shadow → warn → block
+vaudeville demote <name>        # block → warn → shadow
 vaudeville enable <name>        # restore from disabled
 vaudeville disable <name>       # disable (saves previous tier)
 vaudeville delete <name> [--yes]
@@ -57,7 +57,7 @@ vaudeville enable restored-rule
 vaudeville delete old-rule --yes
 ```
 
-`promote` and `demote` step one tier at a time (shadow↔warn↔enforce).
+`promote` and `demote` step one tier at a time (shadow↔warn↔block).
 Use `disable` / `enable` for the disabled tier — they preserve the previous
 tier in a sidecar comment so `enable` can restore it.
 

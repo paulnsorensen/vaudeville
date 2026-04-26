@@ -83,7 +83,7 @@ See [`examples/rules/`](examples/rules/) for the bundled rules as starting point
 
 ### Authoring Rules
 
-Each rule is a YAML file with a `name`, `event`, `prompt`, `labels`, `action`, and `threshold`. The `event` field determines *when* the rule fires during a Claude Code session.
+Each rule is a YAML file with a `name`, `event`, `prompt`, `labels`, `tier`, and `threshold`. The `tier` field controls enforcement level (`disabled | shadow | log | warn | block`). The `event` field determines *when* the rule fires during a Claude Code session.
 
 ### Choosing an Event
 

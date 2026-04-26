@@ -75,7 +75,6 @@ prompt: |
 context:
   - field: last_assistant_message
 labels: [violation, clean]
-action: warn
 message: "Git permission-asking: {reason}"
 threshold: 0.5
 tier: shadow

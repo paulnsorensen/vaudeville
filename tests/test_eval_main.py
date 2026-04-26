@@ -20,7 +20,6 @@ _STUB_RULE = Rule(
     event="Stop",
     prompt="Classify:\n{text}\nVERDICT:",
     context=[{"field": "last_assistant_message"}],
-    action="block",
     message="{reason}",
 )
 _STUB_RULES = {"violation-detector": _STUB_RULE}
@@ -34,7 +33,6 @@ class TestMain:
             event="Stop",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[{"field": "last_assistant_message"}],
-            action="block",
             message="{reason}",
             threshold=0.0,
         )
@@ -149,7 +147,6 @@ class TestMain:
                 event="Stop",
                 prompt="Classify:\n{text}\nVERDICT:",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
                 threshold=0.0,
             )
@@ -272,7 +269,6 @@ class TestApplyExtraTestFile:
             event="Stop",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[{"field": "last_assistant_message"}],
-            action="block",
             message="{reason}",
             threshold=0.0,
         )

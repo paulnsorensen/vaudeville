@@ -27,7 +27,6 @@ def _rule_with_examples(
         event="Stop",
         prompt="Classify:\n\n{{ examples }}\n\n{text}",
         context=[],
-        action="block",
         message="{reason}",
         examples=examples or [],
         candidates=candidates or [],
@@ -94,7 +93,6 @@ class TestRenderPrompt:
             event="Stop",
             prompt="Just classify: {text}",
             context=[],
-            action="block",
             message="{reason}",
         )
         assert render_prompt(rule) == "Just classify: {text}"
@@ -215,7 +213,7 @@ class TestLoadMigratedRules:
             "    input: 'Response: hello'\n"
             "    label: clean\n"
             "    reason: greeting\n"
-            "action: block\n"
+            "tier: block\n"
             "message: '{reason}'\n"
         )
         with tempfile.TemporaryDirectory() as d:

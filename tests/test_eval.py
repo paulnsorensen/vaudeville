@@ -51,7 +51,6 @@ def rules() -> dict[str, Rule]:
             event="Stop",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[{"field": "last_assistant_message"}],
-            action="block",
             message="{reason}",
             threshold=0.0,
         ),
@@ -97,7 +96,6 @@ class TestLoadTestCases:
             event="Stop",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[{"field": "last_assistant_message"}],
-            action="block",
             message="{reason}",
             test_cases=test_cases,
         )
@@ -155,7 +153,6 @@ class TestCondenseIntegration:
             event="PreToolUse",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[],
-            action="block",
             message="{reason}",
             threshold=0.0,
         )
@@ -208,7 +205,6 @@ class TestClassifyCase:
             event="Stop",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[],
-            action="block",
             message="{reason}",
             threshold=0.7,
         )
@@ -231,7 +227,6 @@ class TestClassifyCase:
             event="Stop",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[],
-            action="block",
             message="{reason}",
             threshold=0.5,
         )
@@ -253,7 +248,6 @@ class TestClassifyCase:
             event="Stop",
             prompt="Classify:\n{text}\nVERDICT:",
             context=[],
-            action="block",
             message="{reason}",
             threshold=0.0,
         )
@@ -494,7 +488,6 @@ class TestMain:
                         event="Stop",
                         prompt="Classify:\n{text}\nVERDICT:",
                         context=[{"field": "last_assistant_message"}],
-                        action="block",
                         message="{reason}",
                         threshold=0.0,
                     ),
@@ -529,7 +522,6 @@ class TestMain:
                         event="Stop",
                         prompt="Classify:\n{text}\nVERDICT:",
                         context=[{"field": "last_assistant_message"}],
-                        action="block",
                         message="{reason}",
                         threshold=0.0,
                     ),
@@ -561,7 +553,6 @@ class TestMain:
                         event="Stop",
                         prompt="Classify:\n{text}\nVERDICT:",
                         context=[{"field": "last_assistant_message"}],
-                        action="block",
                         message="{reason}",
                         threshold=0.0,
                     ),
@@ -604,7 +595,6 @@ class TestMain:
                         event="Stop",
                         prompt="Classify:\n{text}\nVERDICT:",
                         context=[{"field": "last_assistant_message"}],
-                        action="block",
                         message="{reason}",
                         threshold=0.0,
                     ),
@@ -827,7 +817,7 @@ class TestCalibrateRule:
             "name": "violation-detector",
             "event": "Stop",
             "prompt": "Classify:\n{text}\nVERDICT:",
-            "action": "block",
+            "tier": "block",
             "threshold": 0.5,
             "message": "{reason}",
         }
@@ -888,7 +878,7 @@ class TestCalibrateRule:
         assert updated["threshold"] == 0.45
         assert updated["name"] == "violation-detector"
         assert updated["event"] == "Stop"
-        assert updated["action"] == "block"
+        assert updated["tier"] == "block"
         out = capsys.readouterr().out
         assert "Calibrated" in out
 
@@ -1064,7 +1054,6 @@ class TestJsonFlag:
                         event="Stop",
                         prompt="Classify:\n{text}\nVERDICT:",
                         context=[{"field": "last_assistant_message"}],
-                        action="block",
                         message="{reason}",
                     ),
                 },
@@ -1121,7 +1110,6 @@ class TestJsonFlag:
                         event="Stop",
                         prompt="Classify:\n{text}\nVERDICT:",
                         context=[{"field": "last_assistant_message"}],
-                        action="block",
                         message="{reason}",
                     ),
                 },

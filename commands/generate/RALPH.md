@@ -47,7 +47,6 @@ prompt: |
   REASON: one sentence
 context:
   - field: last_assistant_message
-action: block
 message: "Quality violation: {reason}"
 threshold: 0.5
 tier: shadow

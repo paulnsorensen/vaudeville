@@ -22,7 +22,6 @@ class TestRuleContext:
             event="Stop",
             prompt="Text: {text}\nContext: {context}",
             context=[],
-            action="block",
             message="{reason}",
         )
         result = rule.format_prompt("hello", "world")
@@ -35,7 +34,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "last_assistant_message"}],
-            action="block",
             message="{reason}",
         )
         ctx = rule.resolve_context({"last_assistant_message": "hello"})
@@ -47,7 +45,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "content.txt"}],
-            action="block",
             message="{reason}",
         )
         with tempfile.TemporaryDirectory() as d:
@@ -62,7 +59,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"file": "nonexistent.txt"}],
-            action="block",
             message="{reason}",
         )
         ctx = rule.resolve_context({}, plugin_root="/tmp")
@@ -74,7 +70,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.body"}],
-            action="block",
             message="{reason}",
         )
         ctx = rule.resolve_context({"tool_input": {"body": "nested value"}})
@@ -86,7 +81,6 @@ class TestRuleContext:
             event="Stop",
             prompt="{text}",
             context=[{"field": "tool_input.nonexistent"}],
-            action="block",
             message="{reason}",
         )
         ctx = rule.resolve_context({"tool_input": {"body": "value"}})
@@ -106,17 +100,17 @@ class TestParseRule:
         assert rule.name == "test"
         assert rule.prompt == "{text}"
 
-    def test_defaults_action_to_block(self) -> None:
+    def test_defaults_tier_to_block(self) -> None:
         rule = parse_rule(self._minimal_data())
-        assert rule.action == "block"
+        assert rule.tier == "block"
 
     def test_defaults_threshold_to_half(self) -> None:
         rule = parse_rule(self._minimal_data())
         assert rule.threshold == 0.5
 
-    def test_custom_action_preserved(self) -> None:
-        rule = parse_rule(self._minimal_data(action="warn"))
-        assert rule.action == "warn"
+    def test_custom_tier_preserved(self) -> None:
+        rule = parse_rule(self._minimal_data(tier="warn"))
+        assert rule.tier == "warn"
 
     def test_custom_threshold_preserved(self) -> None:
         rule = parse_rule(self._minimal_data(threshold=0.75))
@@ -193,7 +187,7 @@ class TestLoadRulesLayered:
                     "name: my-rule\n"
                     "event: Stop\n"
                     "prompt: 'classify {text}'\n"
-                    "action: block\n"
+                    "tier: block\n"
                     "message: '{reason}'\n"
                 )
             rules = load_rules_layered(project_root=project_dir)
@@ -212,12 +206,12 @@ class TestLoadRulesLayered:
             with open(os.path.join(global_rules_dir, "shared-rule.yaml"), "w") as f:
                 f.write(
                     "name: shared-rule\nevent: Stop\nprompt: 'global {text}'\n"
-                    "action: block\nmessage: '{reason}'\n"
+                    "tier: block\nmessage: '{reason}'\n"
                 )
             with open(os.path.join(project_rules_dir, "shared-rule.yaml"), "w") as f:
                 f.write(
                     "name: shared-rule\nevent: Stop\nprompt: 'project {text}'\n"
-                    "action: warn\nmessage: '{reason}'\n"
+                    "tier: warn\nmessage: '{reason}'\n"
                 )
 
             import unittest.mock as mock
@@ -239,7 +233,7 @@ class TestLoadRulesLayered:
                 ):
                     rules = load_rules_layered(project_root=project_dir)
 
-            assert rules["shared-rule"].action == "warn"
+            assert rules["shared-rule"].tier == "warn"
             assert "project" in rules["shared-rule"].prompt
 
 
@@ -252,7 +246,6 @@ class TestSplitPrompt:
             event="Stop",
             prompt=prompt,
             context=[],
-            action="block",
             message="{reason}",
         )
 

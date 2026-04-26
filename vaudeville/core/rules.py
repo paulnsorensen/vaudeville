@@ -76,7 +76,7 @@ def _read_context_entry(
     return ""
 
 
-VALID_TIERS = ("shadow", "warn", "enforce", "disabled")
+VALID_TIERS = ("disabled", "shadow", "log", "warn", "block")
 
 
 @dataclass
@@ -85,12 +85,11 @@ class Rule:
     event: str
     prompt: str
     context: list[dict[str, str]]
-    action: str
     message: str
     threshold: float = 0.5
     examples: list[Example] = field(default_factory=list)
     candidates: list[Example] = field(default_factory=list)
-    tier: str = "enforce"
+    tier: str = "block"
     labels: list[str] = field(default_factory=lambda: list(DEFAULT_LABELS))
     test_cases: list[EvalCase] = field(default_factory=list)
 
@@ -224,7 +223,7 @@ def load_rules_layered(
 
 def parse_rule(data: dict[str, Any]) -> Rule:
     """Parse a raw YAML dict into a validated Rule."""
-    tier = str(data.get("tier", "enforce"))
+    tier = str(data.get("tier", "block"))
     if tier not in VALID_TIERS:
         raise ValueError(f"Invalid tier {tier!r}, must be one of {VALID_TIERS}")
     name = str(data["name"])
@@ -244,7 +243,6 @@ def parse_rule(data: dict[str, Any]) -> Rule:
         event=str(data.get("event", "")),
         prompt=str(data["prompt"]),
         context=[c for c in data.get("context", []) if isinstance(c, dict)],
-        action=str(data.get("action", "block")),
         message=str(data.get("message", "{reason}")),
         threshold=float(data.get("threshold", 0.5)),
         examples=_parse_examples(data.get("examples", [])),

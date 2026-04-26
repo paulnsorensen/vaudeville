@@ -28,7 +28,7 @@ from vaudeville.core.rules import (
 )
 from vaudeville.tui import styled_table, tier_text
 
-_ACTIVE_TIERS = ("shadow", "warn", "enforce")
+_ACTIVE_TIERS = ("shadow", "log", "warn", "block")
 _CmdHandler = Callable[[argparse.Namespace], None]
 _LIST_POLL_INTERVAL = 0.5
 _console = Console()
@@ -115,12 +115,14 @@ def _build_list_table(pairs: list[tuple[Rule, str]]) -> Table:
     table.add_column("Threshold", justify="right", no_wrap=True)
     table.add_column("Source", ratio=1, overflow="fold")
     for rule, source in pairs:
+        row_style = "dim" if rule.tier == "disabled" else None
         table.add_row(
             rule.name,
             tier_text(rule.tier),
             rule.event,
             f"{rule.threshold:.2f}",
             source,
+            style=row_style,
         )
     return table
 
@@ -178,7 +180,6 @@ def _build_show_summary_table(rule: Rule, path: Path) -> Table:
     table.add_column("Value", overflow="fold")
     table.add_row("tier", tier_text(rule.tier))
     table.add_row("event", rule.event)
-    table.add_row("action", rule.action)
     table.add_row("threshold", f"{rule.threshold:.2f}")
     table.add_row("labels", ", ".join(rule.labels))
     table.add_row("path", display_path)
@@ -204,7 +205,6 @@ def _show_json(rule: Rule, path: Path) -> None:
                 "tier": rule.tier,
                 "event": rule.event,
                 "threshold": rule.threshold,
-                "action": rule.action,
                 "message": rule.message,
                 "labels": rule.labels,
                 "test_case_count": len(rule.test_cases),
@@ -311,7 +311,7 @@ def cmd_promote(args: argparse.Namespace) -> None:
         sys.exit(1)
     idx = _ACTIVE_TIERS.index(current)
     if idx == len(_ACTIVE_TIERS) - 1:
-        _console.print(f"Rule {args.name!r} is already at ceiling (enforce).")
+        _console.print(f"Rule {args.name!r} is already at ceiling (block).")
         return
     new_tier = _ACTIVE_TIERS[idx + 1]
     set_tier(args.name, new_tier, project_root)
@@ -465,8 +465,8 @@ def attach_rule_parsers(sub: Any) -> None:
     dp.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
 
     for cmd, help_txt in (
-        ("promote", "Promote rule one tier (shadow→warn→enforce)"),
-        ("demote", "Demote rule one tier (enforce→warn→shadow)"),
+        ("promote", "Promote rule one tier (shadow→warn→block)"),
+        ("demote", "Demote rule one tier (block→warn→shadow)"),
         ("enable", "Restore a disabled rule to its previous tier"),
         ("disable", "Disable a rule (saves previous tier for restore)"),
         ("path", "Print the resolved path of a rule file"),

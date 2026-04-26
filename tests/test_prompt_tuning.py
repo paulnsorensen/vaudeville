@@ -103,7 +103,6 @@ class TestFormatPromptIntegration:
             event="Stop",
             prompt=prompt,
             context=[],
-            action="block",
             message="{reason}",
         )
 
@@ -243,7 +242,6 @@ class TestConcurrentDispatch:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -277,7 +275,6 @@ class TestConcurrentDispatch:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -310,7 +307,6 @@ class TestConcurrentDispatch:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -340,7 +336,6 @@ class TestConcurrentDispatch:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -410,13 +405,6 @@ class TestRunnerHelpers:
     def test_extract_text_no_context(self) -> None:
         runner = self._get_runner()
         assert runner.extract_text_from_dict({}, []) == ""
-
-    def test_verdict_to_hook_response_log(self) -> None:
-        runner = self._get_runner()
-        result = runner.verdict_to_hook_response(
-            "test-rule", "{reason}", "test reason", "log"
-        )
-        assert result == {}
 
     def test_verdict_to_hook_response_warn(self) -> None:
         runner = self._get_runner()
@@ -503,7 +491,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
             "post-rule": Rule(
@@ -511,7 +498,6 @@ class TestEventDiscovery:
                 event="PostToolUse",
                 prompt="{text}",
                 context=[{"field": "tool_input.body"}],
-                action="block",
                 message="{reason}",
             ),
         }
@@ -555,7 +541,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -590,16 +575,13 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
 
         mock_client = MagicMock()
         mock_client.condense.side_effect = lambda text: text
-        mock_client.classify.return_value = MagicMock(
-            verdict="clean", reason="ok", action="block"
-        )
+        mock_client.classify.return_value = MagicMock(verdict="clean", reason="ok")
 
         stdout = io.StringIO()
         with (
@@ -642,7 +624,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -674,7 +655,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]

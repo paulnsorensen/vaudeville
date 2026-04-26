@@ -29,7 +29,7 @@ class VaudevilleClient:
         prompt: str,
         rule: str = "",
         prefix_len: int = 0,
-        tier: str = "enforce",
+        tier: str = "block",
         input_text: str = "",
     ) -> ClassifyResponse | None:
         """Send a classify request and return the verdict.

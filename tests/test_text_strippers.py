@@ -107,7 +107,6 @@ class TestFormatPromptIntegration:
             event=event,
             prompt="Classify: {text}",
             context=[],
-            action="block",
             message="{reason}",
         )
 
@@ -199,7 +198,6 @@ class TestIntegrationEventTruncation:
             event=event,
             prompt="Classify: {text}",
             context=[],
-            action="block",
             message="{reason}",
         )
 

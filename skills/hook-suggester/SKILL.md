@@ -68,16 +68,16 @@ cannot change behavior. Inference happens *after* the event fires, so:
 
 | Event | Useful as | Drop if |
 |-------|-----------|---------|
-| `PreToolUse` | `enforce: block` to prevent the action | rarely useless |
-| `PostToolUse` | `enforce: block` to force fix-up | `shadow`/`warn` for irreversible writes |
-| `Stop` | `enforce: block` to force Claude to continue working | `shadow`/`warn` for past-tense damage that can't be fixed in another turn |
+| `PreToolUse` | `block` to prevent the action | rarely useless |
+| `PostToolUse` | `block` to force fix-up | `shadow`/`warn` for irreversible writes |
+| `Stop` | `block` to force Claude to continue working | `shadow`/`warn` for past-tense damage that can't be fixed in another turn |
 | `UserPromptSubmit` | `warn` for context injection | almost never useless |
 
 A suggestion that fires at `Stop + shadow/warn` for a violation Claude
 cannot fix in a follow-up turn (turn-waste, time-already-spent patterns) is
 **performance theater** — the rule sees the corpse but can't resurrect it.
 Either reframe the suggestion as a PreToolUse hard hook, recommend
-`enforce: block`, or drop it.
+`tier: block`, or drop it.
 
 ### Step 4: Present findings and triage
 
@@ -86,9 +86,9 @@ tier and why that tier (not a less aggressive one):
 
 ```
 N. [PRIORITY] Title
-   Event: X | Tier: warn|enforce | Type: Y
+   Event: X | Tier: warn|block | Type: Y
    Finding: <one sentence>
-   Why this tier: <why warn isn't enough, or why enforce isn't appropriate>
+   Why this tier: <why warn isn't enough, or why block isn't appropriate>
    Examples: <top 3 from data>
 ```
 

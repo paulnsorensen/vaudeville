@@ -68,16 +68,16 @@ cannot un-do the action — they can only force a continuation or surface a nudg
 
 | Event | Best tier for impact | When the hook is useless |
 |-------|---------------------|--------------------------|
-| `PreToolUse` | `enforce` (block) | Almost never useless — true prevention point |
-| `PostToolUse` | `enforce` (block) | `shadow`/`warn` after a bad write — file is already on disk |
-| `Stop` | `enforce` (block) — forces continuation | `shadow`/`warn` for unrecoverable past-tense violations (e.g., "you wasted this turn") |
+| `PreToolUse` | `block` | Almost never useless — true prevention point |
+| `PostToolUse` | `block` | `shadow`/`warn` after a bad write — file is already on disk |
+| `Stop` | `block` — forces continuation | `shadow`/`warn` for unrecoverable past-tense violations (e.g., "you wasted this turn") |
 | `UserPromptSubmit` | `warn` (inject context) | Rarely needs blocking |
 
 **Reject the request if** the proposed combination is `Stop + shadow/warn` for
 a past-tense violation that can't be fixed in a future turn (the canonical
 "performance theater" pattern). Tell the user: "This would fire after the
 behavior already happened. To actually prevent it, we'd need to either
-(a) move it to PreToolUse, or (b) ship at `enforce: block` so Claude is forced
+(a) move it to PreToolUse, or (b) ship at `tier: block` so Claude is forced
 to continue the turn until it's resolved. Which do you want?"
 
 ### Step 4: Surface the tradeoff, then spawn the right agent
@@ -92,7 +92,7 @@ Before spawning, tell the user which type was chosen, why, and at what tier:
   pattern match — fast and deterministic."
 - "Hooks are runtime-enforced — Claude cannot override them, unlike
   CLAUDE.md instructions. But tier matters: `shadow` is invisible, `warn`
-  is a nudge, `enforce: block` actually prevents."
+  is a nudge, `block` actually prevents."
 
 Then spawn the named agent:
 
@@ -169,4 +169,4 @@ This skill only does routing and tradeoff communication.
   the turn" or "detect TODO smuggling" fire at `Stop`/`PostToolUse` — by
   which point the damage is already done. Refuse to ship these at
   `shadow`/`warn` unless the next turn can plausibly fix the situation. If
-  it can't, push the user toward PreToolUse prevention or `enforce: block`.
+  it can't, push the user toward PreToolUse prevention or `tier: block`.

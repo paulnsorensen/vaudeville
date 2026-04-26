@@ -64,7 +64,7 @@ Every rule is a single YAML file placed in one of the resolution layer directori
 ```yaml
 name: my-detector              # Unique identifier (kebab-case, matches filename)
 event: Stop                     # Hook event: Stop, PostToolUse, PreToolUse, UserPromptSubmit
-tier: warn                      # shadow | warn | enforce | disabled (see "Tiers" below)
+tier: warn                      # disabled | shadow | log | warn | block (see "Tiers" below)
 prompt: |                       # SLM classification prompt
   Classify this text as "violation" or "clean".
 
@@ -94,7 +94,6 @@ prompt: |                       # SLM classification prompt
 context:                        # How to extract text from hook input
   - field: last_assistant_message    # Dot-notation path into hook JSON
 labels: [violation, clean]      # Valid verdict labels (always exactly 2)
-action: block                   # What to do on violation: block, warn, or log
 message: "Quality violation: {reason}"  # Template with {reason} placeholder
 threshold: 0.5                  # Minimum confidence (0.0–1.0) to trigger action
 ```
@@ -113,8 +112,7 @@ threshold: 0.5                  # Minimum confidence (0.0–1.0) to trigger acti
 | Field | Default | Description |
 |-------|---------|-------------|
 | `event` | (none) | Hook event — informational, used by `hooks.json` |
-| `tier` | `enforce` | `shadow` (log only) \| `warn` (nudge) \| `enforce` (use action) \| `disabled` (off). Master switch — see "Tiers and impact" below. |
-| `action` | `block` | Used only when `tier: enforce`. `block` = prevent, `warn` = inject systemMessage, `log` = stderr only |
+| `tier` | `block` | `disabled` (off) \| `shadow` (silent telemetry, non-terminal) \| `log` (stderr only, terminal) \| `warn` (systemMessage nudge) \| `block` (rejects the action). See "Tiers and impact" below. |
 | `message` | `{reason}` | User-facing message template, `{reason}` replaced by SLM output |
 | `threshold` | `0.5` | Minimum confidence (0.0–1.0) to trigger action. Use `just eval --threshold-sweep` to find optimal value. |
 
@@ -128,16 +126,16 @@ A rule has impact only when **event timing** and **tier** combine into something
 
 | Event | Tier | What it actually does | Worth shipping? |
 |-------|------|----------------------|-----------------|
-| `PreToolUse` | `enforce` (block) | Prevents the tool call before it runs — true prevention | **Yes** — strongest hook |
+| `PreToolUse` | `block` | Prevents the tool call before it runs — true prevention | **Yes** — strongest hook |
 | `PreToolUse` | `warn` | Tool runs anyway; nudge appears in next turn context | Sometimes — if guidance is genuinely useful |
 | `PreToolUse` | `shadow` / `disabled` | Logs only / nothing | Only as eval-data step before promotion |
-| `PostToolUse` | `enforce` (block) | Tool result rejected; Claude must fix and retry | **Yes** — useful for code-quality fixes |
+| `PostToolUse` | `block` | Tool result rejected; Claude must fix and retry | **Yes** — useful for code-quality fixes |
 | `PostToolUse` | `warn` | Result accepted; nudge in next turn | Marginal — Claude already wrote the bad file |
 | `PostToolUse` | `shadow` / `disabled` | Logs only / nothing | Eval data only |
-| `Stop` | `enforce` (block) | Forces Claude to keep working — cannot end turn | **Yes** when violation is recoverable in another turn |
+| `Stop` | `block` | Forces Claude to keep working — cannot end turn | **Yes** when violation is recoverable in another turn |
 | `Stop` | `warn` | Turn ends with a 🪫 systemMessage; visible nudge | **Only** if next-turn behavior change is plausible |
 | `Stop` | `shadow` / `disabled` | Logs to stderr / nothing | Eval data only — invisible to Claude AND user |
-| `UserPromptSubmit` | `enforce` (block) | Stops Claude from receiving the prompt | Rare — most user input shouldn't be censored |
+| `UserPromptSubmit` | `block` | Stops Claude from receiving the prompt | Rare — most user input shouldn't be censored |
 | `UserPromptSubmit` | `warn` / inject | Adds context before Claude responds | **Yes** for context injection |
 
 ### Shadow is the tuning tier, not a noise tier
@@ -155,23 +153,23 @@ So `shadow` is productive **as long as someone runs `/tier-advisor` on it**. The
 
 These combinations look productive but produce no behavior change *even if fully promoted*. **Reject them at design time.**
 
-- **`Stop` + any tier** when the violation cannot be acted on in a future turn (e.g., "you wasted this turn" — promoting to `enforce: block` would just force Claude to keep working *after* deciding to stop, which is a different post-hoc patch, not prevention). Shadow can't tune away a timing problem.
+- **`Stop` + any tier** when the violation cannot be acted on in a future turn (e.g., "you wasted this turn" — promoting to `tier: block` would just force Claude to keep working *after* deciding to stop, which is a different post-hoc patch, not prevention). Shadow can't tune away a timing problem.
 - **`PostToolUse` + `shadow` parked indefinitely** with no `/tier-advisor` review scheduled — that's shadow as a graveyard, not a tuning step. The fix is to commit to checking the data, not to skip shadow.
 - **Any tier on a recently-deleted rule's pattern** without first checking the `_disabled/` directory — don't resurrect rules the user already killed.
 
-The filter: would the rule, if fully promoted to `enforce: block`, change behavior in a way the user wants? If yes → ship in `shadow`, queue a `/tier-advisor` follow-up. If no → don't write it. Shadow is for tuning rules that have a useful destination; it can't manufacture one.
+The filter: would the rule, if fully promoted to `tier: block`, change behavior in a way the user wants? If yes → ship in `shadow`, queue a `/tier-advisor` follow-up. If no → don't write it. Shadow is for tuning rules that have a useful destination; it can't manufacture one.
 
 ### Choosing the tier on creation
 
 | Goal | Recommended tier |
 |------|------------------|
-| Hard prevention of a known-bad action | `enforce` (with `action: block`) |
+| Hard prevention of a known-bad action | `block` |
 | Strong nudge that Claude can act on next turn | `warn` |
 | Building eval data before deciding tier | `shadow` — but commit to running `/tier-advisor` later |
 | Rule under development, not yet trusted | `shadow` (precision unknown) |
 | Rule with low precision (<90%) | Stay in `shadow` until tuned |
 
-Default for new SLM rules: **`warn`** if the prompt has been eval'd at ≥90% precision; **`shadow`** otherwise. Never ship `enforce: block` without ≥95% precision in eval — false-positive blocks erode user trust faster than missed violations.
+Default for new SLM rules: **`warn`** if the prompt has been eval'd at ≥90% precision; **`shadow`** otherwise. Never ship `tier: block` without ≥95% precision in eval — false-positive blocks erode user trust faster than missed violations.
 
 ### Context Field Paths
 
@@ -263,12 +261,12 @@ Before writing any YAML, answer in writing:
 3. **What tier will it ship at?** Cross-reference the Event × tier impact map above.
 4. **Is this combination in the "useless rule" list?** If so, redesign or refuse.
 
-If the answer is "the rule fires after the fact AND tier is shadow/warn AND there's no plausible next-turn correction" — **stop and tell the user the rule would be performance theater**. Suggest either a PreToolUse hard hook (via `vaudeville:hard-hook-writer`) or `enforce: block` tier. Do not write a rule that cannot affect behavior.
+If the answer is "the rule fires after the fact AND tier is shadow/warn AND there's no plausible next-turn correction" — **stop and tell the user the rule would be performance theater**. Suggest either a PreToolUse hard hook (via `vaudeville:hard-hook-writer`) or `tier: block`. Do not write a rule that cannot affect behavior.
 
 ### 3. Write the rule YAML
 
 Create `<name>.yaml` in the target rules directory. Start with 4 examples in the prompt (2 violation, 2 clean).
-Always include `tier:` and `threshold: 0.5` explicitly — rules without these default to `enforce`/`0.5` but being explicit prevents accidental hard-blocks on untuned rules.
+Always include `tier:` and `threshold: 0.5` explicitly — rules without these default to `block`/`0.5` but being explicit prevents accidental hard-blocks on untuned rules.
 
 ### 4. Write test cases
 
@@ -296,9 +294,10 @@ best value that maintains ≥95% precision.
 
 Verify: daemon running → hook fires → rule classifies → action triggers at the chosen tier. Confirm the user-visible output matches the tier:
 - `shadow` → only `[vaudeville:debug]` line in stderr
+- `log` → `[vaudeville] <name>: <reason>` in stderr only
 - `warn` → 🪫 systemMessage in the session
-- `enforce: block` (Stop) → Claude is forced to continue the turn
-- `enforce: block` (PreToolUse) → tool call is prevented entirely
+- `block` (Stop) → Claude is forced to continue the turn
+- `block` (PreToolUse) → tool call is prevented entirely
 
 ## Style Reference
 

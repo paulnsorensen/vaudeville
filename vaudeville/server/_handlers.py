@@ -72,7 +72,7 @@ def _handle_classify(
 ) -> bytes:
     prompt = str(request.get("prompt", ""))
     rule = str(request.get("rule", ""))
-    tier = str(request.get("tier", "enforce"))
+    tier = str(request.get("tier", "block"))
     raw_prefix = request.get("prefix_len", 0)
     prefix_len = int(float(str(raw_prefix))) if raw_prefix else 0
     input_text = str(request.get("input_text", ""))

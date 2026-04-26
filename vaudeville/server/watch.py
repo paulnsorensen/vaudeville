@@ -101,7 +101,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
         table.add_row(
             _parse_ts_display(evt.get("ts", "")),
             evt.get("rule", "<unknown>"),
-            _tier_text(evt.get("tier", "enforce")),
+            _tier_text(evt.get("tier", "block")),
             _verdict_text(evt.get("verdict", "?")),
             _confidence_text(_to_float(evt.get("confidence", 0))),
             _latency_text(_to_float(evt.get("latency_ms", 0))),

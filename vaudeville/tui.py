@@ -27,11 +27,13 @@ def verdict_text(verdict: str) -> Text:
 
 
 def tier_text(tier: str) -> Text:
-    if tier == "shadow":
+    if tier == "disabled":
+        return Text(tier, style="dim italic")
+    if tier in ("shadow", "log"):
         return Text(tier, style="dim")
     if tier == "warn":
         return Text(tier, style="yellow")
-    return Text(tier, style="bold green")
+    return Text(tier, style="bold red")
 
 
 _CONFIDENCE_HIGH = 0.8

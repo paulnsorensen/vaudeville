@@ -102,7 +102,7 @@ class TestBuildDefaultInstructions:
 
         assert _IMPACT_FILTER in _CURATED_BUNDLE
         assert "PreToolUse" in _IMPACT_FILTER
-        assert "Stop + enforce" in _IMPACT_FILTER
+        assert "Stop + block" in _IMPACT_FILTER
 
     def test_analytics_directive_embeds_impact_filter(self) -> None:
         """Analytics path must also apply the impact filter."""

@@ -96,7 +96,7 @@ def _handle_classify(
 
     # Eval/tune harness sets log_event=False so test-case classifications
     # don't pollute `vaudeville watch`. Default True preserves hook behavior.
-    log_event = bool(request.get("log_event", True))
+    log_event = request.get("log_event", True) is not False
     if event_logger is not None and log_event:
         evt = ClassificationEvent(
             rule=rule,

@@ -44,8 +44,7 @@ class OrchestratorTUI:
         self._live = Live(self, console=self._console, refresh_per_second=10)
 
     def __rich__(self) -> Layout:
-        with self._lock:
-            return self._render_locked()
+        return self._render_locked()
 
     def __enter__(self) -> OrchestratorTUI:
         self._live.start()
@@ -66,21 +65,14 @@ class OrchestratorTUI:
             self._status.rule = rule
             self._status.rnd = rnd
             self._status.total_rounds = total_rounds
-            self._live.update(self)
 
     def update_verdict(self, verdict: str) -> None:
         with self._lock:
             self._status.last_verdict = verdict
-            self._live.update(self)
 
     def append_line(self, line: str) -> None:
         with self._lock:
             self._tail.append(line.rstrip("\r\n"))
-            self._live.update(self)
-
-    def _render(self) -> Layout:
-        with self._lock:
-            return self._render_locked()
 
     def _render_locked(self) -> Layout:
         header = self._render_header()

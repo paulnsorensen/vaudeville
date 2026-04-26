@@ -66,13 +66,7 @@ def _extract_abandon_reason(judge_stdout: str) -> str:
 
 
 def capture_eval_log(rule_name: str, project_root: str) -> str:
-    """Run eval_cli for `rule_name` and tee stdout to .vaudeville/logs/eval-{rule}.log.
-
-    Designer phases read this log via commands/design/last-eval-log.sh; without it
-    the Designer falls back to writing meta-instruction baseline plans ("Run eval
-    first") that the mechanical Tuner cannot execute. Returns the captured stdout
-    (empty string on subprocess failure — fail-open).
-    """
+    safe_name = Path(rule_name).name
     try:
         out = subprocess.run(
             ["uv", "run", "python", "-m", "vaudeville.eval_cli", "--rule", rule_name],
@@ -86,7 +80,7 @@ def capture_eval_log(rule_name: str, project_root: str) -> str:
     log_dir = Path(project_root) / ".vaudeville" / "logs"
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
-        (log_dir / f"eval-{rule_name}.log").write_text(out)
+        (log_dir / f"eval-{safe_name}.log").write_text(out)
     except OSError:
         pass
     return out

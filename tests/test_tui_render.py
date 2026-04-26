@@ -15,7 +15,7 @@ class TestOrchestratorTUIRender:
         tui = OrchestratorTUI(console=console)
         tui.update_phase("generate")
 
-        layout = tui._render()
+        layout = tui._render_locked()
         console.print(layout)
         text = console.export_text()
 
@@ -30,7 +30,7 @@ class TestOrchestratorTUIRender:
         tui = OrchestratorTUI(console=console)
         tui.update_phase("design", rule="my-special-rule")
 
-        layout = tui._render()
+        layout = tui._render_locked()
         console.print(layout)
         text = console.export_text()
 
@@ -45,7 +45,7 @@ class TestOrchestratorTUIRender:
         tui = OrchestratorTUI(console=console)
         tui.update_phase("judge", rule="rule", rnd=2, total_rounds=4)
 
-        layout = tui._render()
+        layout = tui._render_locked()
         console.print(layout)
         text = console.export_text()
 
@@ -60,7 +60,7 @@ class TestOrchestratorTUIRender:
         tui = OrchestratorTUI(console=console)
         tui.update_verdict("JUDGE_DONE")
 
-        layout = tui._render()
+        layout = tui._render_locked()
         console.print(layout)
         text = console.export_text()
 
@@ -75,7 +75,7 @@ class TestOrchestratorTUIRender:
         tui = OrchestratorTUI(console=console)
         tui.update_verdict("JUDGE_DONE")
 
-        layout = tui._render()
+        layout = tui._render_locked()
         console.print(layout)
         ansi = console.export_text(styles=True)
 
@@ -91,7 +91,7 @@ class TestOrchestratorTUIRender:
         tui.append_line("ralph output alpha")
         tui.append_line("ralph output beta")
 
-        layout = tui._render()
+        layout = tui._render_locked()
         console.print(layout)
         text = console.export_text()
 
@@ -106,7 +106,7 @@ class TestOrchestratorTUIRender:
         console = Console(record=True, width=120)
         tui = OrchestratorTUI(console=console)
 
-        layout = tui._render()
+        layout = tui._render_locked()
         console.print(layout)
         text = console.export_text()
 
@@ -170,30 +170,12 @@ class TestOrchestratorTUIRender:
         assert tui._live.renderable is tui
         assert tui._live.refresh_per_second >= 10
 
-    def test_concurrent_updates_serialized_under_lock(self) -> None:
-        """append_line + update_verdict from many threads never overlap _live.update."""
-        import time
-        from unittest.mock import MagicMock
+    def test_concurrent_mutations_are_race_free(self) -> None:
+        """append_line + update_verdict from many threads produce consistent state."""
         from rich.console import Console
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         tui = OrchestratorTUI(console=Console(record=True, width=80))
-        active = 0
-        max_active = 0
-        tracker = threading.Lock()
-
-        def tracking_update(_renderable: object) -> None:
-            nonlocal active, max_active
-            with tracker:
-                active += 1
-                if active > max_active:
-                    max_active = active
-            time.sleep(0.001)
-            with tracker:
-                active -= 1
-
-        tui._live = MagicMock()
-        tui._live.update.side_effect = tracking_update
 
         threads: list[threading.Thread] = []
         for i in range(8):
@@ -208,6 +190,5 @@ class TestOrchestratorTUIRender:
         for t in threads:
             t.join()
 
-        assert max_active == 1, (
-            f"expected serialized renders, saw {max_active} concurrent"
-        )
+        assert len(tui._tail) == 8
+        assert tui._status.last_verdict.startswith("V-")

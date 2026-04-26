@@ -87,7 +87,6 @@ class TestEvaluateRule:
                 event="Stop",
                 prompt="Classify:\n{text}\nVERDICT:",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
                 threshold=0.0,
             ),

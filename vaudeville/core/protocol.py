@@ -28,7 +28,7 @@ class ClassifyRequest:
     rule: str = ""
 
     prefix_len: int = 0  # 0 = no caching (backward compatible)
-    tier: str = "enforce"
+    tier: str = "block"
     input_text: str = ""  # raw LLM output text, before prompt construction
     log_event: bool = True  # False = suppress events.jsonl write (eval/tune harness)
 
@@ -38,7 +38,7 @@ class ClassifyRequest:
             d["rule"] = self.rule
         if self.prefix_len > 0:
             d["prefix_len"] = self.prefix_len
-        if self.tier != "enforce":
+        if self.tier != "block":
             d["tier"] = self.tier
         if self.input_text:
             d["input_text"] = self.input_text

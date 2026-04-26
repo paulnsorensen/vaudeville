@@ -73,10 +73,23 @@ def test_tier_text_warn() -> None:
     assert "yellow" in str(text.style)
 
 
-def test_tier_text_enforce() -> None:
-    text = _tier_text("enforce")
-    assert text.plain == "enforce"
-    assert "green" in str(text.style)
+def test_tier_text_block() -> None:
+    text = _tier_text("block")
+    assert text.plain == "block"
+    assert "red" in str(text.style)
+
+
+def test_tier_text_log() -> None:
+    text = _tier_text("log")
+    assert text.plain == "log"
+    assert "dim" in str(text.style)
+
+
+def test_tier_text_disabled() -> None:
+    text = _tier_text("disabled")
+    assert text.plain == "disabled"
+    style = str(text.style)
+    assert "dim" in style and "italic" in style
 
 
 # --- _confidence_text ---

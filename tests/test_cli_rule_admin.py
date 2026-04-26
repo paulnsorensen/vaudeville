@@ -154,8 +154,8 @@ class TestSetTier:
         rules_dir.mkdir(parents=True)
         p = rules_dir / "no-tier.yaml"
         p.write_text("name: no-tier\nevent: Stop\n")
-        set_tier("no-tier", "enforce")
-        assert "tier: enforce" in p.read_text()
+        set_tier("no-tier", "block")
+        assert "tier: block" in p.read_text()
 
     def test_raises_on_invalid_tier(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -536,7 +536,7 @@ class TestCmdPromote:
         assert "tier: warn" in p.read_text()
         assert "shadow → warn" in capsys.readouterr().out
 
-    def test_warn_to_enforce(
+    def test_warn_to_block(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
@@ -546,7 +546,7 @@ class TestCmdPromote:
             return_value=str(tmp_path / "proj"),
         ):
             cmd_promote(Namespace(name="my-rule"))
-        assert "tier: enforce" in p.read_text()
+        assert "tier: block" in p.read_text()
 
     def test_ceiling_is_noop(
         self,
@@ -555,14 +555,14 @@ class TestCmdPromote:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        p = _write_rule(_home_rules(tmp_path), "my-rule", tier="enforce")
+        p = _write_rule(_home_rules(tmp_path), "my-rule", tier="block")
         with patch(
             "vaudeville.cli_rules._find_project_root",
             return_value=str(tmp_path / "proj"),
         ):
             cmd_promote(Namespace(name="my-rule"))
         assert "ceiling" in capsys.readouterr().out
-        assert "tier: enforce" in p.read_text()
+        assert "tier: block" in p.read_text()
 
     def test_disabled_exits(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -578,21 +578,21 @@ class TestCmdPromote:
 
 
 class TestCmdDemote:
-    def test_enforce_to_warn(
+    def test_block_to_warn(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        p = _write_rule(_home_rules(tmp_path), "my-rule", tier="enforce")
+        p = _write_rule(_home_rules(tmp_path), "my-rule", tier="block")
         with patch(
             "vaudeville.cli_rules._find_project_root",
             return_value=str(tmp_path / "proj"),
         ):
             cmd_demote(Namespace(name="my-rule"))
         assert "tier: warn" in p.read_text()
-        assert "enforce → warn" in capsys.readouterr().out
+        assert "block → warn" in capsys.readouterr().out
 
     def test_warn_to_shadow(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

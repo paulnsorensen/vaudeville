@@ -27,10 +27,14 @@ def verdict_text(verdict: str) -> Text:
 
 
 def tier_text(tier: str) -> Text:
-    if tier == "shadow":
+    if tier == "disabled":
+        return Text(tier, style="dim italic")
+    if tier in ("shadow", "log"):
         return Text(tier, style="dim")
     if tier == "warn":
         return Text(tier, style="yellow")
+    if tier == "block":
+        return Text(tier, style="bold red")
     return Text(tier, style="bold green")
 
 

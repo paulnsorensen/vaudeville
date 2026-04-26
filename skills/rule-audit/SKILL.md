@@ -49,7 +49,7 @@ What's the highest tier where this rule changes behavior usefully?
 
 | Recoverability | Max useful tier | Notes |
 |----------------|-----------------|-------|
-| Strong (continuation fixes the violation) | `enforce: block` | Hard prevention |
+| Strong (continuation fixes the violation) | `block` | Hard prevention |
 | Weak (next-turn memo only, no in-turn fix) | `warn` | Warn-ceiling rule |
 | None (block makes it worse, warn is noise) | none | **Useless rule** |
 
@@ -116,7 +116,7 @@ Never delete or modify without explicit approval.
 
 - Disabled rules (`tier: disabled`) often look like KEEP candidates but should usually be `DELETE` — if they were worth running, they wouldn't be disabled. Confirm with the user before recommending deletion.
 - Rules with `STUCK-AT-MODEL-CEILING` and high precision but low recall are still useful — high precision means few false positives, low recall means missed violations (acceptable for shadow → warn promotion). Don't flag these as `DELETE` unless precision is also below the promotion threshold.
-- Some rules have a "warn ceiling" by design (sycophancy, trailing-summary). They're not useless, but they should never be promoted to `enforce: block`. Note the ceiling explicitly so future tier-advisor runs don't try to promote them past it.
+- Some rules have a "warn ceiling" by design (sycophancy, trailing-summary). They're not useless, but they should never be promoted to `block`. Note the ceiling explicitly so future tier-advisor runs don't try to promote them past it.
 - Rules in `~/.vaudeville/rules/_disabled/` are user-archived; don't audit them as live rules.
 
 ## Example output

@@ -924,7 +924,6 @@ class TestDisabledTierSideEffects:
             "event": "PostToolUse",
             "prompt": "Check {text}",
             "tier": "disabled",
-            "action": "block",
             "message": "blocked",
         }
         rule = parse_rule(data)
@@ -939,7 +938,7 @@ class TestDisabledTierSideEffects:
         (rules_dir / "disabled-rule.yaml").write_text(
             "name: disabled-rule\nevent: PostToolUse\n"
             "prompt: 'check {text}'\ntier: disabled\n"
-            "action: block\nmessage: blocked\n"
+            "message: blocked\n"
         )
 
         rules = load_rules(str(rules_dir))
@@ -957,11 +956,11 @@ class TestDisabledTierSideEffects:
 
         assert "disabled" in VALID_TIERS
 
-    def test_valid_tiers_contains_all_four(self) -> None:
-        """VALID_TIERS contains all expected tiers including disabled."""
+    def test_valid_tiers_contains_all_five(self) -> None:
+        """VALID_TIERS contains all expected tier values."""
         from vaudeville.core.rules import VALID_TIERS
 
-        assert set(VALID_TIERS) == {"shadow", "warn", "enforce", "disabled"}
+        assert set(VALID_TIERS) == {"disabled", "shadow", "log", "warn", "block"}
 
     def test_invalid_tier_still_rejected(self) -> None:
         """Unknown tier like 'draft' still raises ValueError."""
@@ -974,7 +973,6 @@ class TestDisabledTierSideEffects:
                     "event": "PostToolUse",
                     "prompt": "x",
                     "tier": "draft",
-                    "action": "block",
                     "message": "m",
                 }
             )

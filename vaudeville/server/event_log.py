@@ -31,7 +31,7 @@ class ClassificationEvent:
     prompt_chars: int
     reason: str = ""
     input_snippet: str = ""
-    tier: str = "enforce"
+    tier: str = "block"
 
 
 class EventLogger:

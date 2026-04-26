@@ -197,7 +197,6 @@ class TestRunPipeline:
             event="Stop",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
         )
@@ -217,7 +216,7 @@ class TestRunPipeline:
         from unittest.mock import ANY
 
         mock_client.classify.assert_called_once_with(
-            ANY, rule="test-hedging", prefix_len=ANY, tier="enforce", input_text=ANY
+            ANY, rule="test-hedging", prefix_len=ANY, tier="block", input_text=ANY
         )
 
     def test_shadow_tier_logs_but_passes(
@@ -234,7 +233,6 @@ class TestRunPipeline:
             event="Stop",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
             tier="shadow",
@@ -270,7 +268,6 @@ class TestRunPipeline:
             event="Stop",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
             tier="shadow",
@@ -313,7 +310,6 @@ class TestRunPipeline:
             event="Stop",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
             tier="warn",
@@ -337,24 +333,23 @@ class TestRunPipeline:
         assert "decision" not in response
         assert "warned about" in response["systemMessage"]
 
-    def test_enforce_tier_uses_rule_action(
+    def test_block_tier_emits_block_decision(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Enforce tier (default) uses rule's action field."""
+        """Block tier (default) emits a Claude Code block decision."""
         from unittest.mock import MagicMock
 
         from vaudeville.core.protocol import ClassifyResponse
         from vaudeville.core.rules import Rule
 
         mock_rule = Rule(
-            name="test-enforce",
+            name="test-block",
             event="Stop",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
-            tier="enforce",
+            tier="block",
         )
         mock_client = MagicMock()
         mock_client.classify.return_value = ClassifyResponse(
@@ -394,7 +389,6 @@ class TestRunPipeline:
             event="Stop",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
             tier="disabled",
@@ -453,7 +447,6 @@ class TestMaybeCondense:
             event="Stop",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
         )
@@ -484,7 +477,6 @@ class TestMaybeCondense:
             event="Stop",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
         )
@@ -517,7 +509,6 @@ class TestMaybeCondense:
             event="PreToolUse",
             prompt="Check: {text}",
             context=[{"field": "body"}],
-            action="block",
             message="{reason}",
             threshold=0.5,
         )

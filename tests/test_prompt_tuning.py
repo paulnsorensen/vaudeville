@@ -103,7 +103,6 @@ class TestFormatPromptIntegration:
             event="Stop",
             prompt=prompt,
             context=[],
-            action="block",
             message="{reason}",
         )
 
@@ -243,7 +242,6 @@ class TestConcurrentDispatch:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -277,7 +275,6 @@ class TestConcurrentDispatch:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -310,7 +307,6 @@ class TestConcurrentDispatch:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -340,7 +336,6 @@ class TestConcurrentDispatch:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -503,7 +498,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
             "post-rule": Rule(
@@ -511,7 +505,6 @@ class TestEventDiscovery:
                 event="PostToolUse",
                 prompt="{text}",
                 context=[{"field": "tool_input.body"}],
-                action="block",
                 message="{reason}",
             ),
         }
@@ -555,7 +548,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -590,16 +582,13 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
 
         mock_client = MagicMock()
         mock_client.condense.side_effect = lambda text: text
-        mock_client.classify.return_value = MagicMock(
-            verdict="clean", reason="ok", action="block"
-        )
+        mock_client.classify.return_value = MagicMock(verdict="clean", reason="ok")
 
         stdout = io.StringIO()
         with (
@@ -642,7 +631,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]
@@ -674,7 +662,6 @@ class TestEventDiscovery:
                 event="Stop",
                 prompt="{text}",
                 context=[{"field": "last_assistant_message"}],
-                action="block",
                 message="{reason}",
             ),
         ]

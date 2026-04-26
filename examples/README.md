@@ -2,7 +2,7 @@
 
 A small, opinionated set of starter rules. Each one is **tuned to ≥85% precision** against its eval test cases and **ships at `tier: warn`** — they nudge but do not block.
 
-If you want hard prevention, promote them to `tier: enforce` (block) on your own install once you have runtime data backing it. See [Promoting to block](#promoting-to-block) below.
+If you want hard prevention, promote them to `tier: block` on your own install once you have runtime data backing it. See [Promoting to block](#promoting-to-block) below.
 
 ## Activating Rules
 
@@ -36,14 +36,15 @@ Both target violations that **can be corrected on the next turn**, which is what
 
 ## Tier model
 
-The `tier` field is the master switch; `action` only matters when `tier: enforce`.
+The `tier` field is the single switch — one value, one behavior.
 
 | Tier | What happens on a violation |
 |------|-----------------------------|
 | `disabled` | Rule is loaded but never evaluated |
-| `shadow` | Verdict logged to stderr/telemetry only; invisible to Claude and you. Used for tuning. |
+| `shadow` | Verdict logged to stderr/telemetry only; invisible to Claude and you. Used for tuning. Continues evaluating subsequent rules. |
+| `log` | Prints to stderr only; no user-visible output. Like `shadow` but terminal (subsequent rules don't run). |
 | `warn` | 🪫 systemMessage shown to you and injected into next-turn context. Default for these examples. |
-| `enforce` | Use the `action` field (`block`/`warn`/`log`). At `block`, the action is rejected: PreToolUse blocks the tool call, Stop forces Claude to keep working. |
+| `block` | Action is rejected: PreToolUse blocks the tool call; Stop forces Claude to keep working. |
 
 ## Promoting to block
 
@@ -71,7 +72,7 @@ If the data doesn't support promotion, leave the rule at warn — that's working
 ```yaml
 name: my-rule              # unique identifier
 event: Stop                # Claude Code hook event to trigger on
-tier: warn                 # shadow | warn | enforce | disabled
+tier: warn                 # disabled | shadow | log | warn | block
 prompt: |                  # few-shot classification prompt
   Classify as "violation" or "clean".
   ...
@@ -79,7 +80,6 @@ prompt: |                  # few-shot classification prompt
 context:
   - field: last_assistant_message   # JSON path into hook input
 labels: [violation, clean]          # valid classification labels
-action: block                       # used only when tier: enforce
 message: "Reason: {reason}"         # verdict message template
 threshold: 0.5                      # minimum confidence to trigger (0.0-1.0)
 ```
@@ -96,8 +96,8 @@ Rules extract text to classify from hook input via `context` entries:
 Before writing a YAML, run the impact filter:
 
 1. **Which event will catch this?** (PreToolUse / PostToolUse / Stop / UserPromptSubmit)
-2. **Has the damage already happened by then?** If yes, the rule must either `enforce: block` (force a corrective continuation) or move earlier in the lifecycle.
-3. **What's the highest reachable tier where this changes behavior?** If even `enforce: block` can't fix the violation usefully (e.g., "you said 'Great question!'" — can't unsay it), don't write the rule.
+2. **Has the damage already happened by then?** If yes, the rule must either `tier: block` (force a corrective continuation) or move earlier in the lifecycle.
+3. **What's the highest reachable tier where this changes behavior?** If even `tier: block` can't fix the violation usefully (e.g., "you said 'Great question!'" — can't unsay it), don't write the rule.
 4. **Is the pattern structural?** Terminal regex like "Shall I…?" should be a hard hook (≤100ms) instead of an SLM rule (1-5s).
 
 Use `vaudeville:add-hook` (which routes to `vaudeville:slm-rule-writer` for semantic rules or `vaudeville:hard-hook-writer` for structural ones) — both apply this filter automatically.

@@ -68,9 +68,9 @@ cannot un-do the action — they can only force a continuation or surface a nudg
 
 | Event | Best tier for impact | When the hook is useless |
 |-------|---------------------|--------------------------|
-| `PreToolUse` | `enforce` (block) | Almost never useless — true prevention point |
-| `PostToolUse` | `enforce` (block) | `shadow`/`warn` after a bad write — file is already on disk |
-| `Stop` | `enforce` (block) — forces continuation | `shadow`/`warn` for unrecoverable past-tense violations (e.g., "you wasted this turn") |
+| `PreToolUse` | `block` | Almost never useless — true prevention point |
+| `PostToolUse` | `block` | `shadow`/`warn` after a bad write — file is already on disk |
+| `Stop` | `block` — forces continuation | `shadow`/`warn` for unrecoverable past-tense violations (e.g., "you wasted this turn") |
 | `UserPromptSubmit` | `warn` (inject context) | Rarely needs blocking |
 
 **Reject the request if** the proposed combination is `Stop + shadow/warn` for

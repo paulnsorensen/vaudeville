@@ -257,8 +257,8 @@ def test_tier_included_in_event(tmp_path: pathlib.Path) -> None:
         logger.close()
 
 
-def test_tier_defaults_to_enforce(tmp_path: pathlib.Path) -> None:
-    """Tier defaults to enforce when not specified."""
+def test_tier_defaults_to_block(tmp_path: pathlib.Path) -> None:
+    """Tier defaults to block when not specified."""
     logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
     try:
         logger.log_event(
@@ -273,7 +273,7 @@ def test_tier_defaults_to_enforce(tmp_path: pathlib.Path) -> None:
         time.sleep(0.05)
 
         events = _read_jsonl(tmp_path / "events.jsonl")
-        assert events[0]["tier"] == "enforce"
+        assert events[0]["tier"] == "block"
     finally:
         logger.close()
 

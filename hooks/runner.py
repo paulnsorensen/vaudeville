@@ -74,29 +74,28 @@ def extract_text_from_dict(hook_input: dict, context: list) -> str:
 
 
 def verdict_to_hook_response(
-    name: str, message_template: str, reason: str, action: str
+    name: str, message_template: str, reason: str, tier: str
 ) -> dict:
     """Translate a daemon verdict into a Claude Code hook response."""
     message = message_template.replace("{reason}", reason)
 
-    if action == "log":
+    if tier == "log":
         print(f"[vaudeville] {name}: {reason}", file=sys.stderr)
         return {}
-    elif action == "warn":
+    if tier == "warn":
         return {
             "reason": reason,
             "systemMessage": (
                 f"\U0001fa9d vaudeville hook [{name}] warned about: {message}"
             ),
         }
-    else:  # block (default)
-        return {
-            "decision": "block",
-            "reason": reason,
-            "systemMessage": (
-                f"\U0001fa9d vaudeville hook [{name}] prevented response: {message}"
-            ),
-        }
+    return {
+        "decision": "block",
+        "reason": reason,
+        "systemMessage": (
+            f"\U0001fa9d vaudeville hook [{name}] prevented response: {message}"
+        ),
+    }
 
 
 def main() -> None:
@@ -183,14 +182,9 @@ def _dispatch_violation(rule: Rule, result: ClassifyResponse) -> bool:
         )
         return True
 
-    if rule.tier == "warn":
-        response = verdict_to_hook_response(
-            rule.name, rule.message, result.reason, "warn"
-        )
-    else:  # enforce (default)
-        response = verdict_to_hook_response(
-            rule.name, rule.message, result.reason, rule.action
-        )
+    response = verdict_to_hook_response(
+        rule.name, rule.message, result.reason, rule.tier
+    )
     print(json.dumps(response))
     sys.exit(0)
 

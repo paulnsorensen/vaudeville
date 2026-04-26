@@ -1,5 +1,5 @@
 ---
-agent: claude -p --bare --dangerously-skip-permissions --strict-mcp-config --mcp-config '{}' --settings '{}' --model claude-haiku-4-5 --allowedTools Read,Edit,Write,Bash
+agent: claude -p --bare --dangerously-skip-permissions --strict-mcp-config --mcp-config '{"mcpServers":{}}' --settings '{"apiKeyHelper":"./scripts/claude-oauth-keyhelper.sh"}' --model claude-haiku-4-5 --allowedTools Read,Edit,Write,Bash
 commands:
   - name: plan
     run: ./read-plan.sh {{ args.rule_name }}

@@ -533,8 +533,24 @@ class TestCmdPromote:
             return_value=str(tmp_path / "proj"),
         ):
             cmd_promote(Namespace(name="my-rule"))
+        assert "tier: log" in p.read_text()
+        assert "shadow → log" in capsys.readouterr().out
+
+    def test_log_to_warn(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        p = _write_rule(_home_rules(tmp_path), "my-rule", tier="log")
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_promote(Namespace(name="my-rule"))
         assert "tier: warn" in p.read_text()
-        assert "shadow → warn" in capsys.readouterr().out
+        assert "log → warn" in capsys.readouterr().out
 
     def test_warn_to_block(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -594,11 +610,27 @@ class TestCmdDemote:
         assert "tier: warn" in p.read_text()
         assert "block → warn" in capsys.readouterr().out
 
-    def test_warn_to_shadow(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_warn_to_log(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         p = _write_rule(_home_rules(tmp_path), "my-rule", tier="warn")
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_demote(Namespace(name="my-rule"))
+        assert "tier: log" in p.read_text()
+        assert "warn → log" in capsys.readouterr().out
+
+    def test_log_to_shadow(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        p = _write_rule(_home_rules(tmp_path), "my-rule", tier="log")
         with patch(
             "vaudeville.cli_rules._find_project_root",
             return_value=str(tmp_path / "proj"),

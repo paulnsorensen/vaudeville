@@ -261,12 +261,12 @@ Before writing any YAML, answer in writing:
 3. **What tier will it ship at?** Cross-reference the Event × tier impact map above.
 4. **Is this combination in the "useless rule" list?** If so, redesign or refuse.
 
-If the answer is "the rule fires after the fact AND tier is shadow/warn AND there's no plausible next-turn correction" — **stop and tell the user the rule would be performance theater**. Suggest either a PreToolUse hard hook (via `vaudeville:hard-hook-writer`) or `enforce: block` tier. Do not write a rule that cannot affect behavior.
+If the answer is "the rule fires after the fact AND tier is shadow/warn AND there's no plausible next-turn correction" — **stop and tell the user the rule would be performance theater**. Suggest either a PreToolUse hard hook (via `vaudeville:hard-hook-writer`) or `tier: block`. Do not write a rule that cannot affect behavior.
 
 ### 3. Write the rule YAML
 
 Create `<name>.yaml` in the target rules directory. Start with 4 examples in the prompt (2 violation, 2 clean).
-Always include `tier:` and `threshold: 0.5` explicitly — rules without these default to `enforce`/`0.5` but being explicit prevents accidental hard-blocks on untuned rules.
+Always include `tier:` and `threshold: 0.5` explicitly — rules without these default to `block`/`0.5` but being explicit prevents accidental hard-blocks on untuned rules.
 
 ### 4. Write test cases
 

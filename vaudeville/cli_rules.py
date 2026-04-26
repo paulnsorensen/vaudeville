@@ -28,7 +28,7 @@ from vaudeville.core.rules import (
 )
 from vaudeville.tui import styled_table, tier_text
 
-_ACTIVE_TIERS = ("shadow", "warn", "block")
+_ACTIVE_TIERS = ("shadow", "log", "warn", "block")
 _CmdHandler = Callable[[argparse.Namespace], None]
 _LIST_POLL_INTERVAL = 0.5
 _console = Console()

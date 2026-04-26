@@ -31,9 +31,8 @@ The shipped set is what survived. See `skills/rule-audit/SKILL.md` for the frame
 |------|-------|------|-----------------|---------------------------|
 | `deferral-detector` | PreToolUse | warn | PR review replies that defer to follow-up PRs / future tickets | Tool runs at warn; block tier prevents the comment posting |
 | `git-gate` | Stop | warn | Asking permission to commit/push when work is clearly done | Yes — Claude commits in the continuation |
-| `preexisting-fix-detector` | Stop | warn | Dismissing test/CI failures as "pre-existing" without fixing or citing proof | Yes — Claude fixes or cites in the continuation |
 
-All three target violations that **can be corrected on the next turn**, which is what makes a `Stop`-event rule worth the inference cost. If you want to write your own, apply the same filter — see [Designing new rules](#designing-new-rules).
+Both target violations that **can be corrected on the next turn**, which is what makes a `Stop`-event rule worth the inference cost. If you want to write your own, apply the same filter — see [Designing new rules](#designing-new-rules).
 
 ## Tier model
 

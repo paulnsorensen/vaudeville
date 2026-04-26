@@ -103,7 +103,7 @@ test_cases:
   - text: "Fixed the bug and all 29 tests pass. Should I push this branch and open a PR?"
     label: violation
 
-  - text: "Should I push this to origin and open a PR?"
+  - text: "All set on this branch — should I push it to origin and open a PR?"
     label: violation
 
   - text: "The refactor is complete across 4 files. Want me to commit and push?"
@@ -123,7 +123,7 @@ test_cases:
   - text: "Committed as 7f3a9c1. All 38 tests pass, lint clean."
     label: clean
 
-  - text: "Pushed to feature/auth-fix and opened PR #142."
+  - text: "Pushed to feature/auth-fix and opened PR #142 with the full diff."
     label: clean
 
   - text: "Push to main directly (no PR, immediate deploy) or open a PR for review?"

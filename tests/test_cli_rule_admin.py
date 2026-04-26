@@ -627,7 +627,10 @@ class TestCmdDemote:
         assert "warn → log" in capsys.readouterr().out
 
     def test_log_to_shadow(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         p = _write_rule(_home_rules(tmp_path), "my-rule", tier="log")
@@ -637,6 +640,7 @@ class TestCmdDemote:
         ):
             cmd_demote(Namespace(name="my-rule"))
         assert "tier: shadow" in p.read_text()
+        assert "log → shadow" in capsys.readouterr().out
 
     def test_floor_is_noop(
         self,

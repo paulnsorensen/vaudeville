@@ -316,8 +316,7 @@ class TestRunPipeline:
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
         assert captured.out.strip() == "{}"
-        assert "test-log" in captured.err
-        assert "log fired" in captured.err
+        assert "[vaudeville] test-log: log fired" in captured.err
 
     def test_warn_tier_omits_decision_field(
         self, capsys: pytest.CaptureFixture[str]

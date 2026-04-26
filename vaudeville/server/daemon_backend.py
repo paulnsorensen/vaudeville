@@ -14,7 +14,7 @@ import os
 import socket
 
 from ..core.paths import SOCKET_PATH
-from ..core.protocol import ClassifyResult
+from ..core.protocol import ClassifyRequest, ClassifyResult
 
 CONNECT_TIMEOUT = 2.0
 READ_TIMEOUT = 30.0
@@ -81,10 +81,8 @@ class DaemonBackend:
     def _send_classify(self, prompt: str) -> dict[str, object]:
         # log_event=False keeps eval/tune classifications out of events.jsonl
         # so `vaudeville watch` only shows real hook firings.
-        payload = (
-            json.dumps({"prompt": prompt, "rule": "eval", "log_event": False}).encode()
-            + b"\n"
-        )
+        request = ClassifyRequest(prompt=prompt, rule="eval", log_event=False)
+        payload = json.dumps(request.to_json_dict()).encode() + b"\n"
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
                 sock.settimeout(CONNECT_TIMEOUT)

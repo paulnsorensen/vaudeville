@@ -30,6 +30,7 @@ class ClassifyRequest:
     prefix_len: int = 0  # 0 = no caching (backward compatible)
     tier: str = "enforce"
     input_text: str = ""  # raw LLM output text, before prompt construction
+    log_event: bool = True  # False = suppress events.jsonl write (eval/tune harness)
 
     def to_json_dict(self) -> dict[str, object]:
         d: dict[str, object] = {"prompt": self.prompt}
@@ -41,6 +42,8 @@ class ClassifyRequest:
             d["tier"] = self.tier
         if self.input_text:
             d["input_text"] = self.input_text
+        if not self.log_event:
+            d["log_event"] = False
         return d
 
 

@@ -76,12 +76,9 @@ def extract_text_from_dict(hook_input: dict, context: list) -> str:
 def verdict_to_hook_response(
     name: str, message_template: str, reason: str, tier: str
 ) -> dict:
-    """Translate a daemon verdict into a Claude Code hook response."""
+    """Translate a warn/block verdict into a Claude Code hook response."""
     message = message_template.replace("{reason}", reason)
 
-    if tier == "log":
-        print(f"[vaudeville] {name}: {reason}", file=sys.stderr)
-        return {}
     if tier == "warn":
         return {
             "reason": reason,
@@ -180,6 +177,9 @@ def _dispatch_violation(rule: Rule, result: ClassifyResponse) -> bool:
             result.verdict,
             result.confidence,
         )
+        return True
+    if rule.tier == "log":
+        print(f"[vaudeville] {rule.name}: {result.reason}", file=sys.stderr)
         return True
 
     response = verdict_to_hook_response(

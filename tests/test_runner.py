@@ -87,15 +87,6 @@ class TestVerdictToHookResponse:
         assert "vaudeville hook [test-rule] warned about:" in resp["systemMessage"]
         assert "mild issue" in resp["systemMessage"]
 
-    def test_log_action_returns_empty_dict(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        resp = runner.verdict_to_hook_response(
-            "test-rule", "Caught: {reason}", "logged", "log"
-        )
-        assert resp == {}
-        assert "logged" in capsys.readouterr().err
-
     def test_default_message_uses_reason(self) -> None:
         resp = runner.verdict_to_hook_response("r", "{reason}", "my reason", "block")
         assert "my reason" in resp["systemMessage"]
@@ -290,6 +281,43 @@ class TestRunPipeline:
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
         assert "shadow test-shadow" in captured.err
+
+    def test_log_tier_logs_to_stderr_and_continues(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Log tier emits to stderr and continues the rule loop (does not exit)."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        log_rule = Rule(
+            name="test-log",
+            event="Stop",
+            prompt="Check: {text}",
+            context=[{"field": "body"}],
+            message="{reason}",
+            threshold=0.5,
+            tier="log",
+        )
+        mock_client = MagicMock()
+        mock_client.classify.return_value = ClassifyResponse(
+            verdict="violation", reason="log fired", confidence=0.9
+        )
+        mock_client.condense.side_effect = lambda text: text
+        hook_input = {"body": "x" * 100}
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[log_rule]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            runner._run_event_rules("Stop", hook_input, mock_client)
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "{}"
+        assert "test-log" in captured.err
+        assert "log fired" in captured.err
 
     def test_warn_tier_omits_decision_field(
         self, capsys: pytest.CaptureFixture[str]

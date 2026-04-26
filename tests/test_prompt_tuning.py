@@ -406,13 +406,6 @@ class TestRunnerHelpers:
         runner = self._get_runner()
         assert runner.extract_text_from_dict({}, []) == ""
 
-    def test_verdict_to_hook_response_log(self) -> None:
-        runner = self._get_runner()
-        result = runner.verdict_to_hook_response(
-            "test-rule", "{reason}", "test reason", "log"
-        )
-        assert result == {}
-
     def test_verdict_to_hook_response_warn(self) -> None:
         runner = self._get_runner()
         result = runner.verdict_to_hook_response(

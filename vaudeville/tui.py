@@ -33,9 +33,7 @@ def tier_text(tier: str) -> Text:
         return Text(tier, style="dim")
     if tier == "warn":
         return Text(tier, style="yellow")
-    if tier == "block":
-        return Text(tier, style="bold red")
-    return Text(tier, style="bold green")
+    return Text(tier, style="bold red")
 
 
 _CONFIDENCE_HIGH = 0.8

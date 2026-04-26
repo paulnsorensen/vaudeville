@@ -43,7 +43,7 @@ This detects your platform (Apple Silicon or x86_64) and downloads the appropria
 
 2. Start a new Claude Code session — the daemon launches automatically on `SessionStart`.
 
-3. Try it: ask Claude to explain something. If the response opens with hedging ("this should work") or dismisses a test failure, the rule fires and you'll see a warning or block.
+3. Try it: ask Claude to make a small change and watch it finish. If it ends with "Should I commit and push?" instead of just doing it, `git-gate` warns. Reply to a PR comment with "I'll address this in a follow-up PR" and `deferral-detector` blocks the comment.
 
 ## Uninstall
 
@@ -70,12 +70,8 @@ The bundled examples:
 
 | Rule | Event | What it catches |
 |---|---|---|
-| `violation-detector` | Stop | Hedging, TODOs, unresolved findings in final responses |
-| `sycophancy-detector` | Stop | Unearned praise or flattery openers ("Great question!") |
-| `turn-waste-detector` | Stop | Responses that narrate a failure journey without a working solution |
-| `over-asking-detector` | Stop | Stalling on trivial permission requests instead of proceeding |
-| `preexisting-fix-detector` | Stop | Dismissing failures as "pre-existing" without evidence |
-| `deferral-detector` | PreToolUse | PR replies that defer reviewer concerns to "follow-up PRs" |
+| `git-gate` | Stop | Asking permission to commit/push/open a PR when work is clearly done ("Should I commit?", "Want me to push?") |
+| `deferral-detector` | PreToolUse | PR replies that defer reviewer concerns to "follow-up PRs", tickets, or "next iteration" |
 
 Any rule can be gated with `draft: true` at the top of its YAML — the loader will skip it until that line is removed. Useful while iterating on a new rule without removing it from the directory.
 
@@ -99,8 +95,8 @@ Each rule is a YAML file with a `name`, `event`, `prompt`, `labels`, `action`, a
 
 **Which event should my rule use?**
 
-- **Reviewing what the assistant said** → `Stop`. Most quality rules (violation-detector, sycophancy-detector, turn-waste-detector) use this because they evaluate the assistant's final output.
-- **Blocking a bad action before it happens** → `PreToolUse`. The deferral-detector uses this to catch low-quality PR replies before they're posted.
+- **Reviewing what the assistant said** → `Stop`. Quality rules like `git-gate` use this because they evaluate the assistant's final output.
+- **Blocking a bad action before it happens** → `PreToolUse`. The `deferral-detector` uses this to catch low-quality PR replies before they're posted.
 - **Checking what a tool returned** → `PostToolUse`. Use this when the rule needs to see both the tool input and its result.
 
 Other events (`SessionStart`, `UserPromptSubmit`, `Notification`, etc.) are available for specialized use cases. See `hooks/hooks.json` for the full list of wired events.
@@ -150,20 +146,20 @@ Edit `~/.vaudeville/logs/config.yaml` to change these. Raise `max_size_mb` if yo
 
 ### Subprocess sandboxing
 
-Phase subprocesses are launched with `--bare` and an empty settings/MCP config. Concretely, each phase agent runs as:
+Phase subprocesses are launched with `--bare` plus an inline `apiKeyHelper` that bridges Claude Code's keychain OAuth credential into the bare subprocess. Concretely, each phase agent runs as:
 
 ```
 claude -p --bare --dangerously-skip-permissions \
-  --strict-mcp-config --mcp-config '{}' \
-  --settings '{}' \
+  --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
+  --settings '{"apiKeyHelper":"./scripts/claude-oauth-keyhelper.sh"}' \
   --model <phase-model> --allowedTools <tight whitelist>
 ```
 
 What this means:
 
-- **`--bare`** — skip hooks, plugins, LSP, attribution, auto-memory, keychain reads, and CLAUDE.md auto-discovery. The user's `~/.claude/CLAUDE.md` (and any project-level `CLAUDE.md` that the cwd would walk up into) **does not** leak into ralph subprocesses.
-- **`--strict-mcp-config --mcp-config '{}'`** — only MCP servers from `--mcp-config` load, and the config is empty. No project, user, or auto-discovered MCPs.
-- **`--settings '{}'`** — no `~/.claude/settings.json` or `.claude/settings.local.json`.
+- **`--bare`** — skip hooks, plugins, LSP, attribution, auto-memory, keychain reads, and CLAUDE.md auto-discovery. The user's `~/.claude/CLAUDE.md` (and any walk-up project `CLAUDE.md`) does **not** leak into ralph subprocesses.
+- **`--strict-mcp-config --mcp-config '{"mcpServers":{}}'`** — only MCP servers from `--mcp-config` load, and the config is empty. No project, user, or auto-discovered MCPs.
+- **`--settings '{"apiKeyHelper":"./scripts/claude-oauth-keyhelper.sh"}'`** — no `~/.claude/settings.json` or `.claude/settings.local.json`. The lone setting is an `apiKeyHelper` script that extracts the OAuth `accessToken` from the macOS keychain (`security find-generic-password -s "Claude Code-credentials" -w`) so the bare subprocess can authenticate without provisioning a separate `ANTHROPIC_API_KEY`. Contributors on Linux or without a Claude Code OAuth credential should set `ANTHROPIC_API_KEY` in their environment instead — the helper script is a no-op if either path is unavailable.
 - **`--allowedTools`** — a tight per-phase whitelist (e.g., judge gets `Read,Bash`; design gets `Read,Write,Bash`).
 
 The result is a deterministic, dotfiles-free subprocess — the agent has only what its `RALPH.md` frontmatter explicitly grants, regardless of how the host environment is configured.

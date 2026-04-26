@@ -28,7 +28,7 @@ class TestLoadTestCases:
     def test_loads_all_suites(self, example_rules: dict[str, Rule]) -> None:
         suites = load_test_cases(example_rules)
         assert "deferral-detector" in suites
-        assert "preexisting-fix-detector" in suites
+        assert "git-gate" in suites
 
     def test_cases_have_text_and_label(self, example_rules: dict[str, Rule]) -> None:
         suites = load_test_cases(example_rules)

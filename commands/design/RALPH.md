@@ -1,5 +1,5 @@
 ---
-agent: claude -p --bare --dangerously-skip-permissions --strict-mcp-config --mcp-config '{}' --settings '{}' --model claude-sonnet-4-6 --allowedTools Read,Write,Bash
+agent: claude -p --bare --dangerously-skip-permissions --strict-mcp-config --mcp-config '{"mcpServers":{}}' --settings '{"apiKeyHelper":"./scripts/claude-oauth-keyhelper.sh"}' --model claude-sonnet-4-6 --allowedTools Read,Write,Bash
 commands:
   - name: rule
     run: ./read-rule.sh {{ args.rule_name }}

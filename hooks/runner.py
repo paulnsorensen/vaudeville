@@ -41,6 +41,26 @@ except ImportError as _exc:
 MIN_TEXT_LENGTH = 50
 _DEBUG = os.environ.get("VAUDEVILLE_DEBUG", "") == "1"
 
+# Events whose hook output Claude Code ignores (observability only). On these,
+# block/warn tiers degrade to log-tier behavior so we don't emit invalid envelopes.
+# Source: https://code.claude.com/docs/en/hooks "Decision Control by Event" table.
+NO_DECISION_EVENTS = frozenset(
+    {
+        "Notification",
+        "SessionEnd",
+        "SubagentStart",
+        "FileChanged",
+        "CwdChanged",
+        "InstructionsLoaded",
+        "PostCompact",
+        "WorktreeRemove",
+        "StopFailure",
+        # WorktreeCreate expects a worktree path on stdout, not a decision —
+        # emitting `{}` is the safest fail-open for the rule engine.
+        "WorktreeCreate",
+    }
+)
+
 
 def _dbg(msg: str, *args: object) -> None:
     if _DEBUG:
@@ -74,24 +94,68 @@ def extract_text_from_dict(hook_input: dict, context: list) -> str:
 
 
 def verdict_to_hook_response(
-    name: str, message_template: str, reason: str, tier: str
+    name: str, message_template: str, reason: str, tier: str, event: str = ""
 ) -> dict:
-    """Translate a warn/block verdict into a Claude Code hook response."""
+    """Translate a warn/block verdict into an event-aware Claude Code hook response.
+
+    The hook output schema varies per event — Claude Code's spec uses several
+    different envelopes (top-level decision, hookSpecificOutput.permissionDecision,
+    hookSpecificOutput.decision.behavior, hookSpecificOutput.action,
+    hookSpecificOutput.retry). See https://code.claude.com/docs/en/hooks.
+    """
     message = message_template.replace("{reason}", reason)
 
     if tier == "warn":
         return {
-            "reason": reason,
             "systemMessage": (
                 f"\U0001fa9d vaudeville hook [{name}] warned about: {message}"
             ),
         }
+
+    block_message = f"\U0001fa9d vaudeville hook [{name}] prevented response: {message}"
+
+    if event == "PreToolUse":
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            },
+            "systemMessage": block_message,
+        }
+
+    if event == "PermissionRequest":
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": {"behavior": "deny"},
+                "message": reason,
+            },
+            "systemMessage": block_message,
+        }
+
+    if event == "PermissionDenied":
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionDenied",
+                "retry": False,
+            },
+            "systemMessage": block_message,
+        }
+
+    if event in ("Elicitation", "ElicitationResult"):
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": event,
+                "action": "decline",
+            },
+            "systemMessage": block_message,
+        }
+
     return {
         "decision": "block",
         "reason": reason,
-        "systemMessage": (
-            f"\U0001fa9d vaudeville hook [{name}] prevented response: {message}"
-        ),
+        "systemMessage": block_message,
     }
 
 
@@ -141,8 +205,8 @@ def _run() -> None:
         print("{}")
         sys.exit(0)
 
-    hook_type = hook_input.get("hook_type", "?")
-    _dbg("hook=%s", hook_type)
+    hook_event_name = hook_input.get("hook_event_name", "?")
+    _dbg("hook=%s", hook_event_name)
 
     client = VaudevilleClient()
     _run_event_rules(event, hook_input, client)
@@ -168,7 +232,7 @@ def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
     return client.condense(text)
 
 
-def _dispatch_violation(rule: Rule, result: ClassifyResponse) -> bool:
+def _dispatch_violation(rule: Rule, result: ClassifyResponse, event: str) -> bool:
     """Handle a tier-aware violation. Returns True if the rule loop should continue."""
     if rule.tier == "shadow":
         _dbg(
@@ -182,8 +246,16 @@ def _dispatch_violation(rule: Rule, result: ClassifyResponse) -> bool:
         print(f"[vaudeville] {rule.name}: {result.reason}", file=sys.stderr)
         return True
 
+    if event in NO_DECISION_EVENTS:
+        # Output is ignored on these events — log the violation and continue.
+        print(
+            f"[vaudeville] {rule.name} ({event}): {result.reason}",
+            file=sys.stderr,
+        )
+        return True
+
     response = verdict_to_hook_response(
-        rule.name, rule.message, result.reason, rule.tier
+        rule.name, rule.message, result.reason, rule.tier, event
     )
     print(json.dumps(response))
     sys.exit(0)
@@ -219,7 +291,7 @@ def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> 
             continue
         if result.verdict != "violation" or result.confidence < rule.threshold:
             continue
-        if _dispatch_violation(rule, result):
+        if _dispatch_violation(rule, result, event):
             continue
 
     print("{}")

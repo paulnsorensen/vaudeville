@@ -1,7 +1,7 @@
 {
   "name": "vaudeville",
   "description": "SLM-powered semantic hook enforcement for Claude Code — classifies assistant output against YAML rules using local Phi-4-mini inference",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Paul Sorensen",
     "url": "https://github.com/paulnsorensen"

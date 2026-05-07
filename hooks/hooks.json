@@ -233,18 +233,6 @@
         ]
       }
     ],
-    "WorktreeCreate": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run --project \"${CLAUDE_PLUGIN_ROOT}\" python \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.py\" --event WorktreeCreate",
-            "timeout": 30,
-            "statusMessage": "Evaluating WorktreeCreate rules..."
-          }
-        ]
-      }
-    ],
     "WorktreeRemove": [
       {
         "hooks": [

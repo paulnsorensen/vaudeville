@@ -98,6 +98,68 @@ class TestVerdictToHookResponse:
         assert "Issue: hedging detected" in resp["systemMessage"]
         assert "vaudeville hook [r] prevented response:" in resp["systemMessage"]
 
+    def test_pretooluse_uses_permission_decision_envelope(self) -> None:
+        resp = runner.verdict_to_hook_response(
+            "deferral", "Caught: {reason}", "deferred work", "block", "PreToolUse"
+        )
+        assert "decision" not in resp
+        hso = resp["hookSpecificOutput"]
+        assert hso["hookEventName"] == "PreToolUse"
+        assert hso["permissionDecision"] == "deny"
+        assert hso["permissionDecisionReason"] == "deferred work"
+        assert "Caught: deferred work" in resp["systemMessage"]
+
+    def test_permission_request_uses_decision_behavior_envelope(self) -> None:
+        resp = runner.verdict_to_hook_response(
+            "danger", "Caught: {reason}", "rm -rf /", "block", "PermissionRequest"
+        )
+        assert "decision" not in resp
+        hso = resp["hookSpecificOutput"]
+        assert hso["hookEventName"] == "PermissionRequest"
+        assert hso["decision"] == {"behavior": "deny"}
+        assert hso["message"] == "rm -rf /"
+
+    def test_permission_denied_uses_retry_false_envelope(self) -> None:
+        resp = runner.verdict_to_hook_response(
+            "no-retry", "{reason}", "model retry blocked", "block", "PermissionDenied"
+        )
+        assert "decision" not in resp
+        hso = resp["hookSpecificOutput"]
+        assert hso["hookEventName"] == "PermissionDenied"
+        assert hso["retry"] is False
+
+    def test_elicitation_uses_action_decline_envelope(self) -> None:
+        resp = runner.verdict_to_hook_response(
+            "mcp-guard", "{reason}", "untrusted prompt", "block", "Elicitation"
+        )
+        assert "decision" not in resp
+        hso = resp["hookSpecificOutput"]
+        assert hso["hookEventName"] == "Elicitation"
+        assert hso["action"] == "decline"
+
+    def test_elicitation_result_uses_action_decline_envelope(self) -> None:
+        resp = runner.verdict_to_hook_response(
+            "mcp-guard", "{reason}", "untrusted reply", "block", "ElicitationResult"
+        )
+        assert resp["hookSpecificOutput"]["hookEventName"] == "ElicitationResult"
+        assert resp["hookSpecificOutput"]["action"] == "decline"
+
+    def test_stop_event_keeps_top_level_decision(self) -> None:
+        resp = runner.verdict_to_hook_response(
+            "hedging", "{reason}", "weasel words", "block", "Stop"
+        )
+        assert resp["decision"] == "block"
+        assert resp["reason"] == "weasel words"
+        assert "hookSpecificOutput" not in resp
+
+    def test_warn_tier_ignores_event_specific_envelope(self) -> None:
+        resp = runner.verdict_to_hook_response(
+            "soft", "{reason}", "minor", "warn", "PreToolUse"
+        )
+        assert "hookSpecificOutput" not in resp
+        assert "decision" not in resp
+        assert "warned about" in resp["systemMessage"]
+
 
 class TestSkipEnvVar:
     """Tests for VAUDEVILLE_SKIP bypass."""
@@ -395,6 +457,80 @@ class TestRunPipeline:
         captured = capsys.readouterr()
         response = json.loads(captured.out.strip())
         assert response["decision"] == "block"
+
+    def test_block_tier_on_pretooluse_emits_permission_decision(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Block tier on PreToolUse emits hookSpecificOutput.permissionDecision='deny'."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        mock_rule = Rule(
+            name="test-pretool",
+            event="PreToolUse",
+            prompt="Check: {text}",
+            context=[{"field": "tool_input.command"}],
+            message="{reason}",
+            threshold=0.5,
+            tier="block",
+        )
+        mock_client = MagicMock()
+        mock_client.classify.return_value = ClassifyResponse(
+            verdict="violation", reason="dangerous command", confidence=0.9
+        )
+        hook_input = {"tool_input": {"command": "x" * 100}}
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[mock_rule]),
+            pytest.raises(SystemExit),
+        ):
+            runner._run_event_rules("PreToolUse", hook_input, mock_client)
+
+        response = json.loads(capsys.readouterr().out.strip())
+        assert "decision" not in response
+        hso = response["hookSpecificOutput"]
+        assert hso["hookEventName"] == "PreToolUse"
+        assert hso["permissionDecision"] == "deny"
+        assert hso["permissionDecisionReason"] == "dangerous command"
+
+    def test_block_tier_on_no_decision_event_logs_and_passes(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Cannot-block events (Notification, SessionEnd, etc.) demote block to log
+        because Claude Code ignores their output. The runner logs to stderr and
+        emits an empty body so the rule loop continues."""
+        from unittest.mock import MagicMock
+
+        from vaudeville.core.protocol import ClassifyResponse
+        from vaudeville.core.rules import Rule
+
+        mock_rule = Rule(
+            name="test-notif",
+            event="Notification",
+            prompt="Check: {text}",
+            context=[{"field": "message"}],
+            message="{reason}",
+            threshold=0.5,
+            tier="block",
+        )
+        mock_client = MagicMock()
+        mock_client.classify.return_value = ClassifyResponse(
+            verdict="violation", reason="suspicious notif", confidence=0.9
+        )
+        hook_input = {"message": "x" * 100}
+
+        with (
+            patch("runner._load_rules_for_event", return_value=[mock_rule]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            runner._run_event_rules("Notification", hook_input, mock_client)
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "{}"
+        assert "test-notif (Notification): suspicious notif" in captured.err
 
     def test_main_catches_unexpected_exception(
         self, capsys: pytest.CaptureFixture[str]

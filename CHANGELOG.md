@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-06
+
+### Fixed
+- Hook output envelope now matches the current Claude Code spec on a per-event basis:
+  - `PreToolUse` block tier emits `hookSpecificOutput.permissionDecision: "deny"` with `permissionDecisionReason`, instead of the legacy top-level `decision: "block"`.
+  - `PermissionRequest` emits `hookSpecificOutput.decision.behavior: "deny"` with `message`.
+  - `PermissionDenied` emits `hookSpecificOutput.retry: false`.
+  - `Elicitation` and `ElicitationResult` emit `hookSpecificOutput.action: "decline"`.
+  - `Stop`, `PostToolUse`, `UserPromptSubmit`, `SubagentStop`, `PreCompact`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`, `ConfigChange`, `PostToolUseFailure`, `UserPromptExpansion`, `PostToolBatch` continue to use the top-level `decision: "block"` envelope.
+- Block/warn tiers on cannot-block events (`Notification`, `SessionEnd`, `SubagentStart`, `FileChanged`, `CwdChanged`, `InstructionsLoaded`, `PostCompact`, `WorktreeRemove`, `StopFailure`) now degrade to log-tier behavior — Claude Code ignores their output, so the runner emits an empty body and logs the violation to stderr instead of producing an invalid envelope.
+- Debug logging now reads `hook_event_name` from the hook payload (previously read the non-existent `hook_type` field).
+- Warn tier no longer emits a top-level `reason` field — Claude Code couples `reason` with `decision: "block"`, so warn-only output now rides on `systemMessage` alone.
+
+### Removed
+- `WorktreeCreate` registration in `hooks/hooks.json`. Claude Code expects a worktree path on stdout for that event, not a JSON decision envelope, so routing it through the rule runner is incompatible with the spec.
+
 ## [0.1.0] - 2026-04-11
 
 ### Added

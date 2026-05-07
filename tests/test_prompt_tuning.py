@@ -411,8 +411,9 @@ class TestRunnerHelpers:
         result = runner.verdict_to_hook_response(
             "test-rule", "{reason}", "test reason", "warn"
         )
+        # Warn tier rides on systemMessage only — no top-level `reason` field,
+        # because Claude Code couples `reason` with `decision: "block"`.
         assert result == {
-            "reason": "test reason",
             "systemMessage": "\U0001fa9d vaudeville hook [test-rule] warned about: test reason",
         }
 

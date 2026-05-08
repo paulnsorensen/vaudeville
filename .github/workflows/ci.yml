@@ -45,6 +45,8 @@ jobs:
             uv-sync-args: "--group dev --group gguf"
           - os: macos-15
             uv-sync-args: "--group dev --group mlx"
+          - os: ubuntu-24.04-arm
+            uv-sync-args: "--group dev --group gguf"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -61,9 +63,41 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv python install
+
+      - run: uv sync --group dev
+
+      - name: Smoke — session-start.sh
+        run: |
+          # Create both possible model cache paths so the script won't early-exit
+          # regardless of which backend session-start.sh selects for this platform.
+          mkdir -p "${HOME}/.cache/huggingface/hub/models--microsoft--Phi-4-mini-instruct-gguf"
+          mkdir -p "${HOME}/.cache/huggingface/hub/models--mlx-community--Phi-4-mini-instruct-4bit"
+          bash hooks/session-start.sh < /dev/null
+          RUNTIME_DIR="/tmp/vaudeville-$(id -u)"
+          test -d "${RUNTIME_DIR}"
+
+      - name: Smoke — runner.py fail-open
+        run: |
+          python3 hooks/runner.py --event Stop < tests/fixtures/stop-hook-input.json
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint, test]
+    needs: [lint, test, smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write

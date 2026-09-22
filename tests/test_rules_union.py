@@ -136,6 +136,19 @@ class TestRewriteBashTargetRejected:
                 }
             )
 
+    def test_bash_command_subpath_target_rejected_at_load(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "rewrite-subpath",
+                    "event": "PreToolUse",
+                    "matcher": "Bash",
+                    "prompt": "p",
+                    "target": ["tool_input.command.x"],
+                }
+            )
+
     def test_non_command_target_with_bash_matcher_is_fine(self) -> None:
         rule = parse_rule(
             {

@@ -62,12 +62,20 @@ class DecideRule(BaseModel):
         return self
 
 
+_BASH_COMMAND_TARGET = "tool_input.command"
+
+
 def _target_is_bash_command(target: str, matcher: str | None) -> bool:
-    """Return True when `target` resolves to a Bash command's argv."""
+    """Return True when `target` resolves to a Bash command's argv, or a
+    dotted subpath under it (e.g. `tool_input.command.x`).
+    """
+    is_command_subpath = target == _BASH_COMMAND_TARGET or target.startswith(
+        _BASH_COMMAND_TARGET + "."
+    )
     if matcher and "Bash" in matcher.split("|"):
-        return target == "tool_input.command"
-    if not matcher and target.endswith(".command"):
-        return True
+        return is_command_subpath
+    if not matcher:
+        return is_command_subpath or target.endswith(".command")
     return False
 
 

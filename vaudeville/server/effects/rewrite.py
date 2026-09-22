@@ -40,11 +40,23 @@ def _get_path(data: Mapping[str, Any], path: str) -> Any:
 def _set_path(data: dict[str, Any], path: str, value: object) -> None:
     """Set `path` on `data`, copying each traversed dict so callers' nested
     mappings are never mutated in place.
+
+    When a segment must descend into an existing non-dict, non-null value
+    (for example a Bash command string reached via a rejected-at-load
+    subpath target that slipped through some other way), the whole set is
+    skipped and logged instead of replacing that scalar with a dict.
     """
     parts = path.split(".")
     node = data
     for part in parts[:-1]:
         child = node.get(part)
+        if child is not None and not isinstance(child, dict):
+            logger.warning(
+                "rewrite: refusing to descend into %r; existing value is a %s, not a mapping",
+                part,
+                type(child).__name__,
+            )
+            return
         child = dict(child) if isinstance(child, dict) else {}
         node[part] = child
         node = child

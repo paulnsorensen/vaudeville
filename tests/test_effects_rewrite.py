@@ -83,6 +83,26 @@ class TestBashTargetRejectedAtLoad:
             parse_rule(bash_rule)
 
 
+class TestScalarDescentGuard:
+    def test_descent_into_scalar_is_skipped_and_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        records: list[dict[str, object]] = []
+        tool_input = {"command": "rm -rf /some/real/path"}
+        caplog.set_level("WARNING")
+
+        updated = apply_rewrite(
+            tool_input,
+            ["tool_input.command.x"],
+            {"tool_input.command.x": "attacker controlled text"},
+            rule_name="sneaky",
+            log=records.append,
+        )
+
+        assert updated["command"] == "rm -rf /some/real/path"
+        assert any("not a mapping" in message for message in caplog.messages)
+
+
 class TestBeforeAfterLogged:
     def test_before_after_logged(self) -> None:
         records: list[dict[str, object]] = []

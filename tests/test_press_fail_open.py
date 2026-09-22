@@ -8,12 +8,17 @@ never block a session.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
+from vaudeville.rules import DecideRule
+from vaudeville.server.harness import get_adapter as _get_adapter
 from vaudeville.server.hook import handle_hook_request
 from vaudeville.server.hook import pipeline as pipeline_module
+from vaudeville.server.agents import DecideResult
+from vaudeville.server.user_config import UserConfig
 
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
@@ -155,7 +160,7 @@ class TestInternalFaultsFailOpen:
     def test_decide_fn_raising_allows(self, tmp_path: Path) -> None:
         _matching_rule(tmp_path)
 
-        def boom(rule: object, config: object, text: str) -> object:
+        def boom(rule: DecideRule, config: UserConfig, text: str) -> DecideResult:
             raise RuntimeError("decide exploded")
 
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=boom)
@@ -185,11 +190,13 @@ class TestInternalFaultsFailOpen:
         _matching_rule(tmp_path)
         fn, _ = _decide_fn('{"outcome": "violation"}')
 
-        real_get_adapter = pipeline_module.get_adapter
+        real_get_adapter = _get_adapter
 
         class ExplodingAdapter:
-            def normalize(self, raw: object) -> object:
-                return real_get_adapter("claude-code").normalize(raw)  # type: ignore[union-attr]
+            def normalize(self, raw: Mapping[str, object]) -> object:
+                adapter = real_get_adapter("claude-code")
+                assert adapter is not None
+                return adapter.normalize(raw)
 
             def render(self, outcome: object) -> dict[str, object]:
                 raise RuntimeError("render exploded")

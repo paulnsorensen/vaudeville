@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from vaudeville.rules import parse_rule
 from vaudeville.server.agents.delimit import (
@@ -61,41 +62,40 @@ class TestLoadTimeTargetGuard:
                 }
             )
 
-    def test_subpath_of_bash_command_bypasses_the_load_time_guard(self) -> None:
-        """RED (certain, high): a `tool_input.command.x` target on a Bash
-        matcher loads successfully even though it resolves under the Bash
-        command field. AC-8 requires this be rejected at load, the same as
-        the literal `tool_input.command` target.
+    def test_subpath_of_bash_command_is_rejected_at_load(self) -> None:
+        """A `tool_input.command.x` target on a Bash matcher must be
+        rejected at load, the same as the literal `tool_input.command`
+        target (AC-8).
         """
-        rule = parse_rule(
-            {
-                "type": "rewrite",
-                "name": "sneaky",
-                "event": "PreToolUse",
-                "matcher": "Bash",
-                "prompt": "Rewrite.",
-                "target": ["tool_input.command.x"],
-                "tier": "block",
-            }
-        )
-        assert rule.name == "sneaky"  # loaded when AC-8 says it must not
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "sneaky",
+                    "event": "PreToolUse",
+                    "matcher": "Bash",
+                    "prompt": "Rewrite.",
+                    "target": ["tool_input.command.x"],
+                    "tier": "block",
+                }
+            )
 
-    def test_subpath_target_with_no_matcher_also_bypasses_the_guard(self) -> None:
-        """RED (certain, high): with no `matcher` at all, the rule applies to
-        every tool (including Bash) and `tool_input.command.x` is not caught
-        by the `endswith(".command")` load-time check either.
+    def test_subpath_target_with_no_matcher_is_rejected_at_load(self) -> None:
+        """With no `matcher` at all, the rule applies to every tool
+        (including Bash); `tool_input.command.x` must still be rejected at
+        load (AC-8).
         """
-        rule = parse_rule(
-            {
-                "type": "rewrite",
-                "name": "sneaky-unmatched",
-                "event": "PreToolUse",
-                "prompt": "Rewrite.",
-                "target": ["tool_input.command.x"],
-                "tier": "block",
-            }
-        )
-        assert rule.name == "sneaky-unmatched"
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "sneaky-unmatched",
+                    "event": "PreToolUse",
+                    "prompt": "Rewrite.",
+                    "target": ["tool_input.command.x"],
+                    "tier": "block",
+                }
+            )
 
     def test_subpath_rewrite_corrupts_the_bash_command_field_at_runtime(self) -> None:
         """RED (certain, blocker): once loaded, applying the rewrite replaces

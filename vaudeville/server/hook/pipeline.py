@@ -265,9 +265,18 @@ def _evaluate_rule(
     if action_name == "feedback":
         message = with_origin_label(dispatch_rule.name, message)
 
+    rewrite_downgrade: str | None = None
     if action_name == "rewrite":
-        action_name, message, updated_input = _do_rewrite(
-            dispatch_rule, action_obj, by_name, event, config, logger_fn
+        action_name, message, updated_input, rewrite_downgrade = _do_rewrite(
+            dispatch_rule,
+            action_obj,
+            by_name,
+            event,
+            config,
+            logger_fn,
+            clock=clock,
+            start_time=start_time,
+            deadline_seconds=deadline_seconds,
         )
     elif action_name == "add-context":
         context_text = action_obj.text if action_obj is not None else None
@@ -276,6 +285,8 @@ def _evaluate_rule(
         command = action_obj.command if action_obj is not None else None
 
     effective_name, downgrade = apply_tier_ceiling(action_name, rule.tier)
+    if rewrite_downgrade:
+        downgrade = f"{rewrite_downgrade};{downgrade}" if downgrade else rewrite_downgrade
 
     _log_decision(
         logger_fn,
@@ -356,10 +367,14 @@ def _do_rewrite(
     event: HookEvent,
     config: UserConfig,
     logger_fn: EventLogger | None,
-) -> tuple[str, str, dict[str, object] | None]:
+    *,
+    clock: Callable[[], float],
+    start_time: float,
+    deadline_seconds: float,
+) -> tuple[str, str, dict[str, object] | None, str | None]:
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
     if not isinstance(target, RewriteRule) or target.tier == "disabled":
-        return "allow", "", None
+        return "allow", "", None, None
     if target.event != event.event or not _matcher_matches(
         target.matcher, event.tool_name
     ):
@@ -371,17 +386,23 @@ def _do_rewrite(
             event.event,
             event.tool_name,
         )
-        return "allow", "", None
+        return "allow", "", None, None
 
     resolution = resolve_model(target, config)
     if resolution.notice:
         print(resolution.notice, file=sys.stderr)
     if resolution.model is None:
-        return "allow", "", None
+        return "allow", "", None, None
+    model = resolution.model
 
-    new_text = run_rewrite(target, resolution.model, event.text)
+    remaining = _remaining_budget(clock, start_time, deadline_seconds)
+    new_text = escalate(
+        lambda: run_rewrite(target, model, event.text),
+        deadline=remaining,
+        rule_name=target.name,
+    )
     if new_text is None:
-        return "allow", "", None
+        return "allow", "", None, "rewrite-timeout"
 
     def _log(record: dict[str, object]) -> None:
         logger.info("rewrite effect for rule %r: %r", rule.name, record)
@@ -389,7 +410,7 @@ def _do_rewrite(
     downgraded = rewrite_or_feedback(event, new_text, rule_name=rule.name, log=_log)
     if downgraded is not None:
         labeled = with_origin_label(rule.name, new_text)
-        return "feedback", labeled, None
+        return "feedback", labeled, None, None
 
     assert event.tool_input is not None
     new_values = {path: new_text for path in target.target}
@@ -398,8 +419,8 @@ def _do_rewrite(
     )
     action_name, _ = apply_tier_ceiling("rewrite", target.tier)
     if action_name != "rewrite":
-        return action_name, new_text, None
-    return "rewrite", new_text, updated
+        return action_name, new_text, None, None
+    return "rewrite", new_text, updated, None
 
 
 def _log_render_downgrade(

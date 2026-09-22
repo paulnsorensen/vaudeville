@@ -17,7 +17,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from vaudeville.core.truncation import CHARS_PER_TOKEN, MAX_INPUT_TOKENS
 from vaudeville.rules import DecideRule
-from vaudeville.server.agents import DecideResult, decide
+from vaudeville.server.agents import DecideResult, ModelResolution, decide
 from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.hook import handle_hook_request
@@ -182,6 +182,80 @@ class TestRequestDeadline:
 
         assert deadlines
         assert all(d <= 1.5 for d in deadlines)
+
+    def test_slow_run_rewrite_times_out_and_allows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """H3: `run_rewrite` exceeding the request deadline fails open and
+        logs a rewrite-timeout downgrade; wall time stays under the deadline."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "pipeline-rewrite-gate",
+            """
+type: decide
+name: pipeline-rewrite-gate
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {action: rewrite, rule: rewrite-target}
+tier: block
+""",
+        )
+        _write_rule(
+            tmp_path,
+            "rewrite-target",
+            """
+type: rewrite
+name: rewrite-target
+event: PreToolUse
+matcher: Write
+prompt: Rewrite.
+target: [tool_input.content]
+tier: block
+""",
+        )
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+
+        monkeypatch.setattr(
+            pipeline_module,
+            "resolve_model",
+            lambda rule, config: ModelResolution(model="fake:model"),
+        )
+
+        def slow_run_rewrite(rule: object, model: object, text: str) -> str:
+            time.sleep(0.5)
+            return "rewritten"
+
+        monkeypatch.setattr(pipeline_module, "run_rewrite", slow_run_rewrite)
+
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            wall_start = time.monotonic()
+            result = handle_hook_request(
+                _request(
+                    tmp_path, tool_input={"content": "old", "file_path": "a.txt"}
+                ),
+                config=_CONFIG,
+                decide_fn=fn,
+                event_logger=logger,
+                deadline_seconds=0.1,
+            )
+            elapsed = time.monotonic() - wall_start
+
+            assert result == {"stdout": "{}", "exit_code": 0}
+            assert elapsed < 0.6
+
+            time.sleep(0.05)
+            lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+            records = [json.loads(line) for line in lines]
+            assert any(r.get("downgrade") == "rewrite-timeout" for r in records)
+        finally:
+            logger.close()
 
 
 STOP_ASK_RULE_YAML = """

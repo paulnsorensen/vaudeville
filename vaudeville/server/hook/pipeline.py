@@ -35,7 +35,7 @@ from vaudeville.server.effects import (
     with_origin_label,
 )
 from vaudeville.server.event_log import ClassificationEvent, EventLogger
-from vaudeville.server.harness import HookEvent, Outcome, get_adapter
+from vaudeville.server.harness import Adapter, HookEvent, Outcome, RenderResult, get_adapter
 from vaudeville.server.user_config import UserConfig, load_user_config
 
 from .precedence import EvaluatedAction, merge
@@ -84,7 +84,7 @@ def handle_hook_request(
         )
     except Exception:
         logger.exception("hook pipeline raised; allowing")
-        return dict(adapter.render_allow())
+        return _to_wire(adapter.render_allow())
 
 
 def _remaining_budget(
@@ -93,10 +93,15 @@ def _remaining_budget(
     return max(0.0, deadline_seconds - (clock() - start_time))
 
 
+def _to_wire(rendered: RenderResult) -> dict[str, object]:
+    """Strip the render's own `downgrades` before it reaches the wire."""
+    return {"stdout": rendered["stdout"], "exit_code": rendered["exit_code"]}
+
+
 def _run_pipeline(
     request: Mapping[str, object],
     *,
-    adapter: object,
+    adapter: Adapter,
     config: UserConfig,
     event_logger: EventLogger | None,
     decide_fn: DecideFn,
@@ -106,7 +111,7 @@ def _run_pipeline(
     start_time = clock()
     payload = request.get("payload")
     raw = payload if isinstance(payload, Mapping) else {}
-    event: HookEvent = adapter.normalize(raw)  # type: ignore[attr-defined]
+    event: HookEvent = adapter.normalize(raw)
     text = _truncate_for_event(prepare_text(event.text, event.event), event.event)
     event = event.model_copy(update={"text": text})
 
@@ -155,7 +160,7 @@ def _run_pipeline(
             )
 
     if result.primary is None:
-        return dict(adapter.render_allow())  # type: ignore[attr-defined]
+        return _to_wire(adapter.render_allow())
 
     outcome = Outcome(
         action=Action(action=result.primary.action_name),  # type: ignore[arg-type]
@@ -165,16 +170,16 @@ def _run_pipeline(
         updated_input=result.primary.updated_input,
         context=result.context,
     )
-    rendered: dict[str, object] = adapter.render(outcome)  # type: ignore[attr-defined]
-    render_downgrades = rendered.pop("downgrades", [])
+    rendered: RenderResult = adapter.render(outcome)
+    render_downgrades = rendered["downgrades"]
     if render_downgrades:
         _log_render_downgrade(
             event_logger,
             result.primary,
-            render_downgrades,  # type: ignore[arg-type]
+            render_downgrades,
             prompt_chars=len(event.text),
         )
-    return rendered
+    return _to_wire(rendered)
 
 
 def _matcher_matches(matcher: str | None, tool_name: str | None) -> bool:

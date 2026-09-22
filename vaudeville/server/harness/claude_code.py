@@ -3,7 +3,7 @@
 Output shapes follow the Claude Code hooks reference
 (https://code.claude.com/docs/en/hooks, read 2026-09-22). An action that has
 no channel on a given event degrades to `warn` and the downgrade is recorded
-on `self.downgrades` for the pipeline to log (AC-7).
+in the render result's `downgrades` list for the pipeline to log (AC-7).
 """
 
 from __future__ import annotations
@@ -11,7 +11,9 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 
-from vaudeville.server.harness import HookEvent, Outcome
+from vaudeville.server.harness import HookEvent, Outcome, RenderResult
+
+_RenderStep = Callable[[Outcome], tuple[dict[str, object], dict[str, str] | None]]
 
 # hookSpecificOutput.permissionDecision (allow/deny/ask) and updatedInput
 # exist only on PreToolUse.
@@ -86,9 +88,6 @@ def _json(payload: dict[str, object]) -> dict[str, object]:
 class ClaudeCodeAdapter:
     """Adapter for the Claude Code harness."""
 
-    def __init__(self) -> None:
-        self.downgrades: list[dict[str, str]] = []
-
     def normalize(self, raw: Mapping[str, object]) -> HookEvent:
         event = str(raw.get("hook_event_name", ""))
         tool_input = raw.get("tool_input")
@@ -103,10 +102,9 @@ class ClaudeCodeAdapter:
             text=_derive_text(event, raw),
         )
 
-    def render(self, outcome: Outcome) -> dict[str, object]:
-        self.downgrades = []
+    def render(self, outcome: Outcome) -> RenderResult:
         name = outcome.action.action
-        renderers: dict[str, Callable[[Outcome], dict[str, object]]] = {
+        renderers: dict[str, _RenderStep] = {
             "allow": self._render_allow,
             "log": self._render_log,
             "warn": self._render_warn,
@@ -119,22 +117,31 @@ class ClaudeCodeAdapter:
             "run": self._render_run,
         }
         method = renderers.get(name)
-        result = self._degrade(outcome, name) if method is None else method(outcome)
-        return {**result, "downgrades": list(self.downgrades)}
+        payload, downgrade = (
+            self._degrade(outcome, name) if method is None else method(outcome)
+        )
+        downgrades = [downgrade] if downgrade is not None else []
+        return {
+            "stdout": str(payload["stdout"]),
+            "exit_code": int(payload["exit_code"]),  # type: ignore[call-overload]
+            "downgrades": downgrades,
+        }
 
     def _degrade(
         self, outcome: Outcome, action_name: str, text: str | None = None
-    ) -> dict[str, object]:
-        self.downgrades.append(
-            {"from": action_name, "to": "warn", "event": outcome.event}
-        )
-        return _json({"systemMessage": text if text is not None else outcome.message})
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
+        downgrade = {"from": action_name, "to": "warn", "event": outcome.event}
+        payload = _json({"systemMessage": text if text is not None else outcome.message})
+        return payload, downgrade
 
-    def render_allow(self) -> dict[str, object]:
-        return {"stdout": "{}", "exit_code": 0}
+    def render_allow(self) -> RenderResult:
+        return {"stdout": "{}", "exit_code": 0, "downgrades": []}
 
-    def _render_allow(self, outcome: Outcome) -> dict[str, object]:
-        return self.render_allow()
+    def _render_allow(
+        self, outcome: Outcome
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
+        del outcome
+        return {"stdout": "{}", "exit_code": 0}, None
 
     # `log`'s side effect belongs to the pipeline; the hook output is allow.
     _render_log = _render_allow
@@ -147,71 +154,95 @@ class ClaudeCodeAdapter:
     # itself must not block.
     _render_run = _render_allow
 
-    def _render_warn(self, outcome: Outcome) -> dict[str, object]:
-        return _json({"systemMessage": outcome.message})
+    def _render_warn(
+        self, outcome: Outcome
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
+        return _json({"systemMessage": outcome.message}), None
 
-    def _render_block(self, outcome: Outcome) -> dict[str, object]:
+    def _render_block(
+        self, outcome: Outcome
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
         event = outcome.event
         if event in _PERMISSION_DECISION_EVENTS:
-            return _json(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": event,
-                        "permissionDecision": "deny",
-                        "permissionDecisionReason": outcome.message,
+            return (
+                _json(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": event,
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": outcome.message,
+                        }
                     }
-                }
+                ),
+                None,
             )
         if event in _TOP_LEVEL_DECISION_EVENTS:
-            return _json({"decision": "block", "reason": outcome.message})
+            return _json({"decision": "block", "reason": outcome.message}), None
         return self._degrade(outcome, "block")
 
-    def _render_ask(self, outcome: Outcome) -> dict[str, object]:
+    def _render_ask(
+        self, outcome: Outcome
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
         if outcome.event in _PERMISSION_DECISION_EVENTS:
-            return _json(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": outcome.event,
-                        "permissionDecision": "ask",
-                        "permissionDecisionReason": outcome.message,
+            return (
+                _json(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": outcome.event,
+                            "permissionDecision": "ask",
+                            "permissionDecisionReason": outcome.message,
+                        }
                     }
-                }
+                ),
+                None,
             )
         return self._degrade(outcome, "ask")
 
-    def _render_rewrite(self, outcome: Outcome) -> dict[str, object]:
+    def _render_rewrite(
+        self, outcome: Outcome
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
         if (
             outcome.event in _PERMISSION_DECISION_EVENTS
             and outcome.updated_input is not None
         ):
-            return _json(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": outcome.event,
-                        "permissionDecision": "allow",
-                        "updatedInput": outcome.updated_input,
+            return (
+                _json(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": outcome.event,
+                            "permissionDecision": "allow",
+                            "updatedInput": outcome.updated_input,
+                        }
                     }
-                }
+                ),
+                None,
             )
         return self._degrade(outcome, "rewrite")
 
-    def _render_feedback(self, outcome: Outcome) -> dict[str, object]:
+    def _render_feedback(
+        self, outcome: Outcome
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
         return self._render_context_message(outcome, outcome.message, "feedback")
 
-    def _render_add_context(self, outcome: Outcome) -> dict[str, object]:
+    def _render_add_context(
+        self, outcome: Outcome
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
         text = outcome.context if outcome.context is not None else outcome.message
         return self._render_context_message(outcome, text, "add-context")
 
     def _render_context_message(
         self, outcome: Outcome, text: str, action_name: str
-    ) -> dict[str, object]:
+    ) -> tuple[dict[str, object], dict[str, str] | None]:
         if outcome.event in _ADDITIONAL_CONTEXT_EVENTS:
-            return _json(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": outcome.event,
-                        "additionalContext": text,
+            return (
+                _json(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": outcome.event,
+                            "additionalContext": text,
+                        }
                     }
-                }
+                ),
+                None,
             )
         return self._degrade(outcome, action_name, text=text)

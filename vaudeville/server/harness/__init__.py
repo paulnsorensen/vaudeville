@@ -8,7 +8,7 @@ up by name so the pipeline stays harness-agnostic.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -25,6 +25,14 @@ class HookEvent(BaseModel):
     cwd: str
     raw: dict[str, object]
     text: str = ""
+
+
+class RenderResult(TypedDict):
+    """The hook stdout/exit-code payload plus this render's own downgrades."""
+
+    stdout: str
+    exit_code: int
+    downgrades: list[dict[str, str]]
 
 
 class Outcome(BaseModel):
@@ -44,9 +52,9 @@ class Adapter(Protocol):
 
     def normalize(self, raw: Mapping[str, object]) -> HookEvent: ...
 
-    def render(self, outcome: Outcome) -> dict[str, object]: ...
+    def render(self, outcome: Outcome) -> RenderResult: ...
 
-    def render_allow(self) -> dict[str, object]: ...
+    def render_allow(self) -> RenderResult: ...
 
 
 def _build_registry() -> dict[str, Adapter]:
@@ -63,4 +71,4 @@ def get_adapter(name: str) -> Adapter | None:
     return _REGISTRY.get(name)
 
 
-__all__ = ["Adapter", "HookEvent", "Outcome", "get_adapter"]
+__all__ = ["Adapter", "HookEvent", "Outcome", "RenderResult", "get_adapter"]

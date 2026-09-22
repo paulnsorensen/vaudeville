@@ -16,12 +16,12 @@ from __future__ import annotations
 import json
 
 from vaudeville.rules import Action, ActionName
-from vaudeville.server.harness import Outcome
+from vaudeville.server.harness import Outcome, RenderResult
 from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
 
 
-def _stdout_json(result: dict[str, object]) -> dict[str, object]:
-    return dict(json.loads(str(result["stdout"])))
+def _stdout_json(result: RenderResult) -> dict[str, object]:
+    return dict(json.loads(result["stdout"]))
 
 
 def _outcome(
@@ -46,7 +46,7 @@ class TestRenderMatrix:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("allow", "PreToolUse"))
         assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
-        assert adapter.downgrades == []
+        assert result["downgrades"] == []
 
     def test_log(self) -> None:
         adapter = ClaudeCodeAdapter()
@@ -74,7 +74,7 @@ class TestRenderMatrix:
             }
         }
         assert result["exit_code"] == 0
-        assert adapter.downgrades == []
+        assert result["downgrades"] == []
 
     def test_feedback(self) -> None:
         adapter = ClaudeCodeAdapter()
@@ -90,7 +90,7 @@ class TestRenderMatrix:
                 "additionalContext": "[git-gate] use --force-with-lease",
             }
         }
-        assert adapter.downgrades == []
+        assert result["downgrades"] == []
 
     def test_rewrite(self) -> None:
         adapter = ClaudeCodeAdapter()
@@ -109,13 +109,13 @@ class TestRenderMatrix:
                 "updatedInput": {"command": "git push --force-with-lease"},
             }
         }
-        assert adapter.downgrades == []
+        assert result["downgrades"] == []
 
     def test_escalate(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("escalate", "PreToolUse"))
         assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
-        assert adapter.downgrades == []
+        assert result["downgrades"] == []
 
     def test_ask(self) -> None:
         adapter = ClaudeCodeAdapter()
@@ -128,7 +128,7 @@ class TestRenderMatrix:
                 "permissionDecisionReason": "confirm?",
             }
         }
-        assert adapter.downgrades == []
+        assert result["downgrades"] == []
 
     def test_add_context(self) -> None:
         adapter = ClaudeCodeAdapter()
@@ -142,13 +142,13 @@ class TestRenderMatrix:
                 "additionalContext": "branch: main",
             }
         }
-        assert adapter.downgrades == []
+        assert result["downgrades"] == []
 
     def test_run(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("run", "PostToolUse"))
         assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
-        assert adapter.downgrades == []
+        assert result["downgrades"] == []
 
 
 class TestDegrade:
@@ -158,7 +158,7 @@ class TestDegrade:
         payload = _stdout_json(result)
         assert payload == {"systemMessage": "confirm?"}
         assert result["exit_code"] == 0
-        assert adapter.downgrades == [{"from": "ask", "to": "warn", "event": "Stop"}]
+        assert result["downgrades"] == [{"from": "ask", "to": "warn", "event": "Stop"}]
 
     def test_add_context_on_notification_degrades(self) -> None:
         adapter = ClaudeCodeAdapter()
@@ -167,7 +167,7 @@ class TestDegrade:
         )
         payload = _stdout_json(result)
         assert payload == {"systemMessage": "branch: main"}
-        assert adapter.downgrades == [
+        assert result["downgrades"] == [
             {"from": "add-context", "to": "warn", "event": "Notification"}
         ]
 
@@ -176,7 +176,7 @@ class TestDegrade:
         result = adapter.render(_outcome("block", "Notification", message="nope"))
         payload = _stdout_json(result)
         assert payload == {"systemMessage": "nope"}
-        assert adapter.downgrades == [
+        assert result["downgrades"] == [
             {"from": "block", "to": "warn", "event": "Notification"}
         ]
 
@@ -185,8 +185,20 @@ class TestDegrade:
         result = adapter.render(_outcome("rewrite", "Stop"))
         payload = _stdout_json(result)
         assert payload == {"systemMessage": "blocked by rule"}
-        assert adapter.downgrades == [
+        assert result["downgrades"] == [
             {"from": "rewrite", "to": "warn", "event": "Stop"}
+        ]
+
+    def test_interleaved_render_does_not_leak_downgrades(self) -> None:
+        """`render` is stateless: interleaved calls don't share downgrades (H2)."""
+        adapter = ClaudeCodeAdapter()
+        result_a = adapter.render(_outcome("ask", "Stop", message="confirm?"))
+        result_b = adapter.render(
+            _outcome("add-context", "Notification", context="branch: main")
+        )
+        assert result_a["downgrades"] == [{"from": "ask", "to": "warn", "event": "Stop"}]
+        assert result_b["downgrades"] == [
+            {"from": "add-context", "to": "warn", "event": "Notification"}
         ]
 
 

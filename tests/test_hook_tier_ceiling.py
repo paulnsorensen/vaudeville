@@ -187,11 +187,11 @@ tier: disabled
         calls: list[int] = []
         from vaudeville.server.hook import pipeline as pipeline_module
 
-        monkeypatch.setattr(
-            pipeline_module,
-            "run_rewrite",
-            lambda rule, model, text: calls.append(1) or "x",
-        )
+        def _record_call(rule: object, model: object, text: object) -> str:
+            calls.append(1)
+            return "x"
+
+        monkeypatch.setattr(pipeline_module, "run_rewrite", _record_call)
 
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 

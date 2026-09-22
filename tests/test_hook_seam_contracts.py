@@ -179,13 +179,13 @@ tier: block
 
     payload = dict(json.loads(str(result["stdout"])))
     updated = payload["hookSpecificOutput"]["updatedInput"]
-    assert updated["content"] == "[vaudeville hook: gate] sanitized text"
+    assert updated["content"] == "sanitized text"
+    assert not updated["content"].startswith("[vaudeville hook:")
     assert updated["file_path"] == "notes.txt"
     rewrite_logs = [r for r in caplog.records if "rewrite effect" in r.getMessage()]
     assert any("'before': 'old text'" in r.getMessage() for r in rewrite_logs)
     assert any(
-        "'after': '[vaudeville hook: gate] sanitized text'" in r.getMessage()
-        for r in rewrite_logs
+        "'after': 'sanitized text'" in r.getMessage() for r in rewrite_logs
     )
 
 

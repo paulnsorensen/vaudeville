@@ -300,21 +300,20 @@ def _do_rewrite(
     if new_text is None:
         return "allow", "", None
 
-    labeled = with_origin_label(rule.name, new_text)
-
     def _log(record: dict[str, object]) -> None:
         logger.info("rewrite effect for rule %r: %r", rule.name, record)
 
-    downgraded = rewrite_or_feedback(event, labeled, rule_name=rule.name, log=_log)
+    downgraded = rewrite_or_feedback(event, new_text, rule_name=rule.name, log=_log)
     if downgraded is not None:
+        labeled = with_origin_label(rule.name, new_text)
         return "feedback", labeled, None
 
     assert event.tool_input is not None
-    new_values = {path: labeled for path in target.target}
+    new_values = {path: new_text for path in target.target}
     updated = apply_rewrite(
         event.tool_input, target.target, new_values, rule_name=rule.name, log=_log
     )
-    return "rewrite", labeled, updated
+    return "rewrite", new_text, updated
 
 
 def _log_decision(

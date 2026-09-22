@@ -38,6 +38,13 @@ def decide_fn(output: str) -> tuple[Any, Recorder]:
     return fn, recorder
 
 
+@pytest.fixture(autouse=True)
+def isolate_rule_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep hook tests from loading the real bundled or user rule layers."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "no-plugin-root"))
+    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))
+
+
 def write_rule(tmp_path: Path, name: str, body: str) -> None:
     rules_dir = tmp_path / ".vaudeville" / "rules"
     rules_dir.mkdir(parents=True, exist_ok=True)

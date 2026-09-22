@@ -353,7 +353,7 @@ def _do_rewrite(
     logger_fn: EventLogger | None,
 ) -> tuple[str, str, dict[str, object] | None]:
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
-    if not isinstance(target, RewriteRule):
+    if not isinstance(target, RewriteRule) or target.tier == "disabled":
         return "allow", "", None
     if target.event != event.event or not _matcher_matches(
         target.matcher, event.tool_name
@@ -391,6 +391,9 @@ def _do_rewrite(
     updated = apply_rewrite(
         event.tool_input, target.target, new_values, rule_name=rule.name, log=_log
     )
+    action_name, _ = apply_tier_ceiling("rewrite", target.tier)
+    if action_name != "rewrite":
+        return action_name, new_text, None
     return "rewrite", new_text, updated
 
 

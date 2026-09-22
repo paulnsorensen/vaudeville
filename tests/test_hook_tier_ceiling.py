@@ -158,6 +158,80 @@ tier: block
         assert "systemMessage" in str(result["stdout"])
         assert "updatedInput" not in str(result["stdout"])
 
+    def test_disabled_rewrite_target_skips_model_call(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "block-rewrite",
+            _decide_rule(
+                "block-rewrite", "{action: rewrite, rule: rewrite-target}", "block"
+            ),
+        )
+        _write_rule(
+            tmp_path,
+            "rewrite-target",
+            """
+type: rewrite
+name: rewrite-target
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Rewrite.
+target: [tool_input.content]
+tier: disabled
+""",
+        )
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        calls: list[int] = []
+        from vaudeville.server.hook import pipeline as pipeline_module
+
+        monkeypatch.setattr(
+            pipeline_module,
+            "run_rewrite",
+            lambda rule, model, text: calls.append(1) or "x",
+        )
+
+        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+
+        assert calls == []
+        assert result == {"stdout": "{}", "exit_code": 0}
+
+    def test_warn_tier_rewrite_target_downgrades_to_warn(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "block-rewrite",
+            _decide_rule(
+                "block-rewrite", "{action: rewrite, rule: rewrite-target}", "block"
+            ),
+        )
+        _write_rule(
+            tmp_path,
+            "rewrite-target",
+            """
+type: rewrite
+name: rewrite-target
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Rewrite.
+target: [tool_input.content]
+tier: warn
+""",
+        )
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        patch_rewrite(monkeypatch, "safe command")
+
+        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+
+        assert result["exit_code"] == 0
+        assert "systemMessage" in str(result["stdout"])
+        assert "updatedInput" not in str(result["stdout"])
+
     def test_warn_caps_feedback(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -11,6 +11,7 @@ import yaml
 from vaudeville.rules import (
     DecideRule,
     RewriteRule,
+    RuleSet,
     load_rule_file,
     load_rules,
     load_rules_layered,
@@ -88,6 +89,13 @@ class TestLoadRulesDirectory:
     def test_missing_directory_returns_empty(self, tmp_path: Path) -> None:
         assert load_rules(str(tmp_path / "nope")) == {}
 
+    def test_draft_rule_skipped_while_others_load(self, tmp_path: Path) -> None:
+        _write_rule(tmp_path, "good.yaml", DECIDE_RULE)
+        _write_rule(tmp_path, "draft.yaml", dict(DECIDE_RULE, name="draft-rule", draft=True))
+
+        rules = load_rules(str(tmp_path))
+        assert set(rules) == {"git-gate"}
+
 
 class TestLoadRulesLayered:
     def test_project_overrides_user_by_name(
@@ -132,3 +140,18 @@ class TestLoadRulesLayered:
         ruleset = load_rules_layered(None)
         rules = ruleset.by_name()
         assert isinstance(rules["trim"], RewriteRule)
+
+
+class TestRuleSetForEvent:
+    def test_for_event_filters_by_event(self, tmp_path: Path) -> None:
+        decide_path = _write_rule(tmp_path, "gate.yaml", DECIDE_RULE)
+        rewrite_path = _write_rule(tmp_path, "trim.yaml", REWRITE_RULE)
+        decide_rule = load_rule_file(decide_path)
+        rewrite_rule = load_rule_file(rewrite_path)
+        assert decide_rule is not None
+        assert rewrite_rule is not None
+        ruleset = RuleSet(rules=(decide_rule, rewrite_rule))
+
+        assert ruleset.for_event("Stop") == [decide_rule]
+        assert ruleset.for_event("PreToolUse") == [rewrite_rule]
+        assert ruleset.for_event("PostToolUse") == []

@@ -106,3 +106,50 @@ class TestCacheInvalidation:
         first = load_layered(str(project))
         second = load_layered(str(project))
         assert first is second
+
+    def test_fingerprint_skips_unreadable_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = tmp_path / "project"
+        rules_dir = project / ".vaudeville" / "rules"
+        _write_rule(rules_dir, "gate.yaml", DECIDE_RULE)
+        real_listdir = os.listdir
+
+        def _raising_listdir(path: str) -> list[str]:
+            if path == str(rules_dir):
+                raise OSError("permission denied")
+            return real_listdir(path)
+
+        monkeypatch.setattr(os, "listdir", _raising_listdir)
+
+        result = load_layered(str(project))
+        assert result.by_name() == {}
+
+    def test_fingerprint_skips_non_yaml_files(self, tmp_path: Path) -> None:
+        project = tmp_path / "project"
+        rules_dir = project / ".vaudeville" / "rules"
+        _write_rule(rules_dir, "gate.yaml", DECIDE_RULE)
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        (rules_dir / "README.md").write_text("not a rule")
+
+        result = load_layered(str(project))
+        assert set(result.by_name()) == {"git-gate"}
+
+    def test_fingerprint_skips_file_that_disappears_before_stat(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        project = tmp_path / "project"
+        rules_dir = project / ".vaudeville" / "rules"
+        _write_rule(rules_dir, "gate.yaml", DECIDE_RULE)
+        real_stat = os.stat
+        gate_path = str(rules_dir / "gate.yaml")
+
+        def _raising_stat(path: object, *args: object, **kwargs: object) -> os.stat_result:
+            if path == gate_path:
+                raise OSError("vanished")
+            return real_stat(path, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(os, "stat", _raising_stat)
+
+        result = load_layered(str(project))
+        assert set(result.by_name()) == {"git-gate"}

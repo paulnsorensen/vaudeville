@@ -150,6 +150,49 @@ class TestRewriteBashTargetRejected:
         assert isinstance(rule, RewriteRule)
 
 
+class TestInvalidTierRejected:
+    def test_decide_rule_invalid_tier_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "decide",
+                    "name": "x",
+                    "event": "Stop",
+                    "prompt": "p",
+                    "outcomes": ["a"],
+                    "tier": "critical",
+                }
+            )
+
+    def test_rewrite_rule_invalid_tier_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "x",
+                    "event": "PreToolUse",
+                    "prompt": "p",
+                    "target": ["tool_input.description"],
+                    "tier": "critical",
+                }
+            )
+
+
+class TestUnknownActionRejected:
+    def test_unknown_action_name_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "decide",
+                    "name": "x",
+                    "event": "Stop",
+                    "prompt": "p",
+                    "outcomes": ["a"],
+                    "on": {"a": "explode"},
+                }
+            )
+
+
 class TestActionShorthand:
     def test_string_shorthand_expands_to_parameterless_action(self) -> None:
         rule = parse_rule(

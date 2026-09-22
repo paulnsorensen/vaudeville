@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,18 @@ class TestSetTier:
         with pytest.raises(ValueError, match="Invalid tier"):
             set_tier("git-gate", "nonsense")
 
+    def test_set_tier_appends_when_field_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        data = {k: v for k, v in DECIDE_RULE.items() if k != "tier"}
+        path = _write_rule(home / ".vaudeville" / "rules", "git-gate.yaml", data)
+        monkeypatch.setenv("HOME", str(home))
+
+        set_tier("git-gate", "warn")
+
+        assert "tier: warn" in path.read_text()
+
 
 class TestListAndDrafts:
     def test_list_rules_with_source_deduplicates_by_name(
@@ -122,6 +135,83 @@ class TestListAndDrafts:
         rules_dir = tmp_path / "rules"
         _write_rule(rules_dir, "draft.yaml", dict(DECIDE_RULE, draft=True))
         _write_rule(rules_dir, "live.yaml", DECIDE_RULE)
+
+        names = get_draft_rule_names(str(rules_dir))
+        assert names == {"git-gate"}
+
+    def test_list_rules_with_source_skips_unreadable_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        home_rules = home / ".vaudeville" / "rules"
+        home_rules.mkdir(parents=True)
+        monkeypatch.setenv("HOME", str(home))
+        real_listdir = os.listdir
+
+        def _raising_listdir(path: str) -> list[str]:
+            if path == str(home_rules):
+                raise OSError("permission denied")
+            return real_listdir(path)
+
+        monkeypatch.setattr(os, "listdir", _raising_listdir)
+
+        assert list_rules_with_source() == []
+
+    def test_list_rules_with_source_skips_non_yaml_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        home_rules = home / ".vaudeville" / "rules"
+        home_rules.mkdir(parents=True)
+        (home_rules / "README.md").write_text("not a rule")
+        _write_rule(home_rules, "git-gate.yaml", DECIDE_RULE)
+        monkeypatch.setenv("HOME", str(home))
+
+        pairs = list_rules_with_source()
+        assert len(pairs) == 1
+
+    def test_list_rules_with_source_skips_rule_that_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        home_rules = home / ".vaudeville" / "rules"
+        _write_rule(home_rules, "bad.yaml", dict(DECIDE_RULE, name="bad", type="nope"))
+        _write_rule(home_rules, "git-gate.yaml", DECIDE_RULE)
+        monkeypatch.setenv("HOME", str(home))
+
+        pairs = list_rules_with_source()
+        assert len(pairs) == 1
+        assert pairs[0][0].name == "git-gate"
+
+    def test_list_rules_with_source_skips_draft_rule(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        home_rules = home / ".vaudeville" / "rules"
+        _write_rule(home_rules, "draft.yaml", dict(DECIDE_RULE, draft=True))
+        monkeypatch.setenv("HOME", str(home))
+
+        assert list_rules_with_source() == []
+
+    def test_get_draft_rule_names_missing_dir_returns_empty(
+        self, tmp_path: Path
+    ) -> None:
+        assert get_draft_rule_names(str(tmp_path / "missing")) == set()
+
+    def test_get_draft_rule_names_skips_non_yaml_files(self, tmp_path: Path) -> None:
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "README.md").write_text("not yaml")
+        _write_rule(rules_dir, "draft.yaml", dict(DECIDE_RULE, draft=True))
+
+        names = get_draft_rule_names(str(rules_dir))
+        assert names == {"git-gate"}
+
+    def test_get_draft_rule_names_skips_files_that_raise(self, tmp_path: Path) -> None:
+        rules_dir = tmp_path / "rules"
+        rules_dir.mkdir()
+        (rules_dir / "bad.yaml").mkdir()
+        _write_rule(rules_dir, "draft.yaml", dict(DECIDE_RULE, draft=True))
 
         names = get_draft_rule_names(str(rules_dir))
         assert names == {"git-gate"}

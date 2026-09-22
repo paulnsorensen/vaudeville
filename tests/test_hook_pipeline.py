@@ -690,11 +690,28 @@ tier: warn
 """,
         )
         fn, _ = _decide_fn('{"outcome": "violation"}')
-
-        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+        finally:
+            logger.close()
 
         assert "systemMessage" in str(result["stdout"])
         assert "permissionDecision" not in str(result["stdout"])
+
+        # F2: the escalate target's own tier-ceiling reason reaches the
+        # decision record's `downgrade` field.
+        time.sleep(0.05)
+        lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        records = [json.loads(line) for line in lines]
+        rows = [r for r in records if r["rule"] == "outer-gate"]
+        assert len(rows) == 1
+        assert rows[0]["action"] == "warn"
+        assert rows[0]["downgrade"]
+        assert "tier:warn" in rows[0]["downgrade"]
 
 
 STOP_RULE_YAML = """

@@ -183,3 +183,61 @@ tier: block
         assert result["exit_code"] == 0
         assert "context one" in str(result["stdout"])
         assert "context two" in str(result["stdout"])
+
+
+class TestDroppedDowngradeJoin:
+    def test_dropped_item_keeps_its_own_downgrade_and_the_precedence_reason(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F2: a dropped item that already carries a downgrade (here, the
+        escalate target's own warn-tier ceiling) keeps both parts, joined
+        by `;`, instead of the precedence reason overwriting it.
+        """
+        from vaudeville.server.event_log import EventLogger
+        from vaudeville.server.log_config import LogConfig
+
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "a-warn-rule",
+            _decide_rule("a-warn-rule", "{action: escalate, rule: warn-target}"),
+        )
+        _write_rule(
+            tmp_path,
+            "warn-target",
+            """
+type: decide
+name: warn-target
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: warn
+""",
+        )
+        _write_rule(tmp_path, "b-block-rule", _decide_rule("b-block-rule", "block"))
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            handle_hook_request(
+                _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+        finally:
+            logger.close()
+
+        import json
+        import time
+
+        time.sleep(0.05)
+        lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        records = [json.loads(line) for line in lines]
+        dropped = [r for r in records if r["rule"] == "a-warn-rule"]
+        assert len(dropped) == 1
+        downgrade = dropped[0]["downgrade"]
+        assert downgrade is not None
+        assert "tier:warn" in downgrade
+        assert "b-block-rule" in downgrade

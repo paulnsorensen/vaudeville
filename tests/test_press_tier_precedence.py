@@ -151,9 +151,10 @@ tier: block
         assert result["exit_code"] == 0
         assert calls.get("outer", 0) == 1
         # `middle`'s matcher also matches the live event, so the main loop
-        # evaluates it a second time as an ordinary rule, in addition to the
-        # one escalate-hop call from `outer` (by design after M4).
-        assert calls.get("middle", 0) == 2
+        # also evaluates it as an ordinary rule; the decide result is
+        # memoised per `(rule.name, event.text)`, so the escalate hop from
+        # `outer` and the direct evaluation share one decide call.
+        assert calls.get("middle", 0) == 1
         # The one-hop bound means "inner" -- the escalation target's own
         # escalate target -- must never run.
         assert calls.get("inner", 0) == 0

@@ -202,6 +202,11 @@ tier: disabled
     def test_warn_tier_rewrite_target_downgrades_to_warn(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """F2: the rewrite target's own tier-ceiling reason reaches the
+        decision record's `downgrade` field."""
+        from vaudeville.server.event_log import EventLogger
+        from vaudeville.server.log_config import LogConfig
+
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(
             tmp_path,
@@ -226,12 +231,27 @@ tier: warn
         )
         fn, _ = _decide_fn('{"outcome": "violation"}')
         patch_rewrite(monkeypatch, "safe command")
-
-        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+        finally:
+            logger.close()
 
         assert result["exit_code"] == 0
         assert "systemMessage" in str(result["stdout"])
         assert "updatedInput" not in str(result["stdout"])
+
+        time.sleep(0.05)
+        lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        records = [json.loads(line) for line in lines]
+        rows = [r for r in records if r["rule"] == "block-rewrite"]
+        assert len(rows) == 1
+        assert rows[0]["action"] == "warn"
+        assert rows[0]["downgrade"]
+        assert "tier:warn" in rows[0]["downgrade"]
 
     def test_warn_caps_feedback(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -251,10 +271,12 @@ tier: warn
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """`escalate-target`'s matcher also matches the live event, so the
-        main loop evaluates it a second time as an ordinary block-tier rule
-        (by design after M4); that direct row wins the render's primary
-        channel on its own merits. The cap is proven on `warn-escalate`'s
-        own decision record in events.jsonl instead of on the render output.
+        main loop also evaluates it as an ordinary block-tier rule; the
+        decide result is memoised per `(rule.name, event.text)`, so the
+        escalate hop and the direct evaluation share one decide call, and
+        that shared row wins the render's primary channel on its own
+        merits. The cap is proven on `warn-escalate`'s own decision record
+        in events.jsonl instead of on the render output.
         """
         from vaudeville.server.event_log import EventLogger
         from vaudeville.server.log_config import LogConfig
@@ -303,9 +325,9 @@ tier: block
         finally:
             logger.close()
 
-        # One escalate-hop call from `warn-escalate` plus one direct
-        # main-loop call, since the matcher matches the live event.
-        assert calls.get("escalate-target") == 2
+        # The escalate hop from `warn-escalate` and the direct main-loop
+        # evaluation share one memoised decide call.
+        assert calls.get("escalate-target") == 1
         assert result["exit_code"] == 0
 
         time.sleep(0.05)

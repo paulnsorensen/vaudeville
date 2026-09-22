@@ -274,21 +274,23 @@ def test_ac10_escalate_runs_once_and_keeps_first_decision_on_deadline_expiry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """AC-10: the escalate hop itself runs `escalate-target` once. Its
-    matcher also matches the live event, so the main loop also evaluates it
-    a second time as an ordinary rule (by design after M4); total calls ==
-    2. The hop's own deadline is tight, so it times out and `outer-gate`
-    keeps its first (pre-escalate) decision, allow, in its own event-log
-    row. `escalate-target`'s direct evaluation runs with the full request
-    deadline and blocks on its own account, so `stdout` also carries that
-    direct block; this row is what proves the escalate hop kept its first
-    decision rather than the target's.
+    matcher also matches the live event, so the main loop also evaluates
+    it as an ordinary rule, but the decide result is memoised per
+    `(rule.name, event.text)`, so the two evaluations share one decide
+    call; total calls == 1. `aaa-outer-gate` sorts before `escalate-target`
+    so the escalate hop runs -- and times out -- first, populating the
+    memo before the direct evaluation is reached; the hop's own deadline
+    is tight, so it times out, and the memoised timeout is reused by the
+    direct evaluation too, so neither evaluation double-charges the
+    request deadline, and both `aaa-outer-gate` and `escalate-target` keep
+    their first (pre-decide) decision, allow, in their own event-log rows.
     """
     _write_rule(
         tmp_path,
-        "outer-gate",
+        "aaa-outer-gate",
         """
 type: decide
-name: outer-gate
+name: aaa-outer-gate
 event: PreToolUse
 matcher: Write
 prompt: Classify.
@@ -314,7 +316,7 @@ tier: block
 """,
     )
     monkeypatch.setattr(pipeline_module, "DEFAULT_ESCALATE_DEADLINE_SECONDS", 0.1)
-    calls: dict[str, int] = {"outer-gate": 0, "escalate-target": 0}
+    calls: dict[str, int] = {"aaa-outer-gate": 0, "escalate-target": 0}
 
     def slow_decide_fn(rule: object, config: object, text: str) -> DecideResult:
         del config, text
@@ -336,13 +338,16 @@ tier: block
     finally:
         logger.close()
 
-    assert calls["escalate-target"] == 2
+    assert calls["escalate-target"] == 1
 
     lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
     records = [json.loads(line) for line in lines]
-    outer_gate_rows = [r for r in records if r.get("rule") == "outer-gate"]
+    outer_gate_rows = [r for r in records if r.get("rule") == "aaa-outer-gate"]
     assert outer_gate_rows
     assert all(r.get("action") == "allow" for r in outer_gate_rows)
+    escalate_target_rows = [r for r in records if r.get("rule") == "escalate-target"]
+    assert escalate_target_rows
+    assert all(r.get("action") == "allow" for r in escalate_target_rows)
 
 
 def test_ac11_run_action_starts_named_command_without_shell_or_skips_undefined(

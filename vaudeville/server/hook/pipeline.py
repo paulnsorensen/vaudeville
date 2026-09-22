@@ -28,8 +28,8 @@ from vaudeville.server.agents import decide as default_decide
 from vaudeville.server.agents import resolve_model
 from vaudeville.server.agents import rewrite as run_rewrite
 from vaudeville.server.effects import (
+    EscalateResult,
     apply_rewrite,
-    escalate,
     escalate_result,
     rewrite_or_feedback,
     run_named_command,
@@ -138,6 +138,7 @@ def _run_pipeline(
 
     evaluated: list[EvaluatedAction] = []
     event_json = json.dumps(dict(raw))
+    decide_memo: dict[tuple[str, str], EscalateResult[DecideResult]] = {}
 
     for rule in matching:
         if rule.tier == "disabled":
@@ -153,6 +154,7 @@ def _run_pipeline(
             prompt_chars=len(event.text),
             start_time=start_time,
             deadline_seconds=deadline_seconds,
+            decide_memo=decide_memo,
         )
         if action is not None:
             evaluated.append(action)
@@ -212,6 +214,7 @@ def _evaluate_rule(
     prompt_chars: int,
     start_time: float,
     deadline_seconds: float,
+    decide_memo: dict[tuple[str, str], EscalateResult[DecideResult]],
 ) -> EvaluatedAction | None:
     model_name = rule.model or config.default_model
 
@@ -228,14 +231,21 @@ def _evaluate_rule(
         )
         return None
 
-    remaining = _remaining_budget(clock, start_time, deadline_seconds)
-    start = clock()
-    decide_outcome = escalate_result(
-        lambda: decide_fn(rule, config, event.text),
-        deadline=remaining,
-        rule_name=rule.name,
-    )
-    latency_ms = (clock() - start) * 1000
+    memo_key = (rule.name, event.text)
+    cached = decide_memo.get(memo_key)
+    if cached is not None:
+        decide_outcome = cached
+        latency_ms = 0.0
+    else:
+        remaining = _remaining_budget(clock, start_time, deadline_seconds)
+        start = clock()
+        decide_outcome = escalate_result(
+            lambda: decide_fn(rule, config, event.text),
+            deadline=remaining,
+            rule_name=rule.name,
+        )
+        latency_ms = (clock() - start) * 1000
+        decide_memo[memo_key] = decide_outcome
 
     if decide_outcome.value is None:
         decide_downgrade = (
@@ -269,10 +279,17 @@ def _evaluate_rule(
     command: str | None = None
 
     dispatch_rule = rule
+    escalate_ceiling_reason: str | None = None
     if action_name == "escalate":
         remaining = _remaining_budget(clock, start_time, deadline_seconds)
-        action_name, message, escalate_target, escalate_action = _do_escalate(
-            rule, action_obj, by_name, event, config, decide_fn, remaining
+        (
+            action_name,
+            message,
+            escalate_target,
+            escalate_action,
+            escalate_ceiling_reason,
+        ) = _do_escalate(
+            rule, action_obj, by_name, event, config, decide_fn, remaining, decide_memo
         )
         if escalate_target is not None:
             dispatch_rule = escalate_target
@@ -301,9 +318,12 @@ def _evaluate_rule(
         command = action_obj.command if action_obj is not None else None
 
     effective_name, downgrade = apply_tier_ceiling(action_name, rule.tier)
-    if rewrite_downgrade:
+    extra_downgrades = [d for d in (escalate_ceiling_reason, rewrite_downgrade) if d]
+    if extra_downgrades:
         downgrade = (
-            f"{rewrite_downgrade};{downgrade}" if downgrade else rewrite_downgrade
+            f"{';'.join(extra_downgrades)};{downgrade}"
+            if downgrade
+            else ";".join(extra_downgrades)
         )
 
     item = EvaluatedAction(
@@ -345,19 +365,27 @@ def _do_escalate(
     config: UserConfig,
     decide_fn: DecideFn,
     remaining_budget: float,
-) -> tuple[str, str, DecideRule | None, Action | None]:
+    decide_memo: dict[tuple[str, str], EscalateResult[DecideResult]],
+) -> tuple[str, str, DecideRule | None, Action | None, str | None]:
     """Run the escalate target once and resolve its own `on:` mapping.
 
-    Returns `(action_name, message, target_rule, target_action)`; the
-    caller dispatches the remaining post-escalate branches against
+    Returns `(action_name, message, target_rule, target_action, ceiling_reason)`;
+    the caller dispatches the remaining post-escalate branches against
     `target_rule`/`target_action` so an escalated rewrite, run, or
     feedback behaves as if the target fired directly. `target_rule` is
     None when escalation resolves to a plain allow (disabled target,
-    deadline expiry, or an unmapped outcome).
+    deadline expiry, or an unmapped outcome). `ceiling_reason` carries the
+    target's own tier downgrade (e.g. `tier:warn`) for the caller's record.
+
+    `decide_memo`, keyed by `(rule.name, event.text)`, reuses a decide
+    result already computed this request (by the main loop or an earlier
+    escalate hop) instead of calling `decide_fn` again, so a rule never
+    decides more than once per request and an escalation never
+    double-charges the request deadline.
     """
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
     if not isinstance(target, DecideRule) or target.tier == "disabled":
-        return "allow", "", None, None
+        return "allow", "", None, None, None
     if target.event != event.event or not _matcher_matches(
         target.matcher, event.tool_name
     ):
@@ -369,26 +397,33 @@ def _do_escalate(
             event.event,
             event.tool_name,
         )
-        return "allow", "", None, None
+        return "allow", "", None, None, None
 
-    def _run() -> DecideResult:
-        return decide_fn(target, config, event.text)
+    memo_key = (target.name, event.text)
+    escalated_result = decide_memo.get(memo_key)
+    if escalated_result is None:
 
-    escalated = escalate(
-        _run,
-        deadline=min(DEFAULT_ESCALATE_DEADLINE_SECONDS, remaining_budget),
-        rule_name=target.name,
-    )
+        def _run() -> DecideResult:
+            return decide_fn(target, config, event.text)
+
+        escalated_result = escalate_result(
+            _run,
+            deadline=min(DEFAULT_ESCALATE_DEADLINE_SECONDS, remaining_budget),
+            rule_name=target.name,
+        )
+        decide_memo[memo_key] = escalated_result
+
+    escalated = escalated_result.value
     if escalated is None or escalated.outcome is None:
-        return "allow", "", None, None
+        return "allow", "", None, None, None
 
     target_action = target.on.get(escalated.outcome)
     if target_action is None:
-        return "allow", "", None, None
+        return "allow", "", None, None, None
 
-    action_name, _ = apply_tier_ceiling(target_action.action, target.tier)
+    action_name, reason = apply_tier_ceiling(target_action.action, target.tier)
     message = _message_for(target, escalated, action_name)
-    return action_name, message, target, target_action
+    return action_name, message, target, target_action, reason
 
 
 def _do_rewrite(
@@ -452,9 +487,9 @@ def _do_rewrite(
     updated = apply_rewrite(
         event.tool_input, target.target, new_values, rule_name=rule.name, log=_log
     )
-    action_name, _ = apply_tier_ceiling("rewrite", target.tier)
+    action_name, reason = apply_tier_ceiling("rewrite", target.tier)
     if action_name != "rewrite":
-        return action_name, new_text, None, None
+        return action_name, new_text, None, reason
     return "rewrite", new_text, updated, None
 
 
@@ -506,8 +541,13 @@ def _log_dropped(
     dropped: EvaluatedAction,
     reason: str,
 ) -> None:
-    """Log a primary-channel action that lost the precedence merge (F20)."""
-    _log_evaluated(logger_fn, dropped, downgrade=reason, kind="dropped")
+    """Log a primary-channel action that lost the precedence merge (F20).
+
+    Joins the precedence reason onto the item's own downgrade (e.g. a
+    target tier ceiling) instead of overwriting it.
+    """
+    downgrade = f"{dropped.downgrade};{reason}" if dropped.downgrade else reason
+    _log_evaluated(logger_fn, dropped, downgrade=downgrade, kind="dropped")
 
 
 def _log_decision(

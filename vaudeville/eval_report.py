@@ -6,6 +6,8 @@ import argparse
 
 from typing import TYPE_CHECKING
 
+from pydantic_ai.models import Model
+
 from .rules import DecideRule, RewriteRule
 from .server.user_config import UserConfig
 
@@ -94,8 +96,13 @@ def run_evaluations(
     rules: dict[str, DecideRule | RewriteRule],
     test_suites: dict[str, list[DecideTestCase]],
     config: UserConfig,
+    *,
+    model_override: Model | None = None,
 ) -> tuple[bool, dict[str, EvalResults], list[CaseResult]]:
     """Run eval or cross-validation for each rule.
+
+    `model_override` substitutes for the resolved model on every case (for
+    tests, a FunctionModel; no network call).
 
     Returns (all_passed, per_rule_results, all_case_results).
     """
@@ -113,7 +120,9 @@ def run_evaluations(
             print(f"  Leave-one-out cross-validation ({len(cases)} folds):")
             results = cross_validate_rule(rule_name, cases, rules, config)
         else:
-            results, case_results = evaluate_rule(rule_name, cases, rules, config)
+            results, case_results = evaluate_rule(
+                rule_name, cases, rules, config, model_override=model_override
+            )
             all_case_results.extend(case_results)
         all_results[rule_name] = results
         if not print_results(results):

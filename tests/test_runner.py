@@ -1,4 +1,9 @@
-"""Tests for hooks/runner.py — hook wire dispatch."""
+"""Tests for hooks/runner.py — hook wire dispatch.
+
+Note: `test_missing_key_allows` exercises passthrough over a real socket, not
+the missing-key/fail-open guarantee. AC-13's real defence is proven in
+`tests/test_hook_seam_contracts.py::test_ac13_*`.
+"""
 
 from __future__ import annotations
 
@@ -91,6 +96,7 @@ def test_no_yaml_no_pydantic() -> None:
 
 
 def test_missing_key_allows(capsys: pytest.CaptureFixture[str]) -> None:
+    """Daemon-allow passthrough over a real socket; not an AC-13 proof."""
     with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
         sock_path = f.name
     os.unlink(sock_path)

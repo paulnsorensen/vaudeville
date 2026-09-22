@@ -24,6 +24,8 @@ _DELETED_FILES = [
     os.path.join("vaudeville", "server", "mlx_logprobs.py"),
     os.path.join("vaudeville", "server", "gguf_backend.py"),
     os.path.join("vaudeville", "setup.py"),
+    os.path.join("vaudeville", "core", "rules.py"),
+    os.path.join("vaudeville", "core", "examples.py"),
 ]
 
 

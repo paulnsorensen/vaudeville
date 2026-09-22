@@ -90,7 +90,7 @@ if [ -f "${LOG_FILE}" ]; then
 fi
 
 # Spawn daemon
-nohup uv run --project "${PLUGIN_ROOT}" --group dev \
+nohup uv run --project "${PLUGIN_ROOT}" \
   python -m vaudeville.server \
   --socket "${SOCKET_PATH}" \
   --pid-file "${PID_FILE}" \

@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from pydantic_ai.models import Model
+
 from .core.paths import find_project_root
 from .eval import CaseResult, load_test_cases
 from .rules import DecideTestCase, load_rules, load_rules_layered
@@ -44,7 +46,7 @@ def _emit_jsonl(case_results: list[CaseResult]) -> None:
         print(json.dumps(asdict(cr)))
 
 
-def main() -> None:
+def main(*, model_override: Model | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args()
     if args.json and args.cross_validate:
@@ -80,7 +82,7 @@ def main() -> None:
     from .eval_report import run_evaluations
 
     passed, _all_results, all_case_results = run_evaluations(
-        args, rules, test_suites, config
+        args, rules, test_suites, config, model_override=model_override
     )
 
     if args.json:

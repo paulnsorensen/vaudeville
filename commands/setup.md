@@ -65,7 +65,7 @@ uv tool update-shell
 uv tool install --force argcomplete
 ```
 
-The `vaudeville` tool install only pulls core deps (argcomplete, loguru, pyyaml, rich). The backend (mlx/gguf) stays in the plugin's `uv sync` venv because only `vaudeville setup` needs it.
+The `vaudeville` tool install only pulls core deps (argcomplete, loguru, pyyaml, rich). Model access comes from your own provider API key, configured in the `~/.vaudeville/config` step below.
 
 **Activate tab completion** — print the shell-specific one-liner for the user to add to their shell rc (do not modify their rc automatically):
 
@@ -101,11 +101,23 @@ MSG
 esac
 ```
 
-4. **Download the model** (~2.4 GB, one-time) — routed through the plugin venv that has the backend deps:
+4. **Write `~/.vaudeville/config`** — set `default_model` and the provider's API key env var (skipped if the file already exists):
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-uv run --project "${CLAUDE_PLUGIN_ROOT}" python -m vaudeville setup
+mkdir -p "$HOME/.vaudeville"
+if [ ! -f "$HOME/.vaudeville/config" ]; then
+  cat > "$HOME/.vaudeville/config" <<'CONFIG'
+default_model: anthropic:claude-haiku-4-5
+providers:
+  anthropic:
+    key_env: ANTHROPIC_API_KEY
+commands: {}
+CONFIG
+  echo "Wrote $HOME/.vaudeville/config — edit default_model/providers to match your setup."
+else
+  echo "$HOME/.vaudeville/config already exists — leaving it as is."
+fi
 ```
 
 5. **Verify the daemon starts** — restart the session or run the session-start hook manually:

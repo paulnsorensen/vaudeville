@@ -19,6 +19,18 @@ import pytest
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SESSION_START = os.path.join(PROJECT_ROOT, "hooks", "session-start.sh")
 
+
+def test_spawn_command_has_no_dev_group() -> None:
+    """The daemon spawn line must not request the dev dependency group.
+
+    Runtime deps live in [project].dependencies; --group dev pulled in
+    test-only tooling the daemon process never needs.
+    """
+    script_text = pathlib.Path(SESSION_START).read_text()
+    spawn_line = next(line for line in script_text.splitlines() if "uv run" in line)
+    assert "--group dev" not in spawn_line
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

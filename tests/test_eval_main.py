@@ -7,8 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
 from vaudeville.rules import DecideRule, DecideTestCase, parse_rule
-from vaudeville.server.user_config import UserConfig
+from vaudeville.server.user_config import ProviderConfig, UserConfig
 
 _RULE_DICT = {
     "type": "decide",
@@ -188,3 +191,49 @@ class TestEmitJsonl:
 
         _emit_jsonl([])
         assert capsys.readouterr().out == ""
+
+
+class TestMainEndToEnd:
+    def test_main_prints_tp_fp_tn_fn_for_decide_rule(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import yaml
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        rule_dict: dict[str, object] = {
+            **_RULE_DICT,
+            "test_cases": [
+                {"text": "violation case", "outcome": "violation"},
+                {"text": "clean case", "outcome": "clean"},
+            ],
+        }
+        rule_path = tmp_path / "git-gate.yaml"
+        rule_path.write_text(yaml.safe_dump(rule_dict))
+
+        def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            del messages, info
+            return ModelResponse(
+                parts=[TextPart('{"outcome": "violation", "confidence": 0.9}')]
+            )
+
+        model = FunctionModel(respond)
+
+        with (
+            patch("sys.argv", ["eval", "--rules-dir", str(tmp_path)]),
+            patch(
+                "vaudeville.eval_cli.load_user_config",
+                return_value=UserConfig(
+                    providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")}
+                ),
+            ),
+        ):
+            from vaudeville.eval_cli import main
+
+            with pytest.raises(SystemExit):
+                main(model_override=model)
+
+        out = capsys.readouterr().out
+        assert "Confusion: TP=1 FP=1 TN=0 FN=0" in out

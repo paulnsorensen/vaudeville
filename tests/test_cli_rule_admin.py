@@ -440,6 +440,73 @@ class TestCmdShow:
         assert "Now classify" not in out
         assert "VERDICT: violation or clean" not in out
 
+    def test_human_output_shows_reasons(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules_dir = _home_rules(tmp_path)
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        path = rules_dir / "reasoned-rule.yaml"
+        data = {
+            "type": "decide",
+            "name": "reasoned-rule",
+            "event": "Stop",
+            "tier": "warn",
+            "prompt": "Is this a violation?\n{text}",
+            "outcomes": ["violation", "clean"],
+            "on": {"violation": "warn"},
+            "reasons": {
+                "violation": "the response breaks a rule",
+                "clean": "the response follows the rule",
+            },
+        }
+        path.write_text(yaml.dump(data))
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_show(Namespace(name="reasoned-rule", json=False))
+        out = capsys.readouterr().out
+        assert "violation: the response breaks a rule" in out
+        assert "clean: the response follows the rule" in out
+
+    def test_show_rewrite_rule_human_and_json(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules_dir = _home_rules(tmp_path)
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        path = rules_dir / "rewrite-rule.yaml"
+        data = {
+            "type": "rewrite",
+            "name": "rewrite-rule",
+            "event": "PreToolUse",
+            "tier": "block",
+            "prompt": "Rewrite the content to remove secrets.\n{text}",
+            "target": ["tool_input.content"],
+        }
+        path.write_text(yaml.dump(data))
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_show(Namespace(name="rewrite-rule", json=False))
+        out = capsys.readouterr().out
+        assert "tool_input.content" in out
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_show(Namespace(name="rewrite-rule", json=True))
+        data_out = json.loads(capsys.readouterr().out)
+        assert data_out["target"] == ["tool_input.content"]
+
 
 # ---------------------------------------------------------------------------
 # CLI: cmd_delete

@@ -21,6 +21,7 @@ from vaudeville.server.agents import DecideResult, decide
 from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.hook import handle_hook_request
+from vaudeville.server.hook import pipeline as pipeline_module
 from vaudeville.server.log_config import LogConfig
 from vaudeville.server.user_config import UserConfig
 
@@ -118,6 +119,72 @@ class TestDecisionRecord:
             assert "latency_ms" in record
         finally:
             logger.close()
+
+
+class TestRequestDeadline:
+    def test_slow_decide_fn_times_out_and_allows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F25: a decide_fn exceeding the request deadline fails open and
+        logs a decide-timeout downgrade; wall time stays under the deadline."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-git-gate", DECIDE_RULE_YAML)
+
+        def slow_decide_fn(
+            rule: object, config: object, text: str
+        ) -> DecideResult:
+            time.sleep(0.5)
+            return DecideResult(outcome="violation")
+
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            wall_start = time.monotonic()
+            result = handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=slow_decide_fn,
+                event_logger=logger,
+                deadline_seconds=0.1,
+            )
+            elapsed = time.monotonic() - wall_start
+
+            assert result == {"stdout": "{}", "exit_code": 0}
+            assert elapsed < 0.6
+
+            time.sleep(0.05)
+            lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+            records = [json.loads(line) for line in lines]
+            assert any(r.get("downgrade") == "decide-timeout" for r in records)
+        finally:
+            logger.close()
+
+    def test_escalate_deadline_never_exceeds_remaining_budget(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F25: the escalate deadline used for each decide_fn call is capped
+        by the remaining request budget, recorded via a wrapping recorder."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-git-gate", DECIDE_RULE_YAML)
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+
+        deadlines: list[float] = []
+        real_escalate = pipeline_module.escalate
+
+        def recording_escalate(
+            run: object, *, deadline: float, rule_name: str | None = None
+        ) -> object:
+            deadlines.append(deadline)
+            return real_escalate(run, deadline=deadline, rule_name=rule_name)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(pipeline_module, "escalate", recording_escalate)
+
+        handle_hook_request(
+            _request(tmp_path), config=_CONFIG, decide_fn=fn, deadline_seconds=1.5
+        )
+
+        assert deadlines
+        assert all(d <= 1.5 for d in deadlines)
 
 
 STOP_ASK_RULE_YAML = """

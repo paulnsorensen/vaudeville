@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 # `escalate` is a one-hop, bounded operation; `run` is fire-and-forget.
 DEFAULT_ESCALATE_DEADLINE_SECONDS = 3.0
 RUN_COMMAND_TIMEOUT_SECONDS = 5.0
+DEFAULT_REQUEST_DEADLINE_SECONDS = 6.0
 
 DecideFn = Callable[[DecideRule, UserConfig, str], DecideResult]
 
@@ -57,12 +58,15 @@ def handle_hook_request(
     event_logger: EventLogger | None = None,
     decide_fn: DecideFn | None = None,
     clock: Callable[[], float] | None = None,
+    deadline_seconds: float = DEFAULT_REQUEST_DEADLINE_SECONDS,
 ) -> dict[str, object]:
     """Answer `{op, harness, event, cwd, payload}` with `{stdout, exit_code}`.
 
     Fails open (allow, exit 0) on any exception, an unknown harness, or a
     handler error, per the invariant that the hook never blocks a session
-    on an internal fault.
+    on an internal fault. `deadline_seconds` bounds the whole request; every
+    `decide_fn` call runs through `escalate` with the remaining budget, and
+    an expired budget fails open with a `decide-timeout` downgrade record.
     """
     harness_name = str(request.get("harness", ""))
     adapter = get_adapter(harness_name)
@@ -76,10 +80,17 @@ def handle_hook_request(
             event_logger=event_logger,
             decide_fn=decide_fn if decide_fn is not None else default_decide,
             clock=clock if clock is not None else time.monotonic,
+            deadline_seconds=deadline_seconds,
         )
     except Exception:
         logger.exception("hook pipeline raised; allowing")
         return dict(adapter.render_allow())
+
+
+def _remaining_budget(
+    clock: Callable[[], float], start_time: float, deadline_seconds: float
+) -> float:
+    return max(0.0, deadline_seconds - (clock() - start_time))
 
 
 def _run_pipeline(
@@ -90,7 +101,9 @@ def _run_pipeline(
     event_logger: EventLogger | None,
     decide_fn: DecideFn,
     clock: Callable[[], float],
+    deadline_seconds: float,
 ) -> dict[str, object]:
+    start_time = clock()
     payload = request.get("payload")
     raw = payload if isinstance(payload, Mapping) else {}
     event: HookEvent = adapter.normalize(raw)  # type: ignore[attr-defined]
@@ -121,6 +134,8 @@ def _run_pipeline(
             clock=clock,
             logger_fn=event_logger,
             prompt_chars=len(event.text),
+            start_time=start_time,
+            deadline_seconds=deadline_seconds,
         )
         if action is not None:
             evaluated.append(action)
@@ -178,6 +193,8 @@ def _evaluate_rule(
     clock: Callable[[], float],
     logger_fn: EventLogger | None,
     prompt_chars: int,
+    start_time: float,
+    deadline_seconds: float,
 ) -> EvaluatedAction | None:
     model_name = rule.model or config.default_model
 
@@ -194,9 +211,27 @@ def _evaluate_rule(
         )
         return None
 
+    remaining = _remaining_budget(clock, start_time, deadline_seconds)
     start = clock()
-    result = decide_fn(rule, config, event.text)
+    result = escalate(
+        lambda: decide_fn(rule, config, event.text),
+        deadline=remaining,
+        rule_name=rule.name,
+    )
     latency_ms = (clock() - start) * 1000
+
+    if result is None:
+        _log_decision(
+            logger_fn,
+            rule,
+            DecideResult(outcome=None),
+            "allow",
+            "decide-timeout",
+            latency_ms,
+            model_name,
+            prompt_chars,
+        )
+        return None
 
     if result.outcome is None:
         _log_decision(
@@ -214,8 +249,9 @@ def _evaluate_rule(
 
     dispatch_rule = rule
     if action_name == "escalate":
+        remaining = _remaining_budget(clock, start_time, deadline_seconds)
         action_name, message, escalate_target, escalate_action = _do_escalate(
-            rule, action_obj, by_name, event, config, decide_fn
+            rule, action_obj, by_name, event, config, decide_fn, remaining
         )
         if escalate_target is not None:
             dispatch_rule = escalate_target
@@ -273,6 +309,7 @@ def _do_escalate(
     event: HookEvent,
     config: UserConfig,
     decide_fn: DecideFn,
+    remaining_budget: float,
 ) -> tuple[str, str, DecideRule | None, Action | None]:
     """Run the escalate target once and resolve its own `on:` mapping.
 
@@ -291,7 +328,9 @@ def _do_escalate(
         return decide_fn(target, config, event.text)
 
     escalated = escalate(
-        _run, deadline=DEFAULT_ESCALATE_DEADLINE_SECONDS, rule_name=target.name
+        _run,
+        deadline=min(DEFAULT_ESCALATE_DEADLINE_SECONDS, remaining_budget),
+        rule_name=target.name,
     )
     if escalated is None or escalated.outcome is None:
         return "allow", "", None, None

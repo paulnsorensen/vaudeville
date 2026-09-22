@@ -1,7 +1,6 @@
-"""Vaudeville inference daemon.
+"""Vaudeville daemon.
 
-Loads model once, serves classify requests over Unix socket.
-Self-terminates after idle timeout.
+Serves hook requests over Unix socket. Self-terminates after idle timeout.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from dataclasses import dataclass
 from ..core.paths import VERSION_FILE, ensure_runtime_dir
 from ._handlers import handle_request
 from .event_log import EventLogger
-from .inference import InferenceBackend
 
 __all__ = ["DaemonConfig", "VaudevilleDaemon", "acquire_pid_lock"]
 
@@ -98,14 +96,12 @@ def _read_message(conn: socket.socket) -> bytes:
 class VaudevilleDaemon:
     def __init__(
         self,
-        backend: InferenceBackend,
         config: DaemonConfig,
         pid_fd: int | None = None,
         event_logger: EventLogger | None = None,
     ) -> None:
-        self._backend = backend
         self.config = config
-        self._backend_lock = threading.Lock()
+        self._request_lock = threading.Lock()
         self._last_request = time.monotonic()
         self._stop_event = threading.Event()
         self._pid_fd: int | None = pid_fd
@@ -173,10 +169,8 @@ class VaudevilleDaemon:
             t0 = time.monotonic()
             data = _read_message(conn)
 
-            with self._backend_lock:
-                response = handle_request(
-                    bytes(data), self._backend, self._event_logger
-                )
+            with self._request_lock:
+                response = handle_request(bytes(data), self._event_logger)
             conn.sendall(response)
             elapsed_ms = (time.monotonic() - t0) * 1000
             logger.info("Request handled in %.1fms", elapsed_ms)

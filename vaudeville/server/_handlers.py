@@ -4,140 +4,31 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 
-from ..core.protocol import (
-    CLASSIFY_MAX_TOKENS,
-    ClassifyResult,
-    compute_confidence,
-    parse_verdict,
-)
-from .condense import condense_text
-from .event_log import ClassificationEvent, EventLogger
-from .inference import (
-    CachedBackend,
-    CachedLogprobBackend,
-    InferenceBackend,
-    LogprobBackend,
-)
+from .event_log import EventLogger
+from .hook import handle_hook_request
 
 logger = logging.getLogger(__name__)
 
-
-def _run_inference(
-    backend: InferenceBackend,
-    prompt: str,
-    prefix_len: int = 0,
-) -> ClassifyResult:
-    if prefix_len > 0 and isinstance(backend, CachedLogprobBackend):
-        return backend.classify_cached_with_logprobs(
-            prompt, prefix_len, max_tokens=CLASSIFY_MAX_TOKENS
-        )
-    elif prefix_len > 0 and isinstance(backend, CachedBackend):
-        text = backend.classify_cached(
-            prompt, prefix_len, max_tokens=CLASSIFY_MAX_TOKENS
-        )
-        return ClassifyResult(text=text)
-    elif prefix_len > 0:
-        logger.debug(
-            "prefix_len=%d but backend lacks cached methods — uncached", prefix_len
-        )
-    if isinstance(backend, LogprobBackend):
-        return backend.classify_with_logprobs(prompt, max_tokens=CLASSIFY_MAX_TOKENS)
-    text = backend.classify(prompt, max_tokens=CLASSIFY_MAX_TOKENS)
-    return ClassifyResult(text=text)
-
-
-def _handle_condense(
-    request: dict[str, object],
-    backend: InferenceBackend,
-) -> bytes:
-    text = str(request.get("text", ""))
-    t0 = time.monotonic()
-    condensed = condense_text(text, backend)
-    elapsed_ms = (time.monotonic() - t0) * 1000
-    logger.info(
-        "CONDENSE latency_ms=%.0f in_chars=%d out_chars=%d",
-        elapsed_ms,
-        len(text),
-        len(condensed),
-    )
-    return json.dumps({"text": condensed}).encode() + b"\n"
-
-
-def _handle_classify(
-    request: dict[str, object],
-    backend: InferenceBackend,
-    event_logger: EventLogger | None = None,
-) -> bytes:
-    prompt = str(request.get("prompt", ""))
-    rule = str(request.get("rule", ""))
-    tier = str(request.get("tier", "block"))
-    raw_prefix = request.get("prefix_len", 0)
-    prefix_len = int(float(str(raw_prefix))) if raw_prefix else 0
-    input_text = str(request.get("input_text", ""))
-
-    logger.debug("prompt=%d chars prefix_len=%d", len(prompt), prefix_len)
-    t0 = time.monotonic()
-    result = _run_inference(backend, prompt, prefix_len)
-    elapsed_ms = (time.monotonic() - t0) * 1000
-    response = parse_verdict(result.text)
-    confidence = compute_confidence(result.logprobs, response.verdict)
-    safe_reason = response.reason.replace("\n", " ").replace("\r", " ")[:100]
-    logger.info(
-        "CLASSIFY verdict=%s confidence=%.3f "
-        " latency_ms=%.0f prompt_chars=%d reason=%s",
-        response.verdict,
-        confidence,
-        elapsed_ms,
-        len(prompt),
-        safe_reason,
-    )
-
-    # Eval/tune harness sets log_event=False so test-case classifications
-    # don't pollute `vaudeville watch`. Default True preserves hook behavior.
-    log_event = request.get("log_event", True) is not False
-    if event_logger is not None and log_event:
-        evt = ClassificationEvent(
-            rule=rule,
-            verdict=response.verdict,
-            confidence=confidence,
-            latency_ms=elapsed_ms,
-            prompt_chars=len(prompt),
-            reason=response.reason,
-            input_snippet=input_text[:500],
-            tier=tier,
-        )
-        event_logger.log_event(evt)
-
-    return _response(response.verdict, response.reason, confidence)
+_ALLOW = {"stdout": "", "exit_code": 0}
 
 
 def handle_request(
     data: bytes,
-    backend: InferenceBackend,
     event_logger: EventLogger | None = None,
 ) -> bytes:
-    """Route a request by op field: 'classify' (default) or 'condense'."""
+    """Route a request by op field. Only `op: hook` is served; anything else
+    or any error fails open with an allow response.
+    """
     try:
         request = json.loads(data.decode().strip())
-        op = str(request.get("op", "classify"))
-        if op == "condense":
-            return _handle_condense(request, backend)
-        return _handle_classify(request, backend, event_logger)
+        op = str(request.get("op", ""))
+        if op == "hook":
+            response = handle_hook_request(request, event_logger=event_logger)
+        else:
+            logger.warning("Unknown op %r — allowing", op)
+            response = dict(_ALLOW)
     except Exception as exc:
-        logger.error("Request error: %s", exc)
-        return _response("clean", "Inference error — fail open")
-
-
-def _response(verdict: str, reason: str, confidence: float = 1.0) -> bytes:
-    return (
-        json.dumps(
-            {
-                "verdict": verdict,
-                "reason": reason,
-                "confidence": confidence,
-            }
-        ).encode()
-        + b"\n"
-    )
+        logger.error("Request error: %s — allowing", exc)
+        response = dict(_ALLOW)
+    return json.dumps(response).encode() + b"\n"

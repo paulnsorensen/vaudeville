@@ -144,7 +144,9 @@ class TestCacheInvalidation:
         real_stat = os.stat
         gate_path = str(rules_dir / "gate.yaml")
 
-        def _raising_stat(path: object, *args: object, **kwargs: object) -> os.stat_result:
+        def _raising_stat(
+            path: object, *args: object, **kwargs: object
+        ) -> os.stat_result:
             if path == gate_path:
                 raise OSError("vanished")
             return real_stat(path, *args, **kwargs)  # type: ignore[arg-type]

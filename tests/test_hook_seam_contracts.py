@@ -270,20 +270,19 @@ tier: block
     assert downgrade_logs
 
 
-def test_ac10_escalate_runs_once_and_keeps_first_decision_on_deadline_expiry(
+def test_ac10_escalate_target_own_turn_redecides_after_hop_timeout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC-10: the escalate hop itself runs `escalate-target` once. Its
-    matcher also matches the live event, so the main loop also evaluates
-    it as an ordinary rule, but the decide result is memoised per
-    `(rule.name, event.text)`, so the two evaluations share one decide
-    call; total calls == 1. `aaa-outer-gate` sorts before `escalate-target`
-    so the escalate hop runs -- and times out -- first, populating the
-    memo before the direct evaluation is reached; the hop's own deadline
-    is tight, so it times out, and the memoised timeout is reused by the
-    direct evaluation too, so neither evaluation double-charges the
-    request deadline, and both `aaa-outer-gate` and `escalate-target` keep
-    their first (pre-decide) decision, allow, in their own event-log rows.
+    """AC-10: the escalate hop's own attempt at `escalate-target` times
+    out under its tight budget. A timeout is never cached (only a
+    successful decide is memoised), so `aaa-outer-gate` keeps its first
+    (pre-escalate) decision, allow, in its own row. `escalate-target`'s
+    matcher also matches the live event, so the main loop evaluates it a
+    second time, on the request's own full remaining budget, and that
+    decide succeeds (violation), so `escalate-target`'s own row reflects
+    its own decision, block, not a reused failure. `calls["escalate-
+    target"]` is 2: one for the hop's failed attempt, one for the main
+    loop's own successful decide.
     """
     _write_rule(
         tmp_path,
@@ -338,7 +337,7 @@ tier: block
     finally:
         logger.close()
 
-    assert calls["escalate-target"] == 1
+    assert calls["escalate-target"] == 2
 
     lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
     records = [json.loads(line) for line in lines]
@@ -347,7 +346,77 @@ tier: block
     assert all(r.get("action") == "allow" for r in outer_gate_rows)
     escalate_target_rows = [r for r in records if r.get("rule") == "escalate-target"]
     assert escalate_target_rows
-    assert all(r.get("action") == "allow" for r in escalate_target_rows)
+    assert all(r.get("action") == "block" for r in escalate_target_rows)
+
+
+def test_ac10_escalate_hop_success_is_memoised_with_latency_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC-10: when the escalate hop's own decide succeeds, its result and
+    latency are memoised, so `escalate-target`'s own main-loop turn is a
+    cache hit: one decide call total, and its logged row carries the same
+    non-zero latency the hop recorded, not a reused `0.0`.
+    """
+    _write_rule(
+        tmp_path,
+        "aaa-outer-gate",
+        """
+type: decide
+name: aaa-outer-gate
+event: PreToolUse
+matcher: Write
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {action: escalate, rule: escalate-target}
+tier: block
+""",
+    )
+    _write_rule(
+        tmp_path,
+        "escalate-target",
+        """
+type: decide
+name: escalate-target
+event: PreToolUse
+matcher: Write
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+""",
+    )
+    calls: dict[str, int] = {"aaa-outer-gate": 0, "escalate-target": 0}
+
+    def fast_decide_fn(rule: object, config: object, text: str) -> DecideResult:
+        del config, text
+        name = getattr(rule, "name", "")
+        calls[name] = calls.get(name, 0) + 1
+        time.sleep(0.01)
+        return DecideResult(outcome="violation")
+
+    logs_dir = tmp_path / "logs"
+    logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+    try:
+        handle_hook_request(
+            _request(tmp_path),
+            config=_CONFIG,
+            decide_fn=fast_decide_fn,
+            event_logger=logger,
+        )
+    finally:
+        logger.close()
+
+    assert calls["escalate-target"] == 1
+
+    lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+    records = [json.loads(line) for line in lines]
+    escalate_target_rows = [r for r in records if r.get("rule") == "escalate-target"]
+    assert escalate_target_rows
+    latencies = {r["latency_ms"] for r in escalate_target_rows}
+    assert len(latencies) == 1
+    assert latencies.pop() > 0.0
 
 
 def test_ac11_run_action_starts_named_command_without_shell_or_skips_undefined(

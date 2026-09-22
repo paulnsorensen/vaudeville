@@ -138,7 +138,7 @@ def _run_pipeline(
 
     evaluated: list[EvaluatedAction] = []
     event_json = json.dumps(dict(raw))
-    decide_memo: dict[tuple[str, str], EscalateResult[DecideResult]] = {}
+    decide_memo: dict[tuple[str, str], tuple[EscalateResult[DecideResult], float]] = {}
 
     for rule in matching:
         if rule.tier == "disabled":
@@ -214,7 +214,7 @@ def _evaluate_rule(
     prompt_chars: int,
     start_time: float,
     deadline_seconds: float,
-    decide_memo: dict[tuple[str, str], EscalateResult[DecideResult]],
+    decide_memo: dict[tuple[str, str], tuple[EscalateResult[DecideResult], float]],
 ) -> EvaluatedAction | None:
     model_name = rule.model or config.default_model
 
@@ -234,8 +234,7 @@ def _evaluate_rule(
     memo_key = (rule.name, event.text)
     cached = decide_memo.get(memo_key)
     if cached is not None:
-        decide_outcome = cached
-        latency_ms = 0.0
+        decide_outcome, latency_ms = cached
     else:
         remaining = _remaining_budget(clock, start_time, deadline_seconds)
         start = clock()
@@ -245,7 +244,8 @@ def _evaluate_rule(
             rule_name=rule.name,
         )
         latency_ms = (clock() - start) * 1000
-        decide_memo[memo_key] = decide_outcome
+        if decide_outcome.value is not None:
+            decide_memo[memo_key] = (decide_outcome, latency_ms)
 
     if decide_outcome.value is None:
         decide_downgrade = (
@@ -289,7 +289,15 @@ def _evaluate_rule(
             escalate_action,
             escalate_ceiling_reason,
         ) = _do_escalate(
-            rule, action_obj, by_name, event, config, decide_fn, remaining, decide_memo
+            rule,
+            action_obj,
+            by_name,
+            event,
+            config,
+            decide_fn,
+            remaining,
+            decide_memo,
+            clock,
         )
         if escalate_target is not None:
             dispatch_rule = escalate_target
@@ -365,7 +373,8 @@ def _do_escalate(
     config: UserConfig,
     decide_fn: DecideFn,
     remaining_budget: float,
-    decide_memo: dict[tuple[str, str], EscalateResult[DecideResult]],
+    decide_memo: dict[tuple[str, str], tuple[EscalateResult[DecideResult], float]],
+    clock: Callable[[], float],
 ) -> tuple[str, str, DecideRule | None, Action | None, str | None]:
     """Run the escalate target once and resolve its own `on:` mapping.
 
@@ -381,7 +390,10 @@ def _do_escalate(
     result already computed this request (by the main loop or an earlier
     escalate hop) instead of calling `decide_fn` again, so a rule never
     decides more than once per request and an escalation never
-    double-charges the request deadline.
+    double-charges the request deadline. Only a successful decide
+    (`result.value is not None`) is cached, with its recorded latency; a
+    timeout or error is never cached, so a later turn re-runs the rule
+    on its own full remaining budget instead of reusing a failure.
     """
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
     if not isinstance(target, DecideRule) or target.tier == "disabled":
@@ -400,18 +412,23 @@ def _do_escalate(
         return "allow", "", None, None, None
 
     memo_key = (target.name, event.text)
-    escalated_result = decide_memo.get(memo_key)
-    if escalated_result is None:
+    cached = decide_memo.get(memo_key)
+    if cached is not None:
+        escalated_result, _ = cached
+    else:
 
         def _run() -> DecideResult:
             return decide_fn(target, config, event.text)
 
+        start = clock()
         escalated_result = escalate_result(
             _run,
             deadline=min(DEFAULT_ESCALATE_DEADLINE_SECONDS, remaining_budget),
             rule_name=target.name,
         )
-        decide_memo[memo_key] = escalated_result
+        latency_ms = (clock() - start) * 1000
+        if escalated_result.value is not None:
+            decide_memo[memo_key] = (escalated_result, latency_ms)
 
     escalated = escalated_result.value
     if escalated is None or escalated.outcome is None:

@@ -100,16 +100,16 @@ class TestVaudevilleClientNoArgs:
         # The internal socket path should match the module-level constant
         assert client._socket_path == SOCKET_PATH
 
-    def test_client_classify_fails_open_on_missing_socket(self) -> None:
+    def test_client_hook_fails_open_on_missing_socket(self) -> None:
         """Fail-open semantics must still hold with no-arg constructor."""
         from vaudeville.core.client import VaudevilleClient
 
         with tempfile.TemporaryDirectory() as td:
             client = VaudevilleClient()
             client._socket_path = os.path.join(td, "nonexistent.sock")
-            result = client.classify("test prompt")  # type: ignore[attr-defined]
+            result = client.hook({"op": "hook"})
             assert result is None, (
-                "classify() must return None when daemon is unavailable (fail-open)"
+                "hook() must return None when daemon is unavailable (fail-open)"
             )
 
 
@@ -329,7 +329,7 @@ class TestRunnerNoSessionId:
         )
 
         mock_client = MagicMock()
-        mock_client.classify.return_value = None
+        mock_client.hook.return_value = {"stdout": "{}", "exit_code": 0}
 
         captured_calls: list[Any] = []
 
@@ -353,7 +353,7 @@ class TestRunnerNoSessionId:
         with (
             patch("sys.stdin", io.StringIO(hook_input)),
             patch("sys.stdout", io.StringIO()),
-            patch("sys.argv", ["runner.py", "--event", "Stop"]),
+            patch("sys.argv", ["runner.py", "--harness", "claude-code"]),
             patch.object(runner, "VaudevilleClient", side_effect=fake_constructor),
         ):
             try:

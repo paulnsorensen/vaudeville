@@ -1,9 +1,9 @@
 """Delimit hook text as data before it reaches a model prompt.
 
-Mirrors the zero-width-space neutralization pattern that
-`vaudeville.core.rules.sanitize_input` uses for VERDICT:/REASON: markers:
-insert a zero-width space inside a delimiter that appears in the text
-itself, so the text cannot forge the boundary the wrapper relies on.
+Mirrors the legacy zero-width-space neutralization pattern once used for
+VERDICT:/REASON: markers: insert a zero-width space inside a delimiter
+that appears in the text itself, so the text cannot forge the boundary
+the wrapper relies on.
 """
 
 from __future__ import annotations

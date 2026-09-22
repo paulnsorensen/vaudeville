@@ -916,29 +916,31 @@ class TestDisabledTierSideEffects:
     """Verify 'disabled' addition to VALID_TIERS doesn't break adjacent code."""
 
     def test_parse_rule_disabled_tier_accepted(self) -> None:
-        """parse_rule with tier=disabled produces a Rule without error."""
-        from vaudeville.core.rules import parse_rule
+        """parse_rule with tier=disabled produces a rule without error."""
+        from vaudeville.rules import parse_rule
 
         data = {
+            "type": "decide",
             "name": "disabled-rule",
             "event": "PostToolUse",
             "prompt": "Check {text}",
+            "outcomes": ["violation", "clean"],
+            "on": {"violation": "block"},
             "tier": "disabled",
-            "message": "blocked",
         }
         rule = parse_rule(data)
         assert rule.tier == "disabled"
 
     def test_load_rules_disabled_rule_is_loaded(self, tmp_path: Path) -> None:
         """load_rules() does NOT filter disabled rules — they're loaded as-is."""
-        from vaudeville.core.rules import load_rules
+        from vaudeville.rules import load_rules
 
         rules_dir = tmp_path / "rules"
         rules_dir.mkdir()
         (rules_dir / "disabled-rule.yaml").write_text(
-            "name: disabled-rule\nevent: PostToolUse\n"
-            "prompt: 'check {text}'\ntier: disabled\n"
-            "message: blocked\n"
+            "type: decide\nname: disabled-rule\nevent: PostToolUse\n"
+            "prompt: 'check {text}'\noutcomes: [violation, clean]\n"
+            '"on":\n  violation: block\ntier: disabled\n'
         )
 
         rules = load_rules(str(rules_dir))
@@ -946,34 +948,34 @@ class TestDisabledTierSideEffects:
         assert rules["disabled-rule"].tier == "disabled"
 
     def test_disabled_tier_short_circuits_before_inference(self) -> None:
-        """Disabled rules are skipped at the top of _run_event_rules — no SLM call.
+        """Disabled rules are skipped at the top of the hook pipeline — no model call.
 
-        See tests/test_runner.py::TestRunPipeline::test_disabled_tier_skips_inference
-        for the behavioral assertion. This test pins the contract that 'disabled'
-        remains a valid tier value.
+        See tests/test_hook_pipeline.py for the behavioral assertion. This test
+        pins the contract that 'disabled' remains a valid tier value.
         """
-        from vaudeville.core.rules import VALID_TIERS
+        from vaudeville.rules import VALID_TIERS
 
         assert "disabled" in VALID_TIERS
 
     def test_valid_tiers_contains_all_five(self) -> None:
         """VALID_TIERS contains all expected tier values."""
-        from vaudeville.core.rules import VALID_TIERS
+        from vaudeville.rules import VALID_TIERS
 
         assert set(VALID_TIERS) == {"disabled", "shadow", "log", "warn", "block"}
 
     def test_invalid_tier_still_rejected(self) -> None:
         """Unknown tier like 'draft' still raises ValueError."""
-        from vaudeville.core.rules import parse_rule
+        from vaudeville.rules import parse_rule
 
-        with pytest.raises(ValueError, match="Invalid tier"):
+        with pytest.raises(ValueError, match="invalid tier"):
             parse_rule(
                 {
+                    "type": "decide",
                     "name": "bad",
                     "event": "PostToolUse",
                     "prompt": "x",
+                    "outcomes": ["a"],
                     "tier": "draft",
-                    "message": "m",
                 }
             )
 

@@ -62,7 +62,7 @@ event: PreToolUse
 matcher: Read
 model: fake:model
 prompt: Rewrite.
-target: [content]
+target: [tool_input.content]
 tier: block
 """,
     )
@@ -164,7 +164,7 @@ event: PreToolUse
 matcher: Write
 model: fake:model
 prompt: Rewrite.
-target: [content]
+target: [tool_input.content]
 tier: block
 """,
     )
@@ -217,7 +217,7 @@ name: rewrite-target
 event: Stop
 model: fake:model
 prompt: Rewrite.
-target: [content]
+target: [tool_input.content]
 tier: block
 """,
     )

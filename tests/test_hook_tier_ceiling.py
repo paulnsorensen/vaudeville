@@ -144,7 +144,7 @@ event: PreToolUse
 matcher: Write
 model: fake:model
 prompt: Rewrite.
-target: [command]
+target: [tool_input.content]
 tier: block
 """,
         )

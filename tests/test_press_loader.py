@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -17,10 +18,15 @@ from _hook_helpers import write_rule as _write_rule
 
 
 class TestLayerCollisionWithDifferentType:
-    """Same rule name, different `type`, in user vs project layers."""
+    """Same rule name, different `type`, in user vs project layers.
 
-    def test_project_rewrite_rule_wins_over_user_decide_rule_same_name(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    A project rule can never override a user (or bundled) rule of the same
+    name, regardless of `type`: the user rule wins and the project rule
+    is skipped with a log (AC-1 layer-trust order).
+    """
+
+    def test_user_decide_rule_wins_over_project_rewrite_rule_same_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         home = tmp_path / "home"
         (home / ".vaudeville" / "rules").mkdir(parents=True)
@@ -52,13 +58,18 @@ target: [tool_input.content]
 
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "empty-plugin-root"))
+        caplog.set_level(logging.WARNING)
 
         ruleset = load_rules_layered(str(project))
         rules = ruleset.by_name()
 
         assert len(rules) == 1
-        assert isinstance(rules["shared"], RewriteRule)
-        assert not isinstance(rules["shared"], DecideRule)
+        assert isinstance(rules["shared"], DecideRule)
+        assert not isinstance(rules["shared"], RewriteRule)
+        assert any(
+            "shared" in r.getMessage() and "user" in r.getMessage()
+            for r in caplog.records
+        )
 
     def test_layer_collision_with_different_type_does_not_crash_the_pipeline(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -103,10 +114,10 @@ tier: block
             _request(tmp_path), config=_CONFIG, decide_fn=counting_decide_fn
         )
 
-        # The project-layer DecideRule wins; the pipeline neither crashes
-        # nor silently drops the request — it evaluates the winning rule.
-        assert result["exit_code"] == 0
-        assert "deny" in str(result["stdout"])
+        # The user-layer RewriteRule wins and shadows the project decide
+        # rule of the same name; since no decide rule fires, the pipeline
+        # neither crashes nor blocks the request -- it falls open (allow).
+        assert result == {"stdout": "{}", "exit_code": 0}
 
 
 class TestOnOutcomeNotInOutcomes:

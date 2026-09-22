@@ -38,13 +38,15 @@ def _get_path(data: Mapping[str, Any], path: str) -> Any:
 
 
 def _set_path(data: dict[str, Any], path: str, value: object) -> None:
+    """Set `path` on `data`, copying each traversed dict so callers' nested
+    mappings are never mutated in place.
+    """
     parts = path.split(".")
     node = data
     for part in parts[:-1]:
         child = node.get(part)
-        if not isinstance(child, dict):
-            child = {}
-            node[part] = child
+        child = dict(child) if isinstance(child, dict) else {}
+        node[part] = child
         node = child
     node[parts[-1]] = value
 

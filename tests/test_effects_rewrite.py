@@ -52,6 +52,21 @@ class TestApplyRewriteTargetOnly:
         assert updated["nested"] == {"field": "new value"}
         assert records[0]["before"] is None
 
+    def test_caller_nested_mapping_not_mutated(self) -> None:
+        records: list[dict[str, object]] = []
+        tool_input = {"a": {"b": "old"}}
+
+        updated = apply_rewrite(
+            tool_input,
+            ["tool_input.a.b"],
+            {"tool_input.a.b": "new"},
+            rule_name="trim-secrets",
+            log=records.append,
+        )
+
+        assert updated["a"]["b"] == "new"
+        assert tool_input["a"]["b"] == "old"
+
 
 class TestBashTargetRejectedAtLoad:
     def test_bash_target_rejected(self) -> None:

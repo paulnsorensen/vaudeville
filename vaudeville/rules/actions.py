@@ -6,7 +6,7 @@ full ten-action set an `on:` outcome map can select from.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -23,18 +23,7 @@ ActionName = Literal[
     "run",
 ]
 
-ACTION_NAMES: tuple[ActionName, ...] = (
-    "allow",
-    "log",
-    "warn",
-    "block",
-    "feedback",
-    "rewrite",
-    "escalate",
-    "ask",
-    "add-context",
-    "run",
-)
+ACTION_NAMES: tuple[ActionName, ...] = get_args(ActionName)
 
 
 class Action(BaseModel):

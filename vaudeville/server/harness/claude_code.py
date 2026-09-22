@@ -130,8 +130,11 @@ class ClaudeCodeAdapter:
         )
         return _json({"systemMessage": text if text is not None else outcome.message})
 
-    def _render_allow(self, outcome: Outcome) -> dict[str, object]:
+    def render_allow(self) -> dict[str, object]:
         return {"stdout": "{}", "exit_code": 0}
+
+    def _render_allow(self, outcome: Outcome) -> dict[str, object]:
+        return self.render_allow()
 
     # `log`'s side effect belongs to the pipeline; the hook output is allow.
     _render_log = _render_allow

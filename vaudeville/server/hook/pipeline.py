@@ -14,6 +14,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping
 
+from vaudeville.core.protocol import GENERIC_ALLOW
 from vaudeville.core.truncation import _truncate_for_event, prepare_text
 from vaudeville.rules import (
     Action,
@@ -48,8 +49,6 @@ RUN_COMMAND_TIMEOUT_SECONDS = 5.0
 
 DecideFn = Callable[[DecideRule, UserConfig, str], DecideResult]
 
-_GENERIC_ALLOW: dict[str, object] = {"stdout": "{}", "exit_code": 0}
-
 
 def handle_hook_request(
     request: Mapping[str, object],
@@ -68,7 +67,7 @@ def handle_hook_request(
     harness_name = str(request.get("harness", ""))
     adapter = get_adapter(harness_name)
     if adapter is None:
-        return dict(_GENERIC_ALLOW)
+        return dict(GENERIC_ALLOW)
     try:
         return _run_pipeline(
             request,
@@ -80,7 +79,7 @@ def handle_hook_request(
         )
     except Exception:
         logger.exception("hook pipeline raised; allowing")
-        return dict(_GENERIC_ALLOW)
+        return dict(adapter.render_allow())
 
 
 def _run_pipeline(
@@ -141,7 +140,7 @@ def _run_pipeline(
             )
 
     if result.primary is None:
-        return dict(_GENERIC_ALLOW)
+        return dict(adapter.render_allow())  # type: ignore[attr-defined]
 
     outcome = Outcome(
         action=Action(action=result.primary.action_name),  # type: ignore[arg-type]

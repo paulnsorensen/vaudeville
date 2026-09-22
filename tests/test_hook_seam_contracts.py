@@ -656,7 +656,10 @@ def test_unknown_harness_allows(tmp_path: Path) -> None:
 
     result = handle_hook_request(request, config=_CONFIG)
 
-    assert result == {"stdout": "{}", "exit_code": 0}
+    # F22: an unknown harness has no adapter to render through, so it falls
+    # back to the harness-neutral GENERIC_ALLOW rather than a known adapter's
+    # allow shape.
+    assert result == {"stdout": "", "exit_code": 0}
 
 
 def test_handler_exception_allows_and_exits_zero(

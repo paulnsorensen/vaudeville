@@ -46,13 +46,21 @@ class Adapter(Protocol):
 
     def render(self, outcome: Outcome) -> dict[str, object]: ...
 
+    def render_allow(self) -> dict[str, object]: ...
+
+
+def _build_registry() -> dict[str, Adapter]:
+    from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
+
+    return {"claude-code": ClaudeCodeAdapter()}
+
+
+_REGISTRY: dict[str, Adapter] = _build_registry()
+
 
 def get_adapter(name: str) -> Adapter | None:
     """Look up a registered adapter by harness name, or None if unknown."""
-    from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
-
-    registry: dict[str, Adapter] = {"claude-code": ClaudeCodeAdapter()}
-    return registry.get(name)
+    return _REGISTRY.get(name)
 
 
 __all__ = ["Adapter", "HookEvent", "Outcome", "get_adapter"]

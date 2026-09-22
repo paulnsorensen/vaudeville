@@ -13,3 +13,7 @@ class TestGetAdapter:
 
     def test_unknown_harness_returns_none(self) -> None:
         assert get_adapter("nope") is None
+
+    def test_registry_is_built_once(self) -> None:
+        """F22: the adapter registry is module-level, not rebuilt per call."""
+        assert get_adapter("claude-code") is get_adapter("claude-code")

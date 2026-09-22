@@ -499,3 +499,23 @@ tier: block
 
         assert recorder.call_count == 0
         assert result == {"stdout": "{}", "exit_code": 0}
+
+
+class TestAllowRendering:
+    """F22: unknown harness falls back to the generic allow; a known harness
+    with no matching rule uses the adapter's own allow shape."""
+
+    def test_unknown_harness_returns_generic_allow(self, tmp_path: Path) -> None:
+        from vaudeville.core.protocol import GENERIC_ALLOW
+
+        request = _request(tmp_path)
+        request["harness"] = "nope"
+
+        result = handle_hook_request(request, config=_CONFIG)
+
+        assert result == dict(GENERIC_ALLOW)
+
+    def test_known_harness_no_match_uses_adapter_allow(self, tmp_path: Path) -> None:
+        result = handle_hook_request(_request(tmp_path), config=_CONFIG)
+
+        assert result == {"stdout": "{}", "exit_code": 0}

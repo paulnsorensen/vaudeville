@@ -40,6 +40,8 @@ _CONFIDENCE_MIN_WIDTH = 10
 _LATENCY_MIN_WIDTH = 10
 _REASON_MIN_WIDTH = 20
 _SNIPPET_MIN_WIDTH = 20
+_ACTION_MIN_WIDTH = 10
+_DOWNGRADE_MIN_WIDTH = 12
 
 
 def _parse_ts_display(ts: str) -> str:
@@ -92,6 +94,8 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
         min_width=_LATENCY_MIN_WIDTH,
         no_wrap=True,
     )
+    table.add_column("Action", min_width=_ACTION_MIN_WIDTH, no_wrap=True)
+    table.add_column("Downgrade", min_width=_DOWNGRADE_MIN_WIDTH, no_wrap=True)
     table.add_column("Reason", min_width=_REASON_MIN_WIDTH, ratio=1, overflow="fold")
     table.add_column(
         "LLM Output", min_width=_SNIPPET_MIN_WIDTH, ratio=1, overflow="fold"
@@ -105,6 +109,8 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
             _verdict_text(evt.get("verdict", "?")),
             _confidence_text(_to_float(evt.get("confidence", 0))),
             _latency_text(_to_float(evt.get("latency_ms", 0))),
+            _sanitize_display(evt.get("action", "")),
+            _sanitize_display(evt.get("downgrade", "")),
             _sanitize_display(evt.get("reason", "")),
             _sanitize_display(evt.get("input_snippet", "")),
         )

@@ -52,6 +52,8 @@ def aggregate_events(
             "earliest": min(e["ts"] for e in valid),
             "latest": max(e["ts"] for e in valid),
         },
+        "actions": _summarize_actions(valid),
+        "downgrades": sum(1 for e in valid if e.get("downgrade")),
     }
 
 
@@ -92,6 +94,17 @@ def _summarize_rules(
             "p95_latency_ms": round(p95, 1),
         }
     return summaries
+
+
+def _summarize_actions(events: list[dict[str, Any]]) -> dict[str, int]:
+    """Count events per `action`; records without the field are omitted."""
+    counts: dict[str, int] = {}
+    for evt in events:
+        action = evt.get("action")
+        if action is None:
+            continue
+        counts[action] = counts.get(action, 0) + 1
+    return counts
 
 
 def _parse_line(line: str) -> dict[str, Any] | None:
@@ -149,4 +162,6 @@ def empty_result() -> dict[str, Any]:
             "earliest": "",
             "latest": "",
         },
+        "actions": {},
+        "downgrades": 0,
     }

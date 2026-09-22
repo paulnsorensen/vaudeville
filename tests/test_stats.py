@@ -41,6 +41,45 @@ def test_missing_file(tmp_path: pathlib.Path) -> None:
     assert result["rules"] == {}
     assert result["latency"]["p50_ms"] == 0.0
     assert result["time_range"]["earliest"] == ""
+    assert result["actions"] == {}
+    assert result["downgrades"] == 0
+
+
+def test_actions_summarized(tmp_path: pathlib.Path) -> None:
+    """Events aggregate an action-name -> count breakdown."""
+    events = [
+        {**_make_event(), "action": "block"},
+        {**_make_event(), "action": "block"},
+        {**_make_event(), "action": "allow"},
+    ]
+    path = _write_events(tmp_path, events)
+    result = aggregate_events(path)
+
+    assert result["actions"] == {"block": 2, "allow": 1}
+
+
+def test_downgrades_counted(tmp_path: pathlib.Path) -> None:
+    """Records with a non-empty `downgrade` field are counted."""
+    events = [
+        {**_make_event(), "downgrade": "tier:warn"},
+        {**_make_event(), "downgrade": None},
+        _make_event(),
+    ]
+    path = _write_events(tmp_path, events)
+    result = aggregate_events(path)
+
+    assert result["downgrades"] == 1
+
+
+def test_actions_and_downgrades_default_when_field_absent(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Records without `action`/`downgrade` still aggregate cleanly."""
+    path = _write_events(tmp_path, [_make_event()])
+    result = aggregate_events(path)
+
+    assert result["actions"] == {}
+    assert result["downgrades"] == 0
 
 
 def test_empty_file(tmp_path: pathlib.Path) -> None:

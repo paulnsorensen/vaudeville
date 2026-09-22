@@ -21,6 +21,9 @@ _LOGS_DIR = os.path.join(os.path.expanduser("~"), ".vaudeville", "logs")
 # Keep event rows lightweight for fast tail/read operations in watch mode.
 _MAX_SNIPPET_LOG_CHARS = 500
 
+# Actions that gate the session; only these route to violations.jsonl (F23).
+_BLOCKING_ACTIONS = frozenset({"block", "ask"})
+
 
 @dataclass(frozen=True)
 class ClassificationEvent:
@@ -110,7 +113,7 @@ class EventLogger:
 
         self._logger.bind(_sink="events").info(json.dumps(common, default=str))
 
-        if event.verdict == "violation":
+        if event.action in _BLOCKING_ACTIONS:
             violation = {**common}
             self._logger.bind(_sink="violations").info(
                 json.dumps(violation, default=str)

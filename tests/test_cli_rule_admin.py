@@ -24,7 +24,7 @@ from vaudeville.cli_rules import (
     cmd_completion,
     dispatch_rule_command,
 )
-from vaudeville.core.rules import (
+from vaudeville.rules import (
     locate_rule_file,
     locate_all_rule_files,
     set_tier,
@@ -38,27 +38,22 @@ def _write_rule(
     name: str,
     tier: str = "shadow",
     event: str = "Stop",
-    examples: list[dict[str, str]] | None = None,
 ) -> Path:
     rules_dir.mkdir(parents=True, exist_ok=True)
     path = rules_dir / f"{name}.yaml"
     data: dict[str, object] = {
+        "type": "decide",
         "name": name,
         "event": event,
         "tier": tier,
-        "threshold": 0.5,
-        "action": "warn",
-        "message": "{reason}",
-        "prompt": "Is this a violation? {{ examples }}\n{text}",
-        "context": [{"field": "last_assistant_message"}],
-        "labels": ["violation", "clean"],
+        "prompt": "Is this a violation?\n{text}",
+        "outcomes": ["violation", "clean"],
+        "on": {"violation": "warn"},
         "test_cases": [
-            {"text": "bad text", "label": "violation"},
-            {"text": "good text", "label": "clean"},
+            {"text": "bad text", "outcome": "violation"},
+            {"text": "good text", "outcome": "clean"},
         ],
     }
-    if examples:
-        data["examples"] = examples
     path.write_text(yaml.dump(data))
     return path
 
@@ -420,12 +415,12 @@ class TestCmdShow:
         rules_dir.mkdir(parents=True, exist_ok=True)
         path = rules_dir / "footer-rule.yaml"
         data = {
+            "type": "decide",
             "name": "footer-rule",
             "event": "Stop",
             "tier": "warn",
-            "threshold": 0.5,
-            "action": "warn",
-            "message": "{reason}",
+            "outcomes": ["violation", "clean"],
+            "on": {"violation": "warn"},
             "prompt": (
                 "Header line\n\n"
                 "Now classify:\n"
@@ -433,7 +428,6 @@ class TestCmdShow:
                 "VERDICT: violation or clean\n"
                 "REASON: one sentence\n"
             ),
-            "labels": ["violation", "clean"],
         }
         path.write_text(yaml.dump(data))
         with patch(
@@ -1071,34 +1065,6 @@ class TestCoverageEdgeCases:
         ):
             with pytest.raises(SystemExit):
                 cmd_demote(Namespace(name="missing"))
-
-    def test_show_with_examples(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        monkeypatch.setenv("HOME", str(tmp_path))
-        _write_rule(
-            _home_rules(tmp_path),
-            "ex-rule",
-            examples=[
-                {
-                    "id": "1",
-                    "input": "bad output",
-                    "label": "violation",
-                    "reason": "sycophantic",
-                }
-            ],
-        )
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
-        ):
-            cmd_show(Namespace(name="ex-rule", json=False))
-        out = capsys.readouterr().out
-        assert "examples (from prompt)" not in out
-        assert "bad output" not in out
 
     def test_show_draft_exits(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

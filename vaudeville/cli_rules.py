@@ -14,17 +14,18 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 from vaudeville.core.paths import find_project_root as _core_find_project_root
-from vaudeville.core.protocol import CLASSIFY_MAX_TOKENS
-from vaudeville.core.rules import (
+from vaudeville.rules import (
     VALID_TIERS,
+    DecideRule,
     Rule,
+    list_rules_with_source,
     load_rule_file,
     load_rules_layered,
-    list_rules_with_source,
     locate_all_rule_files,
     locate_rule_file,
     rules_search_path,
     set_tier,
+    validate_rule_file,
 )
 from vaudeville.tui import styled_table, tier_text
 
@@ -49,7 +50,7 @@ def _human_prompt(prompt: str) -> str:
 def _rule_names_completer(prefix: str, **_: object) -> list[str]:
     try:
         rules = load_rules_layered()
-        return [name for name in rules if name.startswith(prefix)]
+        return [name for name in rules.by_name() if name.startswith(prefix)]
     except Exception:
         return []
 
@@ -70,9 +71,9 @@ def cmd_list(args: argparse.Namespace) -> None:
                 [
                     {
                         "name": r.name,
+                        "type": r.type,
                         "tier": r.tier,
                         "event": r.event,
-                        "threshold": r.threshold,
                         "source": s,
                     }
                     for r, s in pairs
@@ -110,17 +111,17 @@ def _build_list_table(pairs: list[tuple[Rule, str]]) -> Table:
         caption=f"{len(pairs)} rule{'s' if len(pairs) != 1 else ''}",
     )
     table.add_column("Name", min_width=20, overflow="fold")
+    table.add_column("Type", no_wrap=True)
     table.add_column("Tier", no_wrap=True)
     table.add_column("Event", no_wrap=True)
-    table.add_column("Threshold", justify="right", no_wrap=True)
     table.add_column("Source", ratio=1, overflow="fold")
     for rule, source in pairs:
         row_style = "dim" if rule.tier == "disabled" else None
         table.add_row(
             rule.name,
+            rule.type,
             tier_text(rule.tier),
             rule.event,
-            f"{rule.threshold:.2f}",
             source,
             style=row_style,
         )
@@ -178,10 +179,15 @@ def _build_show_summary_table(rule: Rule, path: Path) -> Table:
     table = styled_table(rule.name)
     table.add_column("Field", no_wrap=True)
     table.add_column("Value", overflow="fold")
+    table.add_row("type", rule.type)
     table.add_row("tier", tier_text(rule.tier))
     table.add_row("event", rule.event)
-    table.add_row("threshold", f"{rule.threshold:.2f}")
-    table.add_row("labels", ", ".join(rule.labels))
+    table.add_row("matcher", rule.matcher or "")
+    table.add_row("model", rule.model or "")
+    if isinstance(rule, DecideRule):
+        table.add_row("outcomes", ", ".join(rule.outcomes))
+    else:
+        table.add_row("target", ", ".join(rule.target))
     table.add_row("path", display_path)
     return table
 
@@ -189,42 +195,34 @@ def _build_show_summary_table(rule: Rule, path: Path) -> Table:
 def _print_rule_human(rule: Rule, path: Path) -> None:
     _console.print(_build_show_summary_table(rule, path))
     _console.print()
-    _console.print(Text("Message", style="bold"))
-    _console.print(f'"{rule.message}"')
-    _console.print()
+    if isinstance(rule, DecideRule) and rule.reasons:
+        _console.print(Text("Reasons", style="bold"))
+        for outcome, reason in rule.reasons.items():
+            _console.print(f"  {outcome}: {reason}")
+        _console.print()
     _console.print(Text("Prompt", style="bold"))
     _console.print(_human_prompt(rule.prompt))
 
 
 def _show_json(rule: Rule, path: Path) -> None:
-    sample_prompt, prefix_len = rule.split_prompt("{text}", "{context}")
-    print(
-        json.dumps(
-            {
-                "name": rule.name,
-                "tier": rule.tier,
-                "event": rule.event,
-                "threshold": rule.threshold,
-                "message": rule.message,
-                "labels": rule.labels,
-                "test_case_count": len(rule.test_cases),
-                "path": str(path),
-                "context": rule.context,
-                "prompt": rule.prompt,
-                "prompt_example": sample_prompt,
-                "classify_max_tokens": CLASSIFY_MAX_TOKENS,
-                "payload_example": {
-                    "op": "classify",
-                    "prompt": sample_prompt,
-                    "rule": rule.name,
-                    "prefix_len": prefix_len,
-                    "tier": rule.tier,
-                    "input_text": "{raw input before prompt formatting}",
-                },
-            },
-            indent=2,
-        )
-    )
+    data: dict[str, Any] = {
+        "name": rule.name,
+        "type": rule.type,
+        "tier": rule.tier,
+        "event": rule.event,
+        "matcher": rule.matcher,
+        "model": rule.model,
+        "path": str(path),
+        "prompt": rule.prompt,
+    }
+    if isinstance(rule, DecideRule):
+        data["outcomes"] = rule.outcomes
+        data["on"] = {k: v.model_dump(exclude_none=True) for k, v in rule.on.items()}
+        data["reasons"] = rule.reasons
+        data["test_case_count"] = len(rule.test_cases)
+    else:
+        data["target"] = rule.target
+    print(json.dumps(data, indent=2))
 
 
 def cmd_show(args: argparse.Namespace) -> None:
@@ -406,7 +404,7 @@ def cmd_path(args: argparse.Namespace) -> None:
 
 def _validate_rule_file(p: Path, name: str) -> bool:
     try:
-        load_rule_file(p)
+        validate_rule_file(p)
         _console.print(f"OK      {name}")
         return True
     except Exception as exc:
@@ -419,7 +417,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     if args.name:
         try:
             path = locate_rule_file(args.name, project_root)
-            load_rule_file(path)
+            validate_rule_file(path)
             _console.print(f"OK      {args.name}")
         except FileNotFoundError:
             print(f"NOT FOUND  {args.name}", file=sys.stderr)

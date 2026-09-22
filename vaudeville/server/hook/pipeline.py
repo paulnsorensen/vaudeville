@@ -128,6 +128,9 @@ def _run_pipeline(
 
     result = merge(evaluated)
 
+    for dropped_action, reason in result.dropped:
+        _log_dropped(event_logger, dropped_action, reason, prompt_chars=len(event.text))
+
     for run_action in result.run_actions:
         if run_action.command:
             run_named_command(
@@ -342,6 +345,29 @@ def _do_rewrite(
         event.tool_input, target.target, new_values, rule_name=rule.name, log=_log
     )
     return "rewrite", new_text, updated
+
+
+def _log_dropped(
+    logger_fn: EventLogger | None,
+    dropped: EvaluatedAction,
+    reason: str,
+    *,
+    prompt_chars: int,
+) -> None:
+    """Log a primary-channel action that lost the precedence merge (F20)."""
+    if logger_fn is None:
+        return
+    logger_fn.log_event(
+        ClassificationEvent(
+            rule=dropped.rule_name,
+            verdict="",
+            confidence=0.0,
+            latency_ms=0.0,
+            prompt_chars=prompt_chars,
+            action=dropped.action_name,
+            downgrade=reason,
+        )
+    )
 
 
 def _log_decision(

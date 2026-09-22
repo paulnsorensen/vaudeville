@@ -35,10 +35,20 @@ from .models import (
     RuleSet,
     parse_rule,
 )
+from .policy import (
+    PRIMARY_PRECEDENCE,
+    SECONDARY_ACTIONS,
+    SILENT_TIER_ALLOWED,
+    WARN_DOWNGRADES,
+)
 
 __all__ = [
     "Action",
     "ActionName",
+    "PRIMARY_PRECEDENCE",
+    "SECONDARY_ACTIONS",
+    "SILENT_TIER_ALLOWED",
+    "WARN_DOWNGRADES",
     "DecideRule",
     "DecideTestCase",
     "RewriteRule",

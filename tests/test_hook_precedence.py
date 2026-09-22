@@ -80,6 +80,41 @@ tier: block
         assert '"ask"' in str(result["stdout"])
         assert "updatedInput" not in str(result["stdout"])
 
+    def test_dropped_rule_logged_with_reason(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from vaudeville.server.event_log import EventLogger
+        from vaudeville.server.log_config import LogConfig
+
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "a-warn-rule", _decide_rule("a-warn-rule", "warn"))
+        _write_rule(tmp_path, "b-block-rule", _decide_rule("b-block-rule", "block"))
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            handle_hook_request(
+                _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+        finally:
+            logger.close()
+
+        import json
+        import time
+
+        time.sleep(0.05)
+        lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        records = [json.loads(line) for line in lines]
+        dropped = [
+            r
+            for r in records
+            if r["rule"] == "a-warn-rule"
+            and r["downgrade"]
+            and "precedence" in r["downgrade"]
+        ]
+        assert len(dropped) == 1
+        assert "b-block-rule" in dropped[0]["downgrade"]
+
     def test_context_accumulates(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

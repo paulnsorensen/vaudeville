@@ -14,13 +14,14 @@ import sys
 import time
 from collections.abc import Callable, Mapping
 
+from vaudeville.core.truncation import _truncate_for_event, prepare_text
 from vaudeville.rules import (
     Action,
     DecideRule,
     RewriteRule,
     RuleSet,
-    load_rules_layered,
 )
+from vaudeville.rules.cache import load_layered
 from vaudeville.server.agents import DecideResult
 from vaudeville.server.agents import decide as default_decide
 from vaudeville.server.agents import resolve_model
@@ -94,8 +95,10 @@ def _run_pipeline(
     payload = request.get("payload")
     raw = payload if isinstance(payload, Mapping) else {}
     event: HookEvent = adapter.normalize(raw)  # type: ignore[attr-defined]
+    text = _truncate_for_event(prepare_text(event.text, event.event), event.event)
+    event = event.model_copy(update={"text": text})
 
-    ruleset: RuleSet = load_rules_layered(event.cwd)
+    ruleset: RuleSet = load_layered(event.cwd)
     by_name = ruleset.by_name()
     matching = [
         rule
@@ -118,6 +121,7 @@ def _run_pipeline(
             decide_fn=decide_fn,
             clock=clock,
             logger_fn=event_logger,
+            prompt_chars=len(event.text),
         )
         if action is not None:
             evaluated.append(action)
@@ -163,14 +167,31 @@ def _evaluate_rule(
     decide_fn: DecideFn,
     clock: Callable[[], float],
     logger_fn: EventLogger | None,
+    prompt_chars: int,
 ) -> EvaluatedAction | None:
     model_name = rule.model or config.default_model
+
+    if not event.text:
+        _log_decision(
+            logger_fn,
+            rule,
+            DecideResult(outcome=None),
+            "allow",
+            None,
+            0.0,
+            model_name,
+            prompt_chars,
+        )
+        return None
+
     start = clock()
     result = decide_fn(rule, config, event.text)
     latency_ms = (clock() - start) * 1000
 
     if result.outcome is None:
-        _log_decision(logger_fn, rule, result, "allow", None, latency_ms, model_name)
+        _log_decision(
+            logger_fn, rule, result, "allow", None, latency_ms, model_name, prompt_chars
+        )
         return None
 
     action_obj = rule.on.get(result.outcome)
@@ -206,7 +227,14 @@ def _evaluate_rule(
     effective_name, downgrade = apply_tier_ceiling(action_name, rule.tier)
 
     _log_decision(
-        logger_fn, rule, result, action_name, downgrade, latency_ms, model_name
+        logger_fn,
+        rule,
+        result,
+        action_name,
+        downgrade,
+        latency_ms,
+        model_name,
+        prompt_chars,
     )
 
     return EvaluatedAction(
@@ -324,6 +352,7 @@ def _log_decision(
     downgrade: str | None,
     latency_ms: float,
     model_name: str | None,
+    prompt_chars: int,
 ) -> None:
     if logger_fn is None:
         return
@@ -333,7 +362,7 @@ def _log_decision(
             verdict=result.outcome or "",
             confidence=result.confidence or 0.0,
             latency_ms=latency_ms,
-            prompt_chars=0,
+            prompt_chars=prompt_chars,
             reason=result.reason or "",
             tier=rule.tier,
             outcome=result.outcome,

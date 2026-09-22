@@ -184,9 +184,7 @@ tier: block
     assert updated["file_path"] == "notes.txt"
     rewrite_logs = [r for r in caplog.records if "rewrite effect" in r.getMessage()]
     assert any("'before': 'old text'" in r.getMessage() for r in rewrite_logs)
-    assert any(
-        "'after': 'sanitized text'" in r.getMessage() for r in rewrite_logs
-    )
+    assert any("'after': 'sanitized text'" in r.getMessage() for r in rewrite_logs)
 
 
 def test_ac9_rewrite_on_stop_event_downgrades_to_feedback_and_logs(
@@ -621,6 +619,31 @@ tier: block
     assert recorder_b.call_count == 0
     assert result_b == {"stdout": "{}", "exit_code": 0}
 
+    _write_rule(
+        project_a,
+        "extra",
+        """
+type: decide
+name: extra
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+""",
+    )
+    fn4, recorder_added = _decide_fn('{"outcome": "violation"}')
+    handle_hook_request(_request(project_a), config=_CONFIG, decide_fn=fn4)
+    assert recorder_added.call_count == 2
+
+    (project_a / ".vaudeville" / "rules" / "extra.yaml").unlink()
+    fn5, recorder_removed = _decide_fn('{"outcome": "violation"}')
+    handle_hook_request(_request(project_a), config=_CONFIG, decide_fn=fn5)
+    assert recorder_removed.call_count == 1
+
 
 def test_unknown_harness_allows(tmp_path: Path) -> None:
     request = {
@@ -642,7 +665,7 @@ def test_handler_exception_allows_and_exits_zero(
     def _raise(project_root: str | None) -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(pipeline_module, "load_rules_layered", _raise)
+    monkeypatch.setattr(pipeline_module, "load_layered", _raise)
     caplog.set_level(logging.ERROR)
 
     result = handle_hook_request(_request(tmp_path), config=_CONFIG)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from .loader import layered_search_path, load_rules_layered
+from .loader import _rule_filenames, layered_search_path, load_rules_layered
 from .models import RuleSet
 
 _CacheKey = tuple[str, tuple[tuple[str, int], ...]]
@@ -15,13 +15,7 @@ _cache: dict[_CacheKey, RuleSet] = {}
 def _fingerprint(project_root: str | None) -> _CacheKey:
     stats: list[tuple[str, int]] = []
     for rules_dir in layered_search_path(project_root):
-        try:
-            names = os.listdir(rules_dir)
-        except OSError:
-            continue
-        for name in sorted(names):
-            if not name.endswith((".yaml", ".yml")):
-                continue
+        for name in _rule_filenames(rules_dir):
             path = os.path.join(rules_dir, name)
             try:
                 stats.append((path, os.stat(path).st_mtime_ns))

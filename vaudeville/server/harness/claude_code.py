@@ -62,7 +62,7 @@ _TOOL_INPUT_TEXT_FIELDS = ("command", "content", "new_string", "prompt", "body")
 
 
 def _derive_text(event: str, raw: Mapping[str, object]) -> str:
-    """Best-effort classifiable text for an event, mirroring the runner."""
+    """Best-effort classifiable text for an event."""
     for field in _TEXT_FIELDS_BY_EVENT.get(event, ()):
         value = raw.get(field)
         if isinstance(value, str) and value:

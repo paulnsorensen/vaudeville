@@ -5,14 +5,24 @@ AC-5, AC-17, AC-21 (decision_record field shape), AC-26.
 
 from __future__ import annotations
 
+import functools
+import json
 import logging
+import time
 from pathlib import Path
 
 import pytest
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from vaudeville.core.truncation import CHARS_PER_TOKEN, MAX_INPUT_TOKENS
+from vaudeville.rules import DecideRule
+from vaudeville.server.agents import DecideResult, decide
+from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.hook import handle_hook_request
 from vaudeville.server.log_config import LogConfig
+from vaudeville.server.user_config import UserConfig
 
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
@@ -188,9 +198,7 @@ tier: block
 
         assert "updatedInput" not in str(result["stdout"])
         assert result == {"stdout": "{}", "exit_code": 0}
-        assert any(
-            "event/matcher mismatch" in r.getMessage() for r in caplog.records
-        )
+        assert any("event/matcher mismatch" in r.getMessage() for r in caplog.records)
 
 
 class TestEscalateDispatch:
@@ -295,9 +303,7 @@ tier: block
         fn, _ = _decide_fn('{"outcome": "violation"}')
         run_recorder = patch_run_command(monkeypatch)
 
-        result = handle_hook_request(
-            _request(tmp_path), config=_CONFIG, decide_fn=fn
-        )
+        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
         assert result == {"stdout": "{}", "exit_code": 0}
         assert run_recorder.calls == ["notify-target"]
@@ -345,12 +351,9 @@ tier: disabled
         )
         calls: dict[str, int] = {"outer-gate": 0, "escalate-target": 0}
 
-        def decide_fn(rule: object, config: object, text: str) -> object:
+        def decide_fn(rule: DecideRule, config: UserConfig, text: str) -> DecideResult:
             del config, text
-            from vaudeville.server.agents import DecideResult
-
-            name = getattr(rule, "name", "")
-            calls[name] = calls.get(name, 0) + 1
+            calls[rule.name] = calls.get(rule.name, 0) + 1
             return DecideResult(outcome="violation")
 
         result = handle_hook_request(
@@ -402,3 +405,97 @@ tier: warn
 
         assert "systemMessage" in str(result["stdout"])
         assert "permissionDecision" not in str(result["stdout"])
+
+
+STOP_RULE_YAML = """
+type: decide
+name: stop-gate
+event: Stop
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+"""
+
+
+class TestTruncation:
+    def test_oversized_stop_text_is_truncated_and_logged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "stop-gate", STOP_RULE_YAML)
+        max_chars = MAX_INPUT_TOKENS * CHARS_PER_TOKEN
+        oversized = "x" * (max_chars * 3)
+        prompts: list[str] = []
+
+        def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            del info
+            for message in messages:
+                for part in message.parts:
+                    text = getattr(part, "content", None)
+                    if isinstance(text, str):
+                        prompts.append(text)
+            return ModelResponse(parts=[TextPart('{"outcome": "violation"}')])
+
+        fn = functools.partial(decide, model_override=FunctionModel(respond))
+        request = {
+            "op": "hook",
+            "harness": "claude-code",
+            "event": "Stop",
+            "cwd": str(tmp_path),
+            "payload": {
+                "hook_event_name": "Stop",
+                "last_assistant_message": oversized,
+                "cwd": str(tmp_path),
+            },
+        }
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            handle_hook_request(
+                request, config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+            time.sleep(0.05)
+            lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+            record = json.loads(lines[-1])
+        finally:
+            logger.close()
+
+        sent = "\n".join(prompts)
+        start = sent.index(HOOK_DATA_START) + len(HOOK_DATA_START)
+        end = sent.index(HOOK_DATA_END)
+        body = sent[start:end].strip("\n")
+        assert len(body) == max_chars
+        assert record["prompt_chars"] == max_chars
+
+
+class TestEmptyTextSkip:
+    def test_empty_text_skips_decide_and_allows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "read-gate",
+            """
+type: decide
+name: read-gate
+event: PreToolUse
+matcher: Read
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+""",
+        )
+        fn, recorder = _decide_fn('{"outcome": "violation"}')
+
+        request = _request(tmp_path, tool_name="Read", tool_input={})
+        result = handle_hook_request(request, config=_CONFIG, decide_fn=fn)
+
+        assert recorder.call_count == 0
+        assert result == {"stdout": "{}", "exit_code": 0}

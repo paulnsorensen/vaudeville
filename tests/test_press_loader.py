@@ -26,7 +26,10 @@ class TestLayerCollisionWithDifferentType:
     """
 
     def test_user_decide_rule_wins_over_project_rewrite_rule_same_name(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         home = tmp_path / "home"
         (home / ".vaudeville" / "rules").mkdir(parents=True)

@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 import yaml
 
-from vaudeville.rules import clear_cache, load_layered
+from vaudeville.rules.cache import clear_cache, load_layered
 
 DECIDE_RULE: dict[str, Any] = {
     "type": "decide",

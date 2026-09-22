@@ -16,7 +16,7 @@ from .admin import (
     set_tier,
     validate_rule_file,
 )
-from .cache import clear_cache, load_layered
+from .cache import load_layered
 from .loader import (
     bundled_rules_dir,
     layered_search_path,
@@ -47,7 +47,6 @@ __all__ = [
     "VALID_TIERS",
     "parse_rule",
     "load_layered",
-    "clear_cache",
     "load_rule_file",
     "load_rules",
     "load_rules_layered",

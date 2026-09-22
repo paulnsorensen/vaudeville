@@ -44,7 +44,11 @@ def write_rule(tmp_path: Path, name: str, body: str) -> None:
     (rules_dir / f"{name}.yaml").write_text(body)
 
 
-def make_request(tmp_path: Path, tool_name: str = "Write") -> dict[str, object]:
+def make_request(
+    tmp_path: Path,
+    tool_name: str = "Write",
+    tool_input: dict[str, object] | None = None,
+) -> dict[str, object]:
     return {
         "op": "hook",
         "harness": "claude-code",
@@ -53,7 +57,9 @@ def make_request(tmp_path: Path, tool_name: str = "Write") -> dict[str, object]:
         "payload": {
             "hook_event_name": "PreToolUse",
             "tool_name": tool_name,
-            "tool_input": {"command": "echo hi"},
+            "tool_input": tool_input
+            if tool_input is not None
+            else {"command": "echo hi"},
             "cwd": str(tmp_path),
         },
     }

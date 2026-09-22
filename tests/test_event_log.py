@@ -297,3 +297,57 @@ def test_latency_rounded(tmp_path: pathlib.Path) -> None:
         assert events[0]["latency_ms"] == 42.3
     finally:
         logger.close()
+
+
+def test_decision_fields_included_in_event(tmp_path: pathlib.Path) -> None:
+    """Outcome, action, model, and downgrade are written to events.jsonl."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="test-decision",
+                verdict="violation",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+                outcome="violation",
+                action="block",
+                model="fake:model",
+                downgrade="warn",
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        evt = events[0]
+        assert evt["outcome"] == "violation"
+        assert evt["action"] == "block"
+        assert evt["model"] == "fake:model"
+        assert evt["downgrade"] == "warn"
+    finally:
+        logger.close()
+
+
+def test_decision_fields_default_to_none(tmp_path: pathlib.Path) -> None:
+    """Outcome, action, model, and downgrade default to null when unset."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="test-decision",
+                verdict="clean",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        evt = events[0]
+        assert evt["outcome"] is None
+        assert evt["action"] is None
+        assert evt["model"] is None
+        assert evt["downgrade"] is None
+    finally:
+        logger.close()

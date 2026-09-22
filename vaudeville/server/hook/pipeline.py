@@ -186,6 +186,9 @@ def _evaluate_rule(
             rule, action_obj, by_name, event, config, decide_fn
         )
 
+    if action_name == "feedback":
+        message = with_origin_label(rule.name, message)
+
     if action_name == "rewrite":
         action_name, message, updated_input = _do_rewrite(
             rule, action_obj, by_name, event, config, logger_fn

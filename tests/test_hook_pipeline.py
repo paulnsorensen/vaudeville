@@ -166,7 +166,7 @@ class TestRequestDeadline:
         fn, _ = _decide_fn('{"outcome": "violation"}')
 
         deadlines: list[float] = []
-        real_escalate = pipeline_module.escalate
+        from vaudeville.server.effects.escalate import escalate as real_escalate
 
         def recording_escalate(
             run: object, *, deadline: float, rule_name: str | None = None

@@ -1,6 +1,6 @@
 # Vaudeville
 
-SLM-powered semantic hook enforcement for [Claude Code](https://claude.ai/code). Classifies AI assistant output against YAML rules using local Phi-4-mini inference.
+pydantic-ai-powered semantic hook enforcement for [Claude Code](https://claude.ai/code). Classifies AI assistant output against YAML rules using a configurable LLM provider.
 
 ## Get the Hook
 
@@ -8,15 +8,13 @@ SLM-powered semantic hook enforcement for [Claude Code](https://claude.ai/code).
 
 In turn-of-the-century vaudeville theatres, a stagehand waited in the wings with a long shepherd's crook. When an act started flailing — forgetting lines, losing the crowd, running past its slot — the manager would signal and the hook would shoot out from the curtain and yank the performer offstage before the audience soured on the whole bill. "Get the hook!" became shorthand for cutting a bad act short.
 
-That's the job here. A local small language model watches what Claude is about to say or do and, when the performance goes off the rails — hedging about untested code, dismissing a test failure as "pre-existing," deferring a reviewer's concern to a follow-up PR, declaring work complete with known gaps — it reaches out from the wings and pulls the act. Unlike regex hooks, the SLM reads *intent*, so it catches the act whether Claude says "this should work," "I believe this addresses it," or "we can tighten this up later." Bad patterns get yanked; honest uncertainty gets through.
+That's the job here. A model watches what Claude is about to say or do and, when the performance goes off the rails — hedging about untested code, dismissing a test failure as "pre-existing," deferring a reviewer's concern to a follow-up PR, declaring work complete with known gaps — it reaches out from the wings and pulls the act. Unlike regex hooks, the SLM reads *intent*, so it catches the act whether Claude says "this should work," "I believe this addresses it," or "we can tighten this up later." Bad patterns get yanked; honest uncertainty gets through.
 
 ## How It Works
 
-Vaudeville runs a local inference daemon (Phi-4-mini, 3.8B params, int4) that classifies Claude Code's output in real time. You write rules as YAML files with few-shot prompt templates. The daemon evaluates them on every hook event and returns block/warn/log verdicts.
+Vaudeville runs a local daemon that classifies Claude Code's output in real time via [pydantic-ai](https://ai.pydantic.dev/), calling whichever model provider you configure. You write rules as YAML files with few-shot prompt templates. The daemon evaluates them on every hook event and returns block/warn/log verdicts.
 
-**Apple Silicon is the first-class target.** On Macs the daemon uses the MLX backend, running Phi-4-mini on the GPU via unified memory (~200ms per classification). On x86_64 the daemon falls back to the GGUF backend (llama-cpp-python, CPU only) — same Phi-4-mini weights, but expect noticeably higher latency. Other platforms/models aren't supported; both backends hard-code the Phi-4-mini repos.
-
-**Fail-open by design** — if the daemon is down, the model isn't downloaded, or inference errors out, your session continues normally. Vaudeville never blocks you from working.
+**Fail-open by design** — if the daemon is down, the config is missing, or a model call errors out, your session continues normally. Vaudeville never blocks you from working.
 
 ## Install
 
@@ -25,13 +23,13 @@ Vaudeville runs a local inference daemon (Phi-4-mini, 3.8B params, int4) that cl
 /plugin install vaudeville@paulnsorensen
 ```
 
-Then run the one-time setup to download the model (~2.4 GB):
+Then run the one-time setup to write your config:
 
 ```
 /vaudeville:setup
 ```
 
-This detects your platform (Apple Silicon or x86_64) and downloads the appropriate model variant.
+This creates `~/.vaudeville/config` with a `default_model`, `providers` (API key env vars), and optional `commands`.
 
 ## Quick Start (5 minutes to first hook)
 
@@ -101,10 +99,6 @@ Each rule is a YAML file with a `name`, `event`, `prompt`, `labels`, `tier`, and
 
 Other events (`SessionStart`, `UserPromptSubmit`, `Notification`, etc.) are available for specialized use cases. See `hooks/hooks.json` for the full list of wired events.
 
-### Backend Differences
-
-The GGUF backend (llama-cpp-python) enforces the `VERDICT: .../REASON: ...` output format via GBNF grammar-constrained decoding, guaranteeing structurally valid responses. MLX-LM doesn't support GBNF grammars, so the MLX backend relies on a system prompt plus a newline-count stop condition (halts after two newlines once the VERDICT and REASON lines are emitted). Both backends use temperature 0.0 for deterministic inference; the GGUF backend additionally applies `repeat_penalty=1.1`.
-
 ## Observability
 
 Every classification is appended as a JSONL event by the daemon, so you can inspect rule behavior after the fact.
@@ -172,8 +166,7 @@ The Tuner phase used to roll back rejected changes via `git add -A && git commit
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) >= 0.4.27 (Python package manager)
-- ~4 GB disk for the model
-- Apple Silicon (recommended — MLX backend, GPU-accelerated) or x86_64 (GGUF backend, CPU only, slower)
+- An API key for your configured model provider
 
 ## Development
 
@@ -187,16 +180,13 @@ just eval       # evaluate rules against test cases
 ## Troubleshooting
 
 **Daemon not starting?**
-Check that the model is downloaded to the Hugging Face cache: `ls ~/.cache/huggingface/hub/ | grep -i phi-4`. If nothing matches, run `/vaudeville:setup` again.
+Check `~/.vaudeville/config` exists and has a valid `default_model` and provider API key env var set. Run `/vaudeville:setup` again if not.
 
 **Rules not firing?**
 Verify rules are in `~/.vaudeville/rules/` and have valid YAML. Check the daemon socket exists: `ls /tmp/vaudeville-*/vaudeville.sock`.
 
 **False positives?**
 Raise the rule's `threshold` value in its YAML file (e.g., `threshold: 0.7` → `threshold: 0.85`). Higher threshold = fewer but more confident matches.
-
-**Performance concerns?**
-Inference runs locally on your hardware. Apple Silicon uses the MLX backend (~200ms per classification). x86_64 uses the GGUF backend via llama-cpp.
 
 ## License
 

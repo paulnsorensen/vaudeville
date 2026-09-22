@@ -1,4 +1,4 @@
-"""Adversarial tests for the singleton daemon migration.
+"""Adversarial tests for the singleton daemon.
 
 Attack vectors:
 1. Version stamp race (two session-start.sh racing)
@@ -7,12 +7,14 @@ Attack vectors:
 4. Socket path collision (request arrives during shutdown)
 5. PID file contains garbage (non-numeric content)
 6. Daemon cleanup interrupted (SIGKILL leaves version file)
-7. Backend lock contention (many simultaneous classify calls)
+7. Request lock contention (many simultaneous hook requests)
+8. handle_request robustness (empty/null/malformed/oversized payloads)
 """
 
 from __future__ import annotations
 
 import fcntl
+import functools
 import json
 import os
 import socket
@@ -20,12 +22,72 @@ import subprocess
 import tempfile
 import threading
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from vaudeville.core.paths import VERSION_FILE
 from vaudeville.server import DaemonConfig, VaudevilleDaemon
 from vaudeville.server._handlers import handle_request
-from conftest import MockBackend
+from vaudeville.server.agents import decide
+from vaudeville.server.hook import pipeline as pipeline_module
+
+
+@pytest.fixture(autouse=True)
+def isolate_rule_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep adversarial tests from loading the real bundled or user rule layers."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "no-plugin-root"))
+    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))
+
+
+def _write_rule(rules_root: Path) -> None:
+    rules_dir = rules_root / ".vaudeville" / "rules"
+    rules_dir.mkdir(parents=True, exist_ok=True)
+    (rules_dir / "safe.yaml").write_text(
+        """
+type: decide
+name: safe
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [safe, violation]
+"on":
+  violation: block
+tier: block
+"""
+    )
+
+
+def _hook_payload(rules_root: Path, tool_input: dict[str, object]) -> dict[str, object]:
+    return {
+        "op": "hook",
+        "harness": "claude-code",
+        "event": "PreToolUse",
+        "cwd": str(rules_root),
+        "payload": {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Write",
+            "tool_input": tool_input,
+            "cwd": str(rules_root),
+        },
+    }
+
+
+def _patch_decide(
+    monkeypatch: pytest.MonkeyPatch, output: str, delay: float = 0.0
+) -> None:
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        del messages, info
+        if delay:
+            time.sleep(delay)
+        return ModelResponse(parts=[TextPart(output)])
+
+    fn = functools.partial(decide, model_override=FunctionModel(respond))
+    monkeypatch.setattr(pipeline_module, "default_decide", fn)
 
 
 def _make_daemon(
@@ -35,7 +97,6 @@ def _make_daemon(
 ) -> VaudevilleDaemon:
     plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return VaudevilleDaemon(
-        MockBackend(),
         DaemonConfig(socket_path, pid_file, plugin_root, version_file),
     )
 
@@ -119,7 +180,6 @@ class TestVersionStampRace:
 
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon2 = VaudevilleDaemon(
-                MockBackend(),
                 DaemonConfig(socket_path2, pid_file, plugin_root, version_file),
             )
             # serve() should return immediately due to PID lock held by daemon1
@@ -137,10 +197,6 @@ class TestVersionStampRace:
     def test_version_file_not_present_until_pid_lock_acquired(self) -> None:
         """_write_version_stamp() is called AFTER the PID lock, not before."""
         events: list[str] = []
-
-        class TracingBackend:
-            def classify(self, prompt: str, max_tokens: int = 50) -> str:
-                return "VERDICT: clean\nREASON: ok"
 
         with (
             tempfile.NamedTemporaryFile(
@@ -161,7 +217,6 @@ class TestVersionStampRace:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            TracingBackend(),
             DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
 
@@ -218,7 +273,6 @@ class TestVersionFilePermissions:
 
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon = VaudevilleDaemon(
-                MockBackend(),
                 DaemonConfig(socket_path, pid_file, plugin_root, version_file),
             )
 
@@ -262,7 +316,6 @@ class TestGitNotAvailable:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(
                 "/tmp/_test_git_na.sock",
                 "/tmp/_test_git_na.pid",
@@ -289,7 +342,6 @@ class TestGitNotAvailable:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(
                 "/tmp/_test_git_fail.sock",
                 "/tmp/_test_git_fail.pid",
@@ -319,7 +371,6 @@ class TestGitNotAvailable:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(
                 "/tmp/_test_git_timeout.sock",
                 "/tmp/_test_git_timeout.pid",
@@ -346,8 +397,15 @@ class TestGitNotAvailable:
 
 
 class TestShutdownRace:
-    def test_in_flight_request_gets_response_during_shutdown(self) -> None:
+    def test_in_flight_request_gets_response_during_shutdown(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A request dispatched before _stop_event is set must complete."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path)
+        # Slow decide call so the request is in-flight during shutdown
+        _patch_decide(monkeypatch, "safe", delay=0.1)
+
         with (
             tempfile.NamedTemporaryFile(
                 suffix=".sock", dir=tempfile.gettempdir(), delete=False
@@ -364,15 +422,8 @@ class TestShutdownRace:
             version_file = fv.name
         os.unlink(socket_path)
 
-        # Slow backend so the request is in-flight during shutdown
-        class SlowBackend:
-            def classify(self, prompt: str, max_tokens: int = 50) -> str:
-                time.sleep(0.1)
-                return "VERDICT: clean\nREASON: ok"
-
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            SlowBackend(),
             DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -388,10 +439,7 @@ class TestShutdownRace:
                 time.sleep(0.05)
 
         payload = (
-            json.dumps(
-                {"rule": "violation-detector", "input": {"text": "test"}}
-            ).encode()
-            + b"\n"
+            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
         )
 
         results: list[dict[str, object]] = []
@@ -416,9 +464,7 @@ class TestShutdownRace:
         # In-flight request must have succeeded — no connection error
         assert not errors, f"In-flight request raised: {errors}"
         assert results, "In-flight request produced no response"
-        assert results[0].get("verdict") in ("clean", "violation"), (
-            f"Unexpected verdict: {results[0]}"
-        )
+        assert results[0].get("exit_code") == 0, f"Unexpected response: {results[0]}"
 
     def test_new_connection_rejected_after_socket_closed(self) -> None:
         """After daemon stops, the socket must be gone (no stale file)."""
@@ -479,7 +525,6 @@ class TestPidFileGarbage:
         try:
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon = VaudevilleDaemon(
-                MockBackend(),
                 DaemonConfig(socket_path, pid_file, plugin_root, version_file),
             )
             thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -517,7 +562,6 @@ class TestPidFileGarbage:
         # The daemon re-opens and relocks the PID file; garbage content shouldn't matter
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -552,7 +596,6 @@ class TestCleanupInterrupted:
         """_cleanup() must not raise if socket/pid/version files are already gone."""
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(
                 "/tmp/_nonexistent_test.sock",
                 "/tmp/_nonexistent_test.pid",
@@ -585,7 +628,6 @@ class TestCleanupInterrupted:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -611,13 +653,19 @@ class TestCleanupInterrupted:
 
 
 # ---------------------------------------------------------------------------
-# Attack 7: Backend lock contention — many simultaneous classify calls
+# Attack 7: Request lock contention — many simultaneous hook requests
 # ---------------------------------------------------------------------------
 
 
-class TestBackendLockContention:
-    def test_no_deadlock_under_high_concurrency(self) -> None:
+class TestRequestLockContention:
+    def test_no_deadlock_under_high_concurrency(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """10 simultaneous requests must all complete without deadlocking."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path)
+        _patch_decide(monkeypatch, "safe")
+
         with (
             tempfile.NamedTemporaryFile(
                 suffix=".sock", dir=tempfile.gettempdir(), delete=False
@@ -637,10 +685,7 @@ class TestBackendLockContention:
         daemon, thread = _ready_daemon(socket_path, pid_file, version_file)
 
         payload = (
-            json.dumps(
-                {"rule": "violation-detector", "input": {"text": "test text"}}
-            ).encode()
-            + b"\n"
+            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
         )
 
         responses: list[dict[str, object]] = []
@@ -668,8 +713,28 @@ class TestBackendLockContention:
         assert not errors, f"Concurrent requests raised errors: {errors}"
         assert len(responses) == 10, f"Expected 10 responses, got {len(responses)}"
 
-    def test_backend_lock_held_for_duration_of_classify(self) -> None:
-        """Backend calls must not overlap (lock must serialize them end-to-end)."""
+    def test_request_lock_held_for_duration_of_hook_pipeline(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Hook requests must not overlap (lock must serialize them end-to-end)."""
+        call_intervals: list[tuple[float, float]] = []
+        ci_lock = threading.Lock()
+
+        def slow_handle_hook_request(
+            request: object, *, event_logger: object = None
+        ) -> dict[str, object]:
+            del request, event_logger
+            t0 = time.monotonic()
+            time.sleep(0.03)
+            t1 = time.monotonic()
+            with ci_lock:
+                call_intervals.append((t0, t1))
+            return {"stdout": "", "exit_code": 0}
+
+        from vaudeville.server import _handlers
+
+        monkeypatch.setattr(_handlers, "handle_hook_request", slow_handle_hook_request)
+
         with (
             tempfile.NamedTemporaryFile(
                 suffix=".sock", dir=tempfile.gettempdir(), delete=False
@@ -686,21 +751,8 @@ class TestBackendLockContention:
             version_file = fv.name
         os.unlink(socket_path)
 
-        call_intervals: list[tuple[float, float]] = []
-        ci_lock = threading.Lock()
-
-        class TimingBackend:
-            def classify(self, prompt: str, max_tokens: int = 50) -> str:
-                t0 = time.monotonic()
-                time.sleep(0.03)
-                t1 = time.monotonic()
-                with ci_lock:
-                    call_intervals.append((t0, t1))
-                return "VERDICT: clean\nREASON: ok"
-
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            TimingBackend(),
             DaemonConfig(socket_path, pid_file, plugin_root, version_file),
         )
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -716,10 +768,7 @@ class TestBackendLockContention:
                 time.sleep(0.05)
 
         payload = (
-            json.dumps(
-                {"rule": "violation-detector", "input": {"text": "test"}}
-            ).encode()
-            + b"\n"
+            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
         )
 
         workers = [
@@ -740,8 +789,8 @@ class TestBackendLockContention:
             end_i = sorted_intervals[i][1]
             start_next = sorted_intervals[i + 1][0]
             assert end_i <= start_next + 0.01, (
-                f"Backend calls overlapped: [{sorted_intervals[i]}] and "
-                f"[{sorted_intervals[i + 1]}] — _backend_lock not protecting correctly"
+                f"Requests overlapped: [{sorted_intervals[i]}] and "
+                f"[{sorted_intervals[i + 1]}] — _request_lock not protecting correctly"
             )
 
 
@@ -752,44 +801,29 @@ class TestBackendLockContention:
 
 class TestHandleRequestEdgeCases:
     def test_empty_bytes(self) -> None:
-        """Empty payload must return clean (fail-open)."""
-        backend = MockBackend()
-        response = json.loads(handle_request(b"", backend))
-        assert response["verdict"] == "clean"
+        """Empty payload must fail open (allow) — no crash on empty input."""
+        response = json.loads(handle_request(b""))
+        assert response == {"stdout": "", "exit_code": 0}
 
     def test_null_bytes_in_payload(self) -> None:
-        """Null bytes in payload must not crash the handler."""
-        backend = MockBackend()
-        response = json.loads(handle_request(b"\x00\x01\x02\x03\n", backend))
-        assert response["verdict"] == "clean"
+        """Null bytes in payload must not crash the handler; fails open."""
+        response = json.loads(handle_request(b"\x00\x01\x02\x03\n"))
+        assert response == {"stdout": "", "exit_code": 0}
 
-    def test_oversized_payload(self) -> None:
-        """10MB payload must not cause an unhandled exception."""
-        backend = MockBackend()
+    def test_malformed_json_over_socket(self) -> None:
+        """Truncated/invalid JSON must not raise; fails open."""
+        response = json.loads(handle_request(b"{not valid json\n"))
+        assert response == {"stdout": "", "exit_code": 0}
+
+    def test_oversized_payload(self, tmp_path: Path) -> None:
+        """A 10MB hook payload with no matching rule must fail open, not crash."""
         giant_text = "x" * (10 * 1024 * 1024)
-        payload = json.dumps({"prompt": giant_text}).encode() + b"\n"
-        response = json.loads(handle_request(payload, backend))
-        assert "verdict" in response
-
-    def test_missing_prompt_key(self) -> None:
-        """Payload without 'prompt' key uses empty string."""
-        backend = MockBackend()
-        payload = json.dumps({"other": "data"}).encode() + b"\n"
-        response = json.loads(handle_request(payload, backend))
-        assert "verdict" in response
-
-    def test_backend_exception_returns_clean(self) -> None:
-        """If backend raises, response must be clean (fail-open), not an exception."""
-
-        class ExplodingBackend:
-            def classify(self, prompt: str, max_tokens: int = 50) -> str:
-                raise RuntimeError("GPU on fire")
-
-        payload = json.dumps({"prompt": "test"}).encode() + b"\n"
-        response = json.loads(handle_request(payload, ExplodingBackend()))
-        assert response["verdict"] == "clean", (
-            "Backend exception must return clean (fail-open)"
+        payload = (
+            json.dumps(_hook_payload(tmp_path, {"content": giant_text})).encode()
+            + b"\n"
         )
+        response = json.loads(handle_request(payload))
+        assert response.get("exit_code") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -802,7 +836,6 @@ class TestCleanupWithoutPidLock:
         """_cleanup() with pid_fd=None must not raise AttributeError or OSError."""
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(
                 "/tmp/_skip_test.sock",
                 "/tmp/_skip_test.pid",

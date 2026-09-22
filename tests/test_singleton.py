@@ -158,12 +158,8 @@ class TestVersionStamp:
         socket_path: str,
         pid_file: str,
     ) -> VaudevilleDaemon:
-        from conftest import MockBackend
-
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return VaudevilleDaemon(
-            MockBackend(), DaemonConfig(socket_path, pid_file, plugin_root)
-        )
+        return VaudevilleDaemon(DaemonConfig(socket_path, pid_file, plugin_root))
 
     def test_version_file_written_after_pid_lock(self) -> None:
         """serve() must write VERSION_FILE once the PID lock is acquired."""
@@ -294,14 +290,12 @@ class TestVersionStamp:
     def test_cleanup_removes_version_file_even_if_missing(self) -> None:
         """_cleanup() must not raise if VERSION_FILE does not exist."""
         from vaudeville.server.daemon import DaemonConfig, VaudevilleDaemon
-        from conftest import MockBackend
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(
                 "/tmp/_test_cleanup.sock", "/tmp/_test_cleanup.pid", plugin_root
-            ),
+            )
         )
 
         # Ensure file absent

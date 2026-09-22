@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -11,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from vaudeville.server.effects import run_named_command
-from vaudeville.server.user_config import UserConfig
+from vaudeville.server.user_config import ProviderConfig, UserConfig
 
 
 class TestRunStartsWithoutShell:
@@ -35,6 +36,10 @@ class TestRunStartsWithoutShell:
 
         with patch("subprocess.Popen", return_value=fake_process):
             run_named_command("notify", config, '{"event": "Stop"}', timeout=1.0)
+
+        deadline = time.monotonic() + 2.0
+        while not fake_process.stdin.close.called and time.monotonic() < deadline:
+            time.sleep(0.01)
 
         fake_process.stdin.write.assert_called_once_with(b'{"event": "Stop"}')
         fake_process.stdin.close.assert_called_once()
@@ -85,3 +90,45 @@ class TestRunUndefinedNameSkipped:
 
         assert result is False
         assert any("missing" in record.getMessage() for record in caplog.records)
+
+
+class TestRunStdinNeverBlocksRequestThread:
+    def test_immediate_exit_child_with_large_payload_does_not_raise(self) -> None:
+        config = UserConfig(commands={"quick": ["true"]})
+        large_payload = "x" * (200 * 1024)
+
+        result = run_named_command("quick", config, large_payload, timeout=1.0)
+
+        assert result is True
+
+    def test_child_never_reading_stdin_returns_without_blocking(self) -> None:
+        config = UserConfig(commands={"sleeper": ["sleep", "5"]})
+        large_payload = "x" * (200 * 1024)
+
+        started = time.monotonic()
+        result = run_named_command("sleeper", config, large_payload, timeout=0.2)
+        elapsed = time.monotonic() - started
+
+        assert result is True
+        assert elapsed < 0.5
+
+
+class TestRunStripsProviderKeyEnv:
+    def test_child_env_excludes_provider_key_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SECRET_API_KEY", "sekrit")
+        config = UserConfig(
+            commands={"notify": ["/bin/echo", "hi"]},
+            providers={"anthropic": ProviderConfig(key_env="SECRET_API_KEY")},
+        )
+        fake_process = MagicMock()
+        fake_process.stdin = MagicMock()
+
+        with patch("subprocess.Popen", return_value=fake_process) as popen:
+            run_named_command("notify", config, "{}", timeout=1.0)
+
+        _, kwargs = popen.call_args
+        child_env = kwargs["env"]
+        assert "SECRET_API_KEY" not in child_env
+        assert child_env.get("PATH") == os.environ.get("PATH")

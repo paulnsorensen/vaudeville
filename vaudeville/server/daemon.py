@@ -151,7 +151,8 @@ class VaudevilleDaemon:
 
     def _accept_loop(self, server_socket: socket.socket) -> None:
         while not self._stop_event.is_set():
-            idle = time.monotonic() - self._last_request
+            with self._request_lock:
+                idle = time.monotonic() - self._last_request
             if idle > IDLE_TIMEOUT:
                 logger.info("Idle timeout — shutting down")
                 break
@@ -169,12 +170,12 @@ class VaudevilleDaemon:
             t0 = time.monotonic()
             data = _read_message(conn)
 
-            with self._request_lock:
-                response = handle_request(bytes(data), self._event_logger)
+            response = handle_request(bytes(data), self._event_logger)
             conn.sendall(response)
             elapsed_ms = (time.monotonic() - t0) * 1000
             logger.info("Request handled in %.1fms", elapsed_ms)
-            self._last_request = time.monotonic()
+            with self._request_lock:
+                self._last_request = time.monotonic()
         except Exception as exc:
             logger.error("Client handler error: %s", exc)
         finally:

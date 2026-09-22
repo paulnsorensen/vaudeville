@@ -29,7 +29,7 @@ Then run the one-time setup to write your config:
 /vaudeville:setup
 ```
 
-This creates `~/.vaudeville/config` with a `default_model`, `providers` (API key env vars), and optional `commands`.
+This creates `~/.vaudeville/config` with a `default_model`, `providers` (API key env vars), and optional `commands`. Any project rule may invoke any configured command; a command's child process never sees the provider API key env vars.
 
 ## Quick Start (5 minutes to first hook)
 

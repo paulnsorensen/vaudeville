@@ -713,10 +713,10 @@ class TestRequestLockContention:
         assert not errors, f"Concurrent requests raised errors: {errors}"
         assert len(responses) == 10, f"Expected 10 responses, got {len(responses)}"
 
-    def test_request_lock_held_for_duration_of_hook_pipeline(
+    def test_concurrent_requests_run_in_parallel_not_serialized(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Hook requests must not overlap (lock must serialize them end-to-end)."""
+        """`_request_lock` only guards `_last_request`; hook pipelines overlap."""
         call_intervals: list[tuple[float, float]] = []
         ci_lock = threading.Lock()
 
@@ -771,6 +771,7 @@ class TestRequestLockContention:
             json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
         )
 
+        started = time.monotonic()
         workers = [
             threading.Thread(target=_send_request, args=(socket_path, payload))
             for _ in range(5)
@@ -779,19 +780,68 @@ class TestRequestLockContention:
             w.start()
         for w in workers:
             w.join(timeout=10)
+        elapsed = time.monotonic() - started
 
         daemon._stop_event.set()
         thread.join(timeout=5)
 
         assert len(call_intervals) == 5, f"Expected 5 calls, got {len(call_intervals)}"
-        sorted_intervals = sorted(call_intervals)
-        for i in range(len(sorted_intervals) - 1):
-            end_i = sorted_intervals[i][1]
-            start_next = sorted_intervals[i + 1][0]
-            assert end_i <= start_next + 0.01, (
-                f"Requests overlapped: [{sorted_intervals[i]}] and "
-                f"[{sorted_intervals[i + 1]}] — _request_lock not protecting correctly"
-            )
+        assert elapsed < 0.03 * 5, (
+            f"5 requests took {elapsed:.3f}s; expected overlap, not serialization"
+        )
+        assert daemon._last_request >= started, "_last_request not updated"
+
+    def test_two_concurrent_slow_decides_complete_faster_than_serial(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two requests whose decide sleeps 1s each finish in well under 2s."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path)
+        _patch_decide(monkeypatch, "safe", delay=1.0)
+
+        with (
+            tempfile.NamedTemporaryFile(
+                suffix=".sock", dir=tempfile.gettempdir(), delete=False
+            ) as f,
+            tempfile.NamedTemporaryFile(
+                suffix=".pid", dir=tempfile.gettempdir(), delete=False
+            ) as fp,
+            tempfile.NamedTemporaryFile(
+                suffix=".version", dir=tempfile.gettempdir(), delete=False
+            ) as fv,
+        ):
+            socket_path = f.name
+            pid_file = fp.name
+            version_file = fv.name
+        os.unlink(socket_path)
+
+        daemon, thread = _ready_daemon(socket_path, pid_file, version_file)
+
+        payload = (
+            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
+        )
+
+        responses: list[dict[str, object]] = []
+        lock = threading.Lock()
+
+        def send() -> None:
+            resp = _send_request(socket_path, payload)
+            with lock:
+                responses.append(resp)
+
+        started = time.monotonic()
+        workers = [threading.Thread(target=send) for _ in range(2)]
+        for w in workers:
+            w.start()
+        for w in workers:
+            w.join(timeout=10)
+        elapsed = time.monotonic() - started
+
+        daemon._stop_event.set()
+        thread.join(timeout=5)
+
+        assert len(responses) == 2
+        assert elapsed < 1.5, f"2 concurrent 1s decides took {elapsed:.3f}s"
 
 
 # ---------------------------------------------------------------------------

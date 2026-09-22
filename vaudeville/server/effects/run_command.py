@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import threading
 
@@ -33,10 +34,8 @@ def run_named_command(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
+        env=_child_env(config),
     )
-    if process.stdin is not None:
-        process.stdin.write(event_json.encode("utf-8"))
-        process.stdin.close()
 
     def _enforce_timeout() -> None:
         try:
@@ -45,4 +44,24 @@ def run_named_command(
             process.kill()
 
     threading.Thread(target=_enforce_timeout, daemon=True).start()
+
+    def _write_stdin() -> None:
+        try:
+            if process.stdin is not None:
+                process.stdin.write(event_json.encode("utf-8"))
+                process.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
+
+    threading.Thread(target=_write_stdin, daemon=True).start()
     return True
+
+
+def _child_env(config: UserConfig) -> dict[str, str]:
+    """Copy the parent env, dropping every configured provider key env var.
+
+    Any project rule may invoke any configured command, so a command's
+    child process never sees the API keys used for model inference.
+    """
+    key_envs = {provider.key_env for provider in config.providers.values()}
+    return {k: v for k, v in os.environ.items() if k not in key_envs}

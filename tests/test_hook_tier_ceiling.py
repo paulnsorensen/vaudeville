@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -249,6 +250,15 @@ tier: warn
     def test_warn_caps_escalate_result(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """`escalate-target`'s matcher also matches the live event, so the
+        main loop evaluates it a second time as an ordinary block-tier rule
+        (by design after M4); that direct row wins the render's primary
+        channel on its own merits. The cap is proven on `warn-escalate`'s
+        own decision record in events.jsonl instead of on the render output.
+        """
+        from vaudeville.server.event_log import EventLogger
+        from vaudeville.server.log_config import LogConfig
+
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(
             tmp_path,
@@ -264,7 +274,7 @@ tier: warn
 type: decide
 name: escalate-target
 event: PreToolUse
-matcher: Read
+matcher: Write
 model: fake:model
 prompt: Classify.
 outcomes: [violation, clean]
@@ -281,15 +291,29 @@ tier: block
             calls[name] = calls.get(name, 0) + 1
             return DecideResult(outcome="violation")
 
-        result = handle_hook_request(
-            _request(tmp_path), config=_CONFIG, decide_fn=counting_decide_fn
-        )
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=counting_decide_fn,
+                event_logger=logger,
+            )
+        finally:
+            logger.close()
 
-        assert calls.get("escalate-target") == 1
+        # One escalate-hop call from `warn-escalate` plus one direct
+        # main-loop call, since the matcher matches the live event.
+        assert calls.get("escalate-target") == 2
         assert result["exit_code"] == 0
-        payload = dict(json.loads(str(result["stdout"])))
-        assert payload["systemMessage"] == "violation"
-        assert "permissionDecision" not in str(result["stdout"])
+
+        time.sleep(0.05)
+        lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        records = [json.loads(line) for line in lines]
+        outer_rows = [r for r in records if r["rule"] == "warn-escalate"]
+        assert len(outer_rows) == 1
+        assert outer_rows[0]["action"] == "warn"
 
     def test_warn_keeps_add_context(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

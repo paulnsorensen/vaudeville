@@ -358,6 +358,18 @@ def _do_escalate(
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
     if not isinstance(target, DecideRule) or target.tier == "disabled":
         return "allow", "", None, None
+    if target.event != event.event or not _matcher_matches(
+        target.matcher, event.tool_name
+    ):
+        logger.warning(
+            "escalate rule %r targets %r: event/matcher mismatch against live "
+            "event %r/%r; allowing",
+            rule.name,
+            target.name,
+            event.event,
+            event.tool_name,
+        )
+        return "allow", "", None, None
 
     def _run() -> DecideResult:
         return decide_fn(target, config, event.text)

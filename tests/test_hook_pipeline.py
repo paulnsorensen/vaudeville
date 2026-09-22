@@ -426,6 +426,66 @@ tier: block
         assert result == {"stdout": "{}", "exit_code": 0}
         assert any("event/matcher mismatch" in r.getMessage() for r in caplog.records)
 
+    def test_escalate_target_matcher_mismatch_against_live_event_allows(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "bash-gate",
+            """
+type: decide
+name: bash-gate
+event: PreToolUse
+matcher: Bash
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {action: escalate, rule: escalate-target}
+tier: block
+""",
+        )
+        _write_rule(
+            tmp_path,
+            "escalate-target",
+            """
+type: decide
+name: escalate-target
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+""",
+        )
+
+        calls: dict[str, int] = {}
+
+        def counting_decide_fn(rule: object, config: object, text: str) -> DecideResult:
+            del config, text
+            name = getattr(rule, "name", "")
+            calls[name] = calls.get(name, 0) + 1
+            return DecideResult(outcome="violation")
+
+        caplog.set_level(logging.WARNING)
+
+        result = handle_hook_request(
+            _request(tmp_path, tool_name="Bash"),
+            config=_CONFIG,
+            decide_fn=counting_decide_fn,
+        )
+
+        assert calls.get("escalate-target", 0) == 0
+        assert result == {"stdout": "{}", "exit_code": 0}
+        assert any("event/matcher mismatch" in r.getMessage() for r in caplog.records)
+
 
 class TestEscalateDispatch:
     """F9: post-escalate branches dispatch against the target's own action."""
@@ -457,7 +517,7 @@ tier: block
 type: decide
 name: escalate-target
 event: PreToolUse
-matcher: Read
+matcher: Write
 model: fake:model
 prompt: Classify.
 outcomes: [violation, clean]
@@ -493,6 +553,10 @@ tier: block
     def test_escalated_run_reaches_target_named_command(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """`escalate-target`'s matcher also matches the live event, so the
+        main loop evaluates it a second time as an ordinary rule, running
+        its `run` command a second time (by design after M4).
+        """
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(
             tmp_path,
@@ -517,7 +581,7 @@ tier: block
 type: decide
 name: escalate-target
 event: PreToolUse
-matcher: Read
+matcher: Write
 model: fake:model
 prompt: Classify.
 outcomes: [violation, clean]
@@ -532,7 +596,7 @@ tier: block
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
         assert result == {"stdout": "{}", "exit_code": 0}
-        assert run_recorder.calls == ["notify-target"]
+        assert run_recorder.calls == ["notify-target", "notify-target"]
 
 
 class TestEscalateTierCeiling:
@@ -616,7 +680,7 @@ tier: block
 type: decide
 name: escalate-target
 event: PreToolUse
-matcher: Read
+matcher: Write
 model: fake:model
 prompt: Classify.
 outcomes: [violation, clean]

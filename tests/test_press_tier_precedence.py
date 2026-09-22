@@ -35,6 +35,18 @@ class TestEscalateAtTierCeiling:
     def test_warn_tier_rule_escalating_to_a_block_target_caps_at_warn(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """AC-6: the tier ceiling of the *escalating* rule caps the escalated
+        result too -- a warn-tier escalate must never surface as a block.
+
+        `inner-block`'s matcher also matches the live event, so the main
+        loop evaluates it a second time as an ordinary block-tier rule (by
+        design after M4); that direct row wins the render's primary channel
+        on its own merits. The cap is proven on `outer-warn`'s own decision
+        record in events.jsonl instead of on the overall render output.
+        """
+        from vaudeville.server.event_log import EventLogger
+        from vaudeville.server.log_config import LogConfig
+
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(
             tmp_path,
@@ -50,7 +62,7 @@ class TestEscalateAtTierCeiling:
 type: decide
 name: inner-block
 event: PreToolUse
-matcher: Read
+matcher: Write
 model: fake:model
 prompt: Classify.
 outcomes: [violation, clean]
@@ -60,17 +72,26 @@ tier: block
 """,
         )
         fn, _ = _decide_fn('{"outcome": "violation"}')
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+        finally:
+            logger.close()
 
-        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
-
-        stdout = str(result["stdout"])
         assert result["exit_code"] == 0
-        # AC-6: the tier ceiling of the *escalating* rule caps the escalated
-        # result too -- a warn-tier escalate must never surface as a block.
-        assert "deny" not in stdout, (
-            f"warn-tier escalate to a block-tier target must cap at warn, got {stdout!r}"
-        )
-        assert "systemMessage" in stdout
+
+        import json
+        import time
+
+        time.sleep(0.05)
+        lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        records = [json.loads(line) for line in lines]
+        outer_rows = [r for r in records if r["rule"] == "outer-warn"]
+        assert len(outer_rows) == 1
+        assert outer_rows[0]["action"] == "warn"
 
 
 class TestEscalateChainDepth:
@@ -90,7 +111,7 @@ class TestEscalateChainDepth:
 type: decide
 name: middle
 event: PreToolUse
-matcher: Read
+matcher: Write
 model: fake:model
 prompt: Classify.
 outcomes: [violation, clean]
@@ -129,7 +150,10 @@ tier: block
 
         assert result["exit_code"] == 0
         assert calls.get("outer", 0) == 1
-        assert calls.get("middle", 0) == 1
+        # `middle`'s matcher also matches the live event, so the main loop
+        # evaluates it a second time as an ordinary rule, in addition to the
+        # one escalate-hop call from `outer` (by design after M4).
+        assert calls.get("middle", 0) == 2
         # The one-hop bound means "inner" -- the escalation target's own
         # escalate target -- must never run.
         assert calls.get("inner", 0) == 0

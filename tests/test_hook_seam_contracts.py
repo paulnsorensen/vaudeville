@@ -20,8 +20,10 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from vaudeville.server.agents import DecideResult, ModelResolution, decide
 from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
+from vaudeville.server.event_log import EventLogger
 from vaudeville.server.hook import handle_hook_request
 from vaudeville.server.hook import pipeline as pipeline_module
+from vaudeville.server.log_config import LogConfig
 from vaudeville.server.user_config import ProviderConfig, UserConfig
 
 from _hook_helpers import CONFIG as _CONFIG
@@ -271,6 +273,16 @@ tier: block
 def test_ac10_escalate_runs_once_and_keeps_first_decision_on_deadline_expiry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """AC-10: the escalate hop itself runs `escalate-target` once. Its
+    matcher also matches the live event, so the main loop also evaluates it
+    a second time as an ordinary rule (by design after M4); total calls ==
+    2. The hop's own deadline is tight, so it times out and `outer-gate`
+    keeps its first (pre-escalate) decision, allow, in its own event-log
+    row. `escalate-target`'s direct evaluation runs with the full request
+    deadline and blocks on its own account, so `stdout` also carries that
+    direct block; this row is what proves the escalate hop kept its first
+    decision rather than the target's.
+    """
     _write_rule(
         tmp_path,
         "outer-gate",
@@ -293,7 +305,7 @@ tier: block
 type: decide
 name: escalate-target
 event: PreToolUse
-matcher: Read
+matcher: Write
 prompt: Classify.
 outcomes: [violation, clean]
 "on":
@@ -312,12 +324,25 @@ tier: block
             time.sleep(1.0)
         return DecideResult(outcome="violation")
 
-    result = handle_hook_request(
-        _request(tmp_path), config=_CONFIG, decide_fn=slow_decide_fn
-    )
+    logs_dir = tmp_path / "logs"
+    logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+    try:
+        handle_hook_request(
+            _request(tmp_path),
+            config=_CONFIG,
+            decide_fn=slow_decide_fn,
+            event_logger=logger,
+        )
+    finally:
+        logger.close()
 
-    assert calls["escalate-target"] == 1
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert calls["escalate-target"] == 2
+
+    lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+    records = [json.loads(line) for line in lines]
+    outer_gate_rows = [r for r in records if r.get("rule") == "outer-gate"]
+    assert outer_gate_rows
+    assert all(r.get("action") == "allow" for r in outer_gate_rows)
 
 
 def test_ac11_run_action_starts_named_command_without_shell_or_skips_undefined(
@@ -757,7 +782,7 @@ tier: block
 type: decide
 name: escalate-target
 event: PreToolUse
-matcher: Read
+matcher: Write
 model: fake:model
 prompt: Classify.
 outcomes: [violation, clean]

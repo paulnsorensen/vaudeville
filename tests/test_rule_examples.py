@@ -182,23 +182,54 @@ class TestFormatPromptWithExamples:
         assert formatted == full
 
 
+_LEGACY_EXAMPLES_RULE_YAML = (
+    "name: legacy-with-examples\n"
+    "event: Stop\n"
+    "prompt: |\n"
+    "  {{ examples }}\n"
+    "  Classify: {text}\n"
+    "examples:\n"
+    "  - id: ex1\n"
+    "    input: 'Response: hello'\n"
+    "    label: clean\n"
+    "    reason: greeting\n"
+    "  - id: ex2\n"
+    "    input: 'Response: goodbye'\n"
+    "    label: violation\n"
+    "    reason: farewell\n"
+    "tier: block\n"
+    "message: '{reason}'\n"
+)
+
+
 class TestLoadMigratedRules:
+    """Loading legacy rule files with an inline `examples:` block.
+
+    `examples/rules/` now holds only new-format decide rules (AC-20), so
+    these tests exercise the legacy loader against a standalone fixture
+    file instead of the shared examples directory.
+    """
+
     def test_load_deferral_detector_examples(self) -> None:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        rules_dir = os.path.join(project_root, "examples", "rules")
-        rules = load_rules(rules_dir)
-        rule = rules["deferral-detector"]
-        assert len(rule.examples) == 7
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "legacy-with-examples.yaml"), "w") as f:
+                f.write(_LEGACY_EXAMPLES_RULE_YAML)
+            rules = load_rules(d)
+            rule = rules["legacy-with-examples"]
+        assert len(rule.examples) == 2
         assert rule.examples[0].id == "ex1"
         assert "{{ examples }}" in rule.prompt
 
     def test_rendered_prompt_has_no_unresolved_placeholders(self) -> None:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        rules_dir = os.path.join(project_root, "examples", "rules")
-        rules = load_rules(rules_dir)
-        for name, rule in rules.items():
-            rendered = rule.format_prompt("sample text")
-            assert "{{ examples }}" not in rendered, f"{name}: unresolved placeholder"
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "legacy-with-examples.yaml"), "w") as f:
+                f.write(_LEGACY_EXAMPLES_RULE_YAML)
+            rules = load_rules(d)
+            for name, rule in rules.items():
+                rendered = rule.format_prompt("sample text")
+                assert "{{ examples }}" not in rendered, (
+                    f"{name}: unresolved placeholder"
+                )
 
     def test_load_yaml_with_examples_roundtrip(self) -> None:
         """Write a rule YAML with examples, load it, render prompt."""

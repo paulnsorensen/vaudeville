@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import types
 from unittest.mock import patch
 
 import pytest
@@ -23,11 +24,14 @@ class TestCmdStats:
     def test_stats_passes_current_rules_filter(self) -> None:
         from argparse import Namespace
 
+        from vaudeville.rules import RuleSet
+
         mock_result = {"total": 0}
+        mock_rule = types.SimpleNamespace(name="no-hedging")
         with (
             patch(
                 "vaudeville.__main__.load_rules_layered",
-                return_value={"no-hedging": object()},
+                return_value=RuleSet(rules=(mock_rule,)),  # type: ignore[arg-type]
             ),
             patch(
                 "vaudeville.server.aggregate_events", return_value=mock_result
@@ -45,11 +49,13 @@ class TestCmdStats:
     def test_stats_no_rules_disables_filter(self) -> None:
         from argparse import Namespace
 
+        from vaudeville.rules import RuleSet
+
         mock_result = {"total": 0}
         with (
             patch(
                 "vaudeville.__main__.load_rules_layered",
-                return_value={},
+                return_value=RuleSet(),
             ),
             patch(
                 "vaudeville.server.aggregate_events", return_value=mock_result
@@ -102,18 +108,6 @@ class TestCmdStats:
         assert "No events recorded" in out
 
 
-class TestCmdSetup:
-    def test_setup_calls_setup_main(self) -> None:
-        from argparse import Namespace
-
-        with patch("vaudeville.setup.main") as mock_setup:
-            from vaudeville.__main__ import cmd_setup
-
-            cmd_setup(Namespace())
-
-        mock_setup.assert_called_once_with()
-
-
 class TestMain:
     def test_no_command_prints_help_and_exits(self) -> None:
         with patch("sys.argv", ["vaudeville"]):
@@ -121,17 +115,6 @@ class TestMain:
 
             with pytest.raises(SystemExit, match="1"):
                 main()
-
-    def test_setup_command_dispatches(self) -> None:
-        with (
-            patch("sys.argv", ["vaudeville", "setup"]),
-            patch("vaudeville.setup.main") as mock_setup,
-        ):
-            from vaudeville.__main__ import main
-
-            main()
-
-        mock_setup.assert_called_once_with()
 
     def test_stats_command_dispatches(self) -> None:
         empty: dict[str, object] = {"total": 0}

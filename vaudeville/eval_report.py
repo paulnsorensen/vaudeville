@@ -1,19 +1,17 @@
-"""Eval reporting, cross-validation, and threshold sweep for vaudeville rules."""
+"""Eval reporting and cross-validation for vaudeville rules."""
 
 from __future__ import annotations
 
 import argparse
-import json
-import subprocess
-from datetime import datetime, timezone
 
 from typing import TYPE_CHECKING
 
-from .core import Rule
-from .server import InferenceBackend
+from .rules import DecideRule, RewriteRule
+from .server.user_config import UserConfig
 
 if TYPE_CHECKING:
-    from .eval import CaseResult, EvalCase, EvalResults
+    from .eval import CaseResult, EvalResults
+    from .rules import DecideTestCase
 
 
 def print_results(results: EvalResults) -> bool:
@@ -56,15 +54,15 @@ def print_results(results: EvalResults) -> bool:
 
 def cross_validate_rule(
     rule_name: str,
-    cases: list[EvalCase],
-    rules: dict[str, Rule],
-    backend: InferenceBackend,
+    cases: list[DecideTestCase],
+    rules: dict[str, DecideRule | RewriteRule],
+    config: UserConfig,
 ) -> EvalResults:
     """Leave-one-out cross-validation: evaluate each case as its own fold."""
     from .eval import EvalResults, classify_case
 
     rule = rules.get(rule_name)
-    if not isinstance(rule, Rule):
+    if not isinstance(rule, DecideRule):
         raise ValueError(f"Rule not found: {rule_name}")
 
     n = len(cases)
@@ -72,7 +70,7 @@ def cross_validate_rule(
 
     for i, case in enumerate(cases):
         fold = EvalResults(rule=rule_name)
-        case_result = classify_case(case, rule, backend, fold, case_id=i)
+        case_result = classify_case(case, rule, config, fold, case_id=i)
 
         aggregate.tp += fold.tp
         aggregate.fp += fold.fp
@@ -81,11 +79,11 @@ def cross_validate_rule(
         aggregate.misclassified.extend(fold.misclassified)
         aggregate.confidences.extend(fold.confidences)
 
-        status = "OK" if case_result.predicted == case.label else "FAIL"
-        acc = "100%" if case_result.predicted == case.label else "0%"
+        status = "OK" if case_result.predicted == case.outcome else "FAIL"
+        acc = "100%" if case_result.predicted == case.outcome else "0%"
         print(
             f"  Fold {i + 1}/{n} [{status}] acc={acc}"
-            f" expected={case.label} got={case_result.predicted}: {case.text[:50]}"
+            f" expected={case.outcome} got={case_result.predicted}: {case.text[:50]}"
         )
 
     return aggregate
@@ -93,9 +91,9 @@ def cross_validate_rule(
 
 def run_evaluations(
     args: argparse.Namespace,
-    rules: dict[str, Rule],
-    test_suites: dict[str, list[EvalCase]],
-    backend: InferenceBackend,
+    rules: dict[str, DecideRule | RewriteRule],
+    test_suites: dict[str, list[DecideTestCase]],
+    config: UserConfig,
 ) -> tuple[bool, dict[str, EvalResults], list[CaseResult]]:
     """Run eval or cross-validation for each rule.
 
@@ -113,107 +111,11 @@ def run_evaluations(
         print(f"\nEvaluating {rule_name} ({len(cases)} cases)...")
         if args.cross_validate:
             print(f"  Leave-one-out cross-validation ({len(cases)} folds):")
-            results = cross_validate_rule(rule_name, cases, rules, backend)
+            results = cross_validate_rule(rule_name, cases, rules, config)
         else:
-            results, case_results = evaluate_rule(rule_name, cases, rules, backend)
+            results, case_results = evaluate_rule(rule_name, cases, rules, config)
             all_case_results.extend(case_results)
         all_results[rule_name] = results
         if not print_results(results):
             overall_pass = False
     return overall_pass, all_results, all_case_results
-
-
-def threshold_sweep(
-    test_suites: dict[str, list[EvalCase]],
-    rules: dict[str, Rule],
-    backend: InferenceBackend,
-) -> None:
-    """Sweep thresholds and print confusion matrix per threshold."""
-    from .eval import evaluate_rule
-
-    for rule_name, cases in sorted(test_suites.items()):
-        if rule_name not in rules:
-            continue
-        _, case_results = evaluate_rule(rule_name, cases, rules, backend)
-        print(f"\n--- Threshold sweep: {rule_name} ---")
-        print(f"{'Thresh':>7} {'Acc':>6} {'Prec':>6} {'Rec':>6} {'F1':>6}")
-        best_f1 = 0.0
-        best_thresh = 0.0
-        for pct in range(30, 95, 5):
-            thresh = pct / 100.0
-            r = score_at_threshold(rule_name, case_results, thresh)
-            marker = ""
-            if r.f1 > best_f1 and r.precision >= 0.95:
-                best_f1 = r.f1
-                best_thresh = thresh
-                marker = " <-- best"
-            print(
-                f"  {thresh:.2f}  {r.accuracy * 100:5.1f}%"
-                f" {r.precision * 100:5.1f}% {r.recall * 100:5.1f}%"
-                f" {r.f1 * 100:5.1f}%{marker}"
-            )
-        if best_thresh > 0:
-            print(f"Best threshold: {best_thresh:.2f} (F1={best_f1 * 100:.1f}%)")
-
-
-def _git_head() -> str:
-    """Return short git HEAD hash, or 'unknown' if not in a repo."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    return "unknown"
-
-
-def write_eval_log(
-    log_path: str,
-    model: str,
-    results: dict[str, EvalResults],
-) -> None:
-    """Append one JSONL line with per-rule metrics."""
-    rules_data: dict[str, dict[str, float]] = {}
-    for rule_name, r in sorted(results.items()):
-        rules_data[rule_name] = {
-            "precision": round(r.precision, 4),
-            "recall": round(r.recall, 4),
-            "f1": round(r.f1, 4),
-        }
-    entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "model": model,
-        "git_head": _git_head(),
-        "rules": rules_data,
-    }
-    with open(log_path, "a") as f:
-        f.write(json.dumps(entry) + "\n")
-
-
-def score_at_threshold(
-    rule_name: str,
-    case_results: list[CaseResult],
-    thresh: float,
-) -> EvalResults:
-    """Score case results at a given confidence threshold."""
-    from .eval import EvalResults
-
-    r = EvalResults(rule=rule_name)
-    for cr in case_results:
-        predicted = cr.predicted
-        if predicted == "violation" and cr.confidence < thresh:
-            predicted = "clean"
-        if cr.label == "violation" and predicted == "violation":
-            r.tp += 1
-        elif cr.label == "clean" and predicted == "clean":
-            r.tn += 1
-        elif cr.label == "clean" and predicted == "violation":
-            r.fp += 1
-        else:
-            r.fn += 1
-    return r

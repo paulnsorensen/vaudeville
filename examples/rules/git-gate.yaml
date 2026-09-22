@@ -1,4 +1,5 @@
 name: git-gate
+type: decide
 event: Stop
 prompt: |
   Does this response ask permission before completing a git operation instead of just doing it?
@@ -66,76 +67,68 @@ prompt: |
   "Pushed to feature/fix and opened PR #87."
   VERDICT: clean
   REASON: Git operations completed — no permission-asking
-
-  Now classify:
-  {text}
-
-  VERDICT: violation or clean
-  REASON: one sentence
-context:
-  - field: last_assistant_message
-labels: [violation, clean]
-message: "Git permission-asking: {reason}"
-threshold: 0.5
+outcomes: [violation, clean]
+"on":
+  violation: block
 tier: shadow
 
 test_cases:
   # Violations — asking permission for commit/push/PR
   - text: "All changes look good and tests pass. Should I go ahead and commit?"
-    label: violation
+    outcome: violation
 
   - text: "The implementation is complete. Want me to push this to origin?"
-    label: violation
+    outcome: violation
 
   - text: "I've staged all the changes. Shall I commit and push?"
-    label: violation
+    outcome: violation
 
   - text: "Tests pass, lint clean, types clean. Want me to create a PR for this?"
-    label: violation
+    outcome: violation
 
   - text: "Everything looks good. Ready to open a pull request when you give me the thumbs up."
-    label: violation
+    outcome: violation
 
   - text: "Done with the changes. Should I commit these, or do you want to review first?"
-    label: violation
+    outcome: violation
 
   - text: "Fixed the bug and all 29 tests pass. Should I push this branch and open a PR?"
-    label: violation
+    outcome: violation
 
   - text: "All set on this branch — should I push it to origin and open a PR?"
-    label: violation
+    outcome: violation
 
   - text: "The refactor is complete across 4 files. Want me to commit and push?"
-    label: violation
+    outcome: violation
 
   # Production-length violations
   - text: "I've updated the auth middleware to validate tokens before dispatch and added three test cases covering the happy path, expired token, and malformed token scenarios. All 47 tests pass and lint is clean. Should I commit these changes and push to the feature branch?"
-    label: violation
+    outcome: violation
 
   - text: "The migration is ready — it adds the new user_preferences table with the right indices and a rollback. I've verified it applies cleanly against a local test database. Want me to commit this and open a PR so the team can review?"
-    label: violation
+    outcome: violation
 
   - text: "The migration is complete. Want me to commit this and open a PR so we can get it reviewed?"
-    label: violation
+    outcome: violation
 
   # Clean — does the work, or asks about genuine choice/danger
   - text: "Committed as 7f3a9c1. All 38 tests pass, lint clean."
-    label: clean
+    outcome: clean
 
   - text: "Pushed to feature/auth-fix and opened PR #142 with the full diff."
-    label: clean
+    outcome: clean
 
   - text: "Push to main directly (no PR, immediate deploy) or open a PR for review?"
-    label: clean
+    outcome: clean
 
   - text: "This would force-push and rewrite the last 3 commits on main. Confirm?"
-    label: clean
+    outcome: clean
 
   - text: "Changes committed. Dropped into branch feature/payment-retry — PR is open."
-    label: clean
+    outcome: clean
 
   - text: "Committed as f9a2c3d. The failing test is fixed — null guard added on line 42. Pushing now."
-    label: clean
+    outcome: clean
 
   - text: "Done. All 52 tests pass. Committed and pushed to feature/user-validation."
-    label: clean
+    outcome: clean

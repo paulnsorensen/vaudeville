@@ -6,9 +6,9 @@ import os
 
 import pytest
 
-from conftest import MockBackend
-from vaudeville.core.rules import Rule, load_rules
-from vaudeville.eval import EvalCase, evaluate_rule, load_test_cases
+from vaudeville.eval import EvalResults, classify_case, load_test_cases
+from vaudeville.rules import DecideRule, DecideTestCase, load_rules
+from vaudeville.server.user_config import UserConfig
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLES_RULES_DIR = os.path.join(PROJECT_ROOT, "examples", "rules")
@@ -18,17 +18,21 @@ MIN_TEXT_LENGTH = 50  # runner.py skips shorter inputs
 
 
 @pytest.fixture
-def example_rules() -> dict[str, Rule]:
+def example_rules() -> dict[str, DecideRule]:
     rules = load_rules(EXAMPLES_RULES_DIR)
     assert rules, f"No rules found in {EXAMPLES_RULES_DIR}"
-    return rules
+    decide_rules = {
+        name: rule for name, rule in rules.items() if isinstance(rule, DecideRule)
+    }
+    assert decide_rules, f"No decide rules found in {EXAMPLES_RULES_DIR}"
+    return decide_rules
 
 
 @pytest.fixture
 def example_test_suites(
-    example_rules: dict[str, Rule],
-) -> dict[str, list[EvalCase]]:
-    suites = load_test_cases(example_rules)
+    example_rules: dict[str, DecideRule],
+) -> dict[str, list[DecideTestCase]]:
+    suites = load_test_cases(example_rules)  # type: ignore[arg-type]
     assert suites, "No test cases found on example rules"
     return suites
 
@@ -37,25 +41,22 @@ class TestExampleRulesLoad:
     """Verify all example rules parse correctly via load_rules."""
 
     def test_all_rules_have_required_fields(
-        self, example_rules: dict[str, Rule]
+        self, example_rules: dict[str, DecideRule]
     ) -> None:
         for name, rule in example_rules.items():
             assert rule.name == name, f"{name}: name mismatch"
             assert rule.prompt, f"{name}: empty prompt"
-            assert rule.context, f"{name}: no context entries"
             assert rule.event, f"{name}: no event"
+            assert rule.outcomes, f"{name}: no outcomes"
 
-    def test_prompts_contain_text_placeholder(
-        self, example_rules: dict[str, Rule]
+    def test_on_actions_reference_declared_outcomes(
+        self, example_rules: dict[str, DecideRule]
     ) -> None:
         for name, rule in example_rules.items():
-            assert "{text}" in rule.prompt, f"{name}: missing {{text}} placeholder"
-
-    def test_prompts_format_without_error(self, example_rules: dict[str, Rule]) -> None:
-        for name, rule in example_rules.items():
-            formatted = rule.format_prompt("sample input text")
-            assert "sample input text" in formatted, f"{name}: text not interpolated"
-            assert "{text}" not in formatted, f"{name}: placeholder not replaced"
+            for outcome in rule.on:
+                assert outcome in rule.outcomes, (
+                    f"{name}: on-action outcome {outcome!r} not in {rule.outcomes}"
+                )
 
 
 class TestExampleTestCases:
@@ -63,35 +64,38 @@ class TestExampleTestCases:
 
     def test_every_rule_has_test_cases(
         self,
-        example_rules: dict[str, Rule],
-        example_test_suites: dict[str, list[EvalCase]],
+        example_rules: dict[str, DecideRule],
+        example_test_suites: dict[str, list[DecideTestCase]],
     ) -> None:
         for name in example_rules:
             assert name in example_test_suites, f"{name}: no test cases found"
 
     def test_minimum_case_count(
-        self, example_test_suites: dict[str, list[EvalCase]]
+        self, example_test_suites: dict[str, list[DecideTestCase]]
     ) -> None:
         for name, cases in example_test_suites.items():
             assert len(cases) >= MIN_CASES_PER_RULE, (
                 f"{name}: {len(cases)} cases < minimum {MIN_CASES_PER_RULE}"
             )
 
-    def test_labels_are_balanced(
-        self, example_test_suites: dict[str, list[EvalCase]]
+    def test_outcomes_are_balanced(
+        self,
+        example_rules: dict[str, DecideRule],
+        example_test_suites: dict[str, list[DecideTestCase]],
     ) -> None:
         for name, cases in example_test_suites.items():
-            violations = sum(1 for c in cases if c.label == "violation")
-            cleans = sum(1 for c in cases if c.label == "clean")
-            assert violations > 0, f"{name}: no violation cases"
-            assert cleans > 0, f"{name}: no clean cases"
-            ratio = violations / len(cases)
+            positive = example_rules[name].outcomes[0]
+            positives = sum(1 for c in cases if c.outcome == positive)
+            negatives = len(cases) - positives
+            assert positives > 0, f"{name}: no {positive} cases"
+            assert negatives > 0, f"{name}: no negative cases"
+            ratio = positives / len(cases)
             assert 0.3 <= ratio <= 0.7, (
-                f"{name}: imbalanced labels ({violations}v/{cleans}c)"
+                f"{name}: imbalanced outcomes ({positives}/{len(cases)} {positive})"
             )
 
     def test_all_texts_above_min_length(
-        self, example_test_suites: dict[str, list[EvalCase]]
+        self, example_test_suites: dict[str, list[DecideTestCase]]
     ) -> None:
         for name, cases in example_test_suites.items():
             for i, case in enumerate(cases):
@@ -100,60 +104,41 @@ class TestExampleTestCases:
                     f"— runner.py skips inputs under {MIN_TEXT_LENGTH} chars"
                 )
 
-    def test_labels_are_valid(
-        self, example_test_suites: dict[str, list[EvalCase]]
+    def test_outcomes_are_declared_on_the_rule(
+        self,
+        example_rules: dict[str, DecideRule],
+        example_test_suites: dict[str, list[DecideTestCase]],
     ) -> None:
-        valid = {"violation", "clean"}
         for name, cases in example_test_suites.items():
+            valid = set(example_rules[name].outcomes)
             for case in cases:
-                assert case.label in valid, f"{name}: invalid label '{case.label}'"
+                assert case.outcome in valid, (
+                    f"{name}: invalid outcome {case.outcome!r} not in {valid}"
+                )
 
 
 class TestExampleEvalPipeline:
-    """Run the full eval pipeline with MockBackend to verify no errors."""
+    """Run the full eval pipeline fail-open (no model configured) to verify no errors."""
 
     def test_eval_runs_for_all_example_rules(
         self,
-        example_rules: dict[str, Rule],
-        example_test_suites: dict[str, list[EvalCase]],
+        example_rules: dict[str, DecideRule],
+        example_test_suites: dict[str, list[DecideTestCase]],
     ) -> None:
-        backend = MockBackend(verdict="violation", reason="mock test")
-        for name in example_rules:
+        config = UserConfig()
+        for name, rule in example_rules.items():
             cases = example_test_suites.get(name, [])
             if not cases:
                 continue
-            results, case_results = evaluate_rule(name, cases, example_rules, backend)
+            results = EvalResults(rule=name)
+            case_results = [
+                classify_case(case, rule, config, results, case_id=i)
+                for i, case in enumerate(cases)
+            ]
             assert results.total == len(cases), (
                 f"{name}: expected {len(cases)} results, got {results.total}"
             )
             assert len(case_results) == len(cases)
-
-    def test_eval_with_clean_backend(
-        self,
-        example_rules: dict[str, Rule],
-        example_test_suites: dict[str, list[EvalCase]],
-    ) -> None:
-        backend = MockBackend(verdict="clean", reason="mock clean")
-        for name in example_rules:
-            cases = example_test_suites.get(name, [])
-            if not cases:
-                continue
-            results, _ = evaluate_rule(name, cases, example_rules, backend)
-            assert results.total == len(cases)
-            assert results.fp == 0, f"{name}: clean backend should have 0 FP"
-
-    def test_prompts_include_case_text(self, example_rules: dict[str, Rule]) -> None:
-        backend = MockBackend(verdict="clean")
-        test_text = "This is a specific test string for prompt verification."
-        for name, rule in example_rules.items():
-            backend.calls.clear()
-            evaluate_rule(
-                name,
-                [EvalCase(text=test_text, label="clean")],
-                example_rules,
-                backend,
-            )
-            assert len(backend.calls) == 1
-            assert test_text in backend.calls[0], (
-                f"{name}: case text not in formatted prompt"
+            assert all(cr.predicted is None for cr in case_results), (
+                f"{name}: fail-open should predict None for every case"
             )

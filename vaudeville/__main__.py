@@ -19,7 +19,7 @@ from vaudeville import orchestrator
 from vaudeville._stats_rendering import print_stats_human
 from vaudeville.cli_rules import attach_rule_parsers, dispatch_rule_command
 from vaudeville.core.paths import find_project_root as _core_find_project_root
-from vaudeville.core.rules import load_rules_layered
+from vaudeville.rules import load_rules_layered
 from vaudeville.orchestrator import RalphError, Thresholds
 
 
@@ -40,21 +40,15 @@ def cmd_watch(args: argparse.Namespace) -> None:
         pass
 
 
-def cmd_setup(_args: argparse.Namespace) -> None:
-    """Run model download and verification."""
-    from vaudeville.setup import main as setup_main
-
-    setup_main()
-
-
 def cmd_stats(args: argparse.Namespace) -> None:
     """Print aggregated classification statistics."""
     from vaudeville.server import aggregate_events
 
-    rules = load_rules_layered(_find_project_root())
+    ruleset = load_rules_layered(_find_project_root())
+    rule_names = {rule.name for rule in ruleset.rules}
     result = aggregate_events(
         args.log_path,
-        allowed_rules=set(rules.keys()) if rules else None,
+        allowed_rules=rule_names or None,
     )
 
     if args.json:
@@ -241,8 +235,6 @@ def _build_generate_parser(sub: Any) -> None:
 def _dispatch(args: argparse.Namespace) -> None:
     if args.command == "watch":
         cmd_watch(args)
-    elif args.command == "setup":
-        cmd_setup(args)
     elif args.command == "stats":
         cmd_stats(args)
     elif args.command == "tune":
@@ -262,8 +254,6 @@ def main() -> None:
 
     watch_parser = sub.add_parser("watch", help="Live TUI of rule firings")
     _add_log_path_arg(watch_parser)
-
-    sub.add_parser("setup", help="Download model and verify inference")
 
     stats_parser = sub.add_parser("stats", help="Show classification statistics")
     stats_parser.add_argument("--json", action="store_true", help="Output raw JSON")

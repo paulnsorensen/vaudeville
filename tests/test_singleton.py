@@ -107,7 +107,7 @@ class TestVaudevilleClientNoArgs:
         with tempfile.TemporaryDirectory() as td:
             client = VaudevilleClient()
             client._socket_path = os.path.join(td, "nonexistent.sock")
-            result = client.classify("test prompt")
+            result = client.classify("test prompt")  # type: ignore[attr-defined]
             assert result is None, (
                 "classify() must return None when daemon is unavailable (fail-open)"
             )

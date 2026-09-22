@@ -1,7 +1,8 @@
 """Threshold calibration for vaudeville rules.
 
-Threshold-based calibration was a Phi-era concept: the new `decide` agent
-picks a typed outcome directly instead of thresholding a logprob-derived
+Threshold-based calibration was tied to the old logprob-scoring backend:
+the new `decide` agent picks a typed outcome directly instead of
+thresholding a logprob-derived
 confidence score. FU-1b (pydantic-evals) replaces this with proper eval
 calibration; `--calibrate` stays accepted so existing scripts do not break,
 but it now only prints a deferral notice.

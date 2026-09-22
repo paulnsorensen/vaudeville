@@ -32,6 +32,10 @@ class ClassificationEvent:
     reason: str = ""
     input_snippet: str = ""
     tier: str = "block"
+    outcome: str | None = None
+    action: str | None = None
+    model: str | None = None
+    downgrade: str | None = None
 
 
 class EventLogger:
@@ -98,6 +102,10 @@ class EventLogger:
             "tier": event.tier,
             "reason": event.reason or "",
             "input_snippet": (event.input_snippet or "")[:_MAX_SNIPPET_LOG_CHARS],
+            "outcome": event.outcome,
+            "action": event.action,
+            "model": event.model,
+            "downgrade": event.downgrade,
         }
 
         self._logger.bind(_sink="events").info(json.dumps(common, default=str))

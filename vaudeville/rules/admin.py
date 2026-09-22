@@ -13,37 +13,39 @@ from pathlib import Path
 
 import yaml
 
-from .loader import load_rule_file
+from .loader import load_rule_file, project_rules_dir, user_rules_dir
 from .models import VALID_TIERS, DecideRule, RewriteRule
 
 
 def rules_search_path(project_root: str | None = None) -> list[str]:
-    """Directories that exist, in priority order (lowest -> highest)."""
+    """Directories that exist, in priority order: global (user) then project."""
     dirs: list[str] = []
-    global_dir = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
-    if os.path.isdir(global_dir):
+    if (global_dir := user_rules_dir()) is not None:
         dirs.append(global_dir)
-    if project_root:
-        project_dir = os.path.join(project_root, ".vaudeville", "rules")
-        if os.path.isdir(project_dir):
-            dirs.append(project_dir)
+    if (project_dir := project_rules_dir(project_root)) is not None:
+        dirs.append(project_dir)
     return dirs
 
 
 def locate_all_rule_files(
     rule_name: str, project_root: str | None = None
 ) -> list[Path]:
-    """Return every candidate rule file path that exists, project first."""
-    home = os.path.expanduser("~")
+    """Return every candidate rule file path that exists, in the reverse of
+    `rules_search_path` order: project first, then global (user).
+    """
     candidates: list[Path] = []
-    if project_root:
-        proj_rules = Path(project_root) / ".vaudeville" / "rules"
+    if (project_dir := project_rules_dir(project_root)) is not None:
+        proj_rules = Path(project_dir)
         candidates += [
             proj_rules / f"{rule_name}.yaml",
             proj_rules / f"{rule_name}.yml",
         ]
-    home_rules = Path(home) / ".vaudeville" / "rules"
-    candidates += [home_rules / f"{rule_name}.yaml", home_rules / f"{rule_name}.yml"]
+    if (global_dir := user_rules_dir()) is not None:
+        home_rules = Path(global_dir)
+        candidates += [
+            home_rules / f"{rule_name}.yaml",
+            home_rules / f"{rule_name}.yml",
+        ]
     return [p for p in candidates if p.exists()]
 
 

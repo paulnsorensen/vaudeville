@@ -179,7 +179,7 @@ type: rewrite
 name: rewrite-target
 event: Stop
 prompt: Rewrite.
-target: [content]
+target: [tool_input.content]
 tier: block
 """,
         )
@@ -232,7 +232,7 @@ name: rewrite-target
 event: PreToolUse
 matcher: Write
 prompt: Rewrite.
-target: [content]
+target: [tool_input.content]
 tier: block
 """,
         )

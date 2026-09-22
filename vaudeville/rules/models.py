@@ -63,20 +63,19 @@ class DecideRule(BaseModel):
 
 
 _BASH_COMMAND_TARGET = "tool_input.command"
+_TOOL_INPUT_PREFIX = "tool_input."
 
 
-def _target_is_bash_command(target: str, matcher: str | None) -> bool:
-    """Return True when `target` resolves to a Bash command's argv, or a
-    dotted subpath under it (e.g. `tool_input.command.x`).
+def _target_is_bash_command(target: str) -> bool:
+    """Return True when `target` resolves to a Bash command's argv, a
+    dotted subpath under it (e.g. `tool_input.command.x`), or any path
+    with a `.command` leaf. Checked unconditionally, regardless of matcher.
     """
-    is_command_subpath = target == _BASH_COMMAND_TARGET or target.startswith(
-        _BASH_COMMAND_TARGET + "."
+    return (
+        target == _BASH_COMMAND_TARGET
+        or target.startswith(_BASH_COMMAND_TARGET + ".")
+        or target.endswith(".command")
     )
-    if matcher and "Bash" in matcher.split("|"):
-        return is_command_subpath
-    if not matcher:
-        return is_command_subpath or target.endswith(".command")
-    return False
 
 
 class RewriteRule(BaseModel):
@@ -105,7 +104,12 @@ class RewriteRule(BaseModel):
     @model_validator(mode="after")
     def _validate_target_no_bash(self) -> "RewriteRule":
         for target in self.target:
-            if _target_is_bash_command(target, self.matcher):
+            if not target.startswith(_TOOL_INPUT_PREFIX):
+                raise ValueError(
+                    f"rule {self.name!r}: target {target!r} must start with "
+                    f"{_TOOL_INPUT_PREFIX!r}"
+                )
+            if _target_is_bash_command(target):
                 raise ValueError(
                     f"rule {self.name!r}: target {target!r} resolves to a Bash command "
                     "and cannot be rewritten"

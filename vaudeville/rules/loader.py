@@ -40,6 +40,12 @@ def load_rule_file(path: str | Path) -> DecideRule | RewriteRule | None:
         )
     if data.get("draft"):
         return None
+    if "context" in data:
+        name = data.get("name", "?")
+        raise ValueError(
+            f"rule {name!r}: rule-level `context:` key is no longer supported "
+            "(rule-level context injection is dropped from the spec)"
+        )
     return parse_rule(data)
 
 
@@ -94,8 +100,34 @@ def layered_search_path(project_root: str | None = None) -> list[str]:
 
 
 def load_rules_layered(project_root: str | None = None) -> RuleSet:
-    """Load rules from every layer, uncached; later layers override by name."""
+    """Load rules from every layer, uncached; later layers override by name.
+
+    Bundled and user rules may override an earlier layer of the same name
+    (AC-1). A project-layer rule sharing a name already owned by the
+    bundled or user layer is refused: it is skipped and logged, so a
+    project cannot silently shadow a trusted rule.
+    """
+    layers: list[tuple[str, str]] = []
+    if (bundled := bundled_rules_dir()) is not None:
+        layers.append((bundled, "bundled"))
+    if (user := user_rules_dir()) is not None:
+        layers.append((user, "user"))
+    if (project := project_rules_dir(project_root)) is not None:
+        layers.append((project, "project"))
+
     merged: dict[str, DecideRule | RewriteRule] = {}
-    for rules_dir in layered_search_path(project_root):
-        merged.update(load_rules(rules_dir))
+    owner: dict[str, str] = {}
+    for rules_dir, layer_name in layers:
+        for name, rule in load_rules(rules_dir).items():
+            if layer_name == "project" and name in owner and owner[name] != "project":
+                logger.warning(
+                    "[vaudeville] Skipping project rule %r in %s: name already "
+                    "owned by the %s layer",
+                    name,
+                    rules_dir,
+                    owner[name],
+                )
+                continue
+            merged[name] = rule
+            owner[name] = layer_name
     return RuleSet(rules=tuple(merged.values()))

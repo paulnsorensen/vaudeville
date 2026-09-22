@@ -100,8 +100,30 @@ class TestLoadRulesDirectory:
 
 
 class TestLoadRulesLayered:
-    def test_project_overrides_user_by_name(
+    def test_bundled_layer_loads_below_user_and_project(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        plugin_root = tmp_path / "plugin"
+        (plugin_root / "examples" / "rules").mkdir(parents=True)
+        _write_rule(plugin_root / "examples" / "rules", "bundled.yaml", REWRITE_RULE)
+
+        home = tmp_path / "home"
+        (home / ".vaudeville" / "rules").mkdir(parents=True)
+
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+        ruleset = load_rules_layered(None)
+        rules = ruleset.by_name()
+        assert isinstance(rules["trim"], RewriteRule)
+
+
+class TestProjectLayerTrust:
+    def test_project_rule_same_name_as_user_is_skipped_and_logged(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         home = tmp_path / "home"
         (home / ".vaudeville" / "rules").mkdir(parents=True)
@@ -122,26 +144,44 @@ class TestLoadRulesLayered:
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "empty-plugin-root"))
 
-        ruleset = load_rules_layered(str(project))
+        with caplog.at_level("WARNING"):
+            ruleset = load_rules_layered(str(project))
         rules = ruleset.by_name()
-        assert rules["git-gate"].tier == "block"
+        assert rules["git-gate"].tier == "shadow"
+        assert "git-gate" in caplog.text
+        assert "user" in caplog.text
 
-    def test_bundled_layer_loads_below_user_and_project(
+    def test_project_only_rule_still_loads(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        plugin_root = tmp_path / "plugin"
-        (plugin_root / "examples" / "rules").mkdir(parents=True)
-        _write_rule(plugin_root / "examples" / "rules", "bundled.yaml", REWRITE_RULE)
-
         home = tmp_path / "home"
         (home / ".vaudeville" / "rules").mkdir(parents=True)
 
-        monkeypatch.setenv("HOME", str(home))
-        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+        project = tmp_path / "project"
+        (project / ".vaudeville" / "rules").mkdir(parents=True)
+        _write_rule(project / ".vaudeville" / "rules", "gate.yaml", DECIDE_RULE)
 
-        ruleset = load_rules_layered(None)
-        rules = ruleset.by_name()
-        assert isinstance(rules["trim"], RewriteRule)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "empty-plugin-root"))
+
+        ruleset = load_rules_layered(str(project))
+        assert "git-gate" in ruleset.by_name()
+
+
+class TestObsoleteContextKey:
+    def test_rule_with_context_key_skipped_and_logged(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        _write_rule(tmp_path, "good.yaml", DECIDE_RULE)
+        _write_rule(
+            tmp_path,
+            "has-context.yaml",
+            dict(DECIDE_RULE, name="has-context", context="legacy"),
+        )
+        with caplog.at_level("WARNING"):
+            rules = load_rules(str(tmp_path))
+        assert set(rules) == {"git-gate"}
+        assert "context" in caplog.text
 
 
 class TestRuleSetForEvent:

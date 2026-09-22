@@ -162,6 +162,19 @@ class TestRewriteBashTargetRejected:
         )
         assert isinstance(rule, RewriteRule)
 
+    def test_non_command_target_without_prefix_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "rewrite-noprefix",
+                    "event": "PreToolUse",
+                    "matcher": "Bash",
+                    "prompt": "p",
+                    "target": ["command"],
+                }
+            )
+
 
 class TestInvalidTierRejected:
     def test_decide_rule_invalid_tier_rejected(self) -> None:

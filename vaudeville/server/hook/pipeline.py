@@ -30,6 +30,7 @@ from vaudeville.server.agents import rewrite as run_rewrite
 from vaudeville.server.effects import (
     apply_rewrite,
     escalate,
+    escalate_result,
     rewrite_or_feedback,
     run_named_command,
     with_origin_label,
@@ -218,25 +219,29 @@ def _evaluate_rule(
 
     remaining = _remaining_budget(clock, start_time, deadline_seconds)
     start = clock()
-    result = escalate(
+    decide_outcome = escalate_result(
         lambda: decide_fn(rule, config, event.text),
         deadline=remaining,
         rule_name=rule.name,
     )
     latency_ms = (clock() - start) * 1000
 
-    if result is None:
+    if decide_outcome.value is None:
+        decide_downgrade = (
+            "decide-error" if decide_outcome.error is not None else "decide-timeout"
+        )
         _log_decision(
             logger_fn,
             rule,
             DecideResult(outcome=None),
             "allow",
-            "decide-timeout",
+            decide_downgrade,
             latency_ms,
             model_name,
             prompt_chars,
         )
         return None
+    result = decide_outcome.value
 
     if result.outcome is None:
         _log_decision(
@@ -396,13 +401,15 @@ def _do_rewrite(
     model = resolution.model
 
     remaining = _remaining_budget(clock, start_time, deadline_seconds)
-    new_text = escalate(
+    rewrite_outcome = escalate_result(
         lambda: run_rewrite(target, model, event.text),
         deadline=remaining,
         rule_name=target.name,
     )
-    if new_text is None:
-        return "allow", "", None, "rewrite-timeout"
+    if rewrite_outcome.value is None:
+        downgrade = "rewrite-error" if rewrite_outcome.error is not None else "rewrite-timeout"
+        return "allow", "", None, downgrade
+    new_text = rewrite_outcome.value
 
     def _log(record: dict[str, object]) -> None:
         logger.info("rewrite effect for rule %r: %r", rule.name, record)

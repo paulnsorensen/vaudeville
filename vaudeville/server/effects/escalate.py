@@ -3,13 +3,61 @@
 from __future__ import annotations
 
 import logging
-import threading
 from collections.abc import Callable
-from typing import TypeVar
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+# Shared across every escalate call so a burst of concurrent decides caps at
+# 8 worker threads instead of spawning one thread per call.
+_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="vaudeville-decide")
+
+
+@dataclass(frozen=True)
+class EscalateResult(Generic[T]):
+    """The outcome of one bounded `decide_fn` run.
+
+    `value` is None on a miss; `timed_out` and `error` distinguish why, so
+    callers can log `decide-timeout` vs `decide-error` telemetry.
+    """
+
+    value: T | None
+    timed_out: bool
+    error: BaseException | None = None
+
+
+def escalate_result(
+    decide_fn: Callable[[], T],
+    *,
+    deadline: float,
+    rule_name: str | None = None,
+) -> EscalateResult[T]:
+    """Run `decide_fn` once on the shared decide pool, bounded by `deadline` seconds.
+
+    On a deadline expiry the future is left to finish in the pool rather
+    than cancelled; the pool's fixed size bounds worst-case thread growth.
+    An exception raised by `decide_fn` is caught and logged with `rule_name`
+    for context rather than propagating. The caller never nests: this runs
+    the named decide rule exactly once.
+    """
+    future: Future[T] = _EXECUTOR.submit(decide_fn)
+    try:
+        value = future.result(timeout=deadline)
+    except FutureTimeoutError:
+        return EscalateResult(value=None, timed_out=True, error=None)
+    except Exception as exc:
+        logger.warning(
+            "escalate rule %r: decide_fn raised; keeping the first decision",
+            rule_name,
+            exc_info=True,
+        )
+        return EscalateResult(value=None, timed_out=False, error=exc)
+    return EscalateResult(value=value, timed_out=False, error=None)
 
 
 def escalate(
@@ -18,29 +66,11 @@ def escalate(
     deadline: float,
     rule_name: str | None = None,
 ) -> T | None:
-    """Run `decide_fn` once, in a worker thread bounded by `deadline` seconds.
+    """Run `decide_fn` once, bounded by `deadline` seconds.
 
     Returns the result when it completes within the deadline, or None when
     the deadline expires first or `decide_fn` raises, so the caller keeps
-    its first decision. An exception is caught and logged with `rule_name`
-    for context rather than crashing the escalation thread. The caller
-    never nests: this runs the named decide rule exactly once.
+    its first decision. The caller never nests: this runs the named decide
+    rule exactly once.
     """
-    result: list[T] = []
-
-    def _run() -> None:
-        try:
-            result.append(decide_fn())
-        except Exception:
-            logger.warning(
-                "escalate rule %r: decide_fn raised; keeping the first decision",
-                rule_name,
-                exc_info=True,
-            )
-
-    worker = threading.Thread(target=_run, daemon=True)
-    worker.start()
-    worker.join(deadline)
-    if worker.is_alive() or not result:
-        return None
-    return result[0]
+    return escalate_result(decide_fn, deadline=deadline, rule_name=rule_name).value

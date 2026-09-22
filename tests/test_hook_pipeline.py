@@ -156,6 +156,36 @@ class TestRequestDeadline:
         finally:
             logger.close()
 
+    def test_raising_decide_fn_logs_decide_error_and_allows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """M2: a decide_fn that raises fails open and logs `decide-error`,
+        distinct from a `decide-timeout` deadline expiry."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-git-gate", DECIDE_RULE_YAML)
+
+        def raising_decide_fn(rule: object, config: object, text: str) -> DecideResult:
+            raise RuntimeError("boom")
+
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=raising_decide_fn,
+                event_logger=logger,
+            )
+
+            assert result == {"stdout": "{}", "exit_code": 0}
+
+            time.sleep(0.05)
+            lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+            records = [json.loads(line) for line in lines]
+            assert any(r.get("downgrade") == "decide-error" for r in records)
+        finally:
+            logger.close()
+
     def test_escalate_deadline_never_exceeds_remaining_budget(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -166,15 +196,15 @@ class TestRequestDeadline:
         fn, _ = _decide_fn('{"outcome": "violation"}')
 
         deadlines: list[float] = []
-        from vaudeville.server.effects.escalate import escalate as real_escalate
+        from vaudeville.server.effects.escalate import escalate_result as real_escalate_result
 
-        def recording_escalate(
+        def recording_escalate_result(
             run: object, *, deadline: float, rule_name: str | None = None
         ) -> object:
             deadlines.append(deadline)
-            return real_escalate(run, deadline=deadline, rule_name=rule_name)  # type: ignore[arg-type]
+            return real_escalate_result(run, deadline=deadline, rule_name=rule_name)  # type: ignore[arg-type]
 
-        monkeypatch.setattr(pipeline_module, "escalate", recording_escalate)
+        monkeypatch.setattr(pipeline_module, "escalate_result", recording_escalate_result)
 
         handle_hook_request(
             _request(tmp_path), config=_CONFIG, decide_fn=fn, deadline_seconds=1.5

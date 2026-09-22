@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from vaudeville.server.effects import escalate
+from vaudeville.server.effects import escalate, escalate_result
 
 
 @dataclass(frozen=True)
@@ -68,3 +68,61 @@ class TestEscalateHandlesException:
 
         assert result is None
         assert any("escalate-rule" in record.getMessage() for record in caplog.records)
+
+
+class TestEscalateResult:
+    def test_success_carries_the_value_with_no_timeout_or_error(self) -> None:
+        outcome = escalate_result(lambda: FakeResult(outcome="clean", reason=""), deadline=1.0)
+
+        assert outcome.value == FakeResult(outcome="clean", reason="")
+        assert outcome.timed_out is False
+        assert outcome.error is None
+
+    def test_deadline_expiry_sets_timed_out_true_and_no_error(self) -> None:
+        started = threading.Event()
+
+        def slow_decide_fn() -> FakeResult:
+            started.set()
+            time.sleep(0.3)
+            return FakeResult(outcome="block", reason="too slow")
+
+        outcome = escalate_result(slow_decide_fn, deadline=0.05)
+
+        assert started.wait(1.0)
+        assert outcome.value is None
+        assert outcome.timed_out is True
+        assert outcome.error is None
+
+    def test_raising_decide_fn_carries_the_exception_and_no_timeout(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def raising_decide_fn() -> FakeResult:
+            raise RuntimeError("boom")
+
+        with caplog.at_level(
+            logging.WARNING, logger="vaudeville.server.effects.escalate"
+        ):
+            outcome = escalate_result(
+                raising_decide_fn, deadline=1.0, rule_name="escalate-rule"
+            )
+
+        assert outcome.value is None
+        assert outcome.timed_out is False
+        assert isinstance(outcome.error, RuntimeError)
+
+
+class TestEscalatePool:
+    def test_concurrent_timeouts_stay_bounded_by_the_pool_size(self) -> None:
+        """20 timed-out calls run on the shared 8-worker pool, not one thread
+        each, so live thread growth above the pre-test baseline stays <= 8."""
+        baseline = threading.active_count()
+
+        def slow_decide_fn() -> FakeResult:
+            time.sleep(0.3)
+            return FakeResult(outcome="block", reason="slow")
+
+        for _ in range(20):
+            result = escalate(slow_decide_fn, deadline=0.01)
+            assert result is None
+
+        assert threading.active_count() - baseline <= 8

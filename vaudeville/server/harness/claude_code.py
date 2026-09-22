@@ -131,7 +131,9 @@ class ClaudeCodeAdapter:
         self, outcome: Outcome, action_name: str, text: str | None = None
     ) -> tuple[dict[str, object], dict[str, str] | None]:
         downgrade = {"from": action_name, "to": "warn", "event": outcome.event}
-        payload = _json({"systemMessage": text if text is not None else outcome.message})
+        payload = _json(
+            {"systemMessage": text if text is not None else outcome.message}
+        )
         return payload, downgrade
 
     def render_allow(self) -> RenderResult:

@@ -196,7 +196,9 @@ class TestDegrade:
         result_b = adapter.render(
             _outcome("add-context", "Notification", context="branch: main")
         )
-        assert result_a["downgrades"] == [{"from": "ask", "to": "warn", "event": "Stop"}]
+        assert result_a["downgrades"] == [
+            {"from": "ask", "to": "warn", "event": "Stop"}
+        ]
         assert result_b["downgrades"] == [
             {"from": "add-context", "to": "warn", "event": "Notification"}
         ]

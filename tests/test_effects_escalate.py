@@ -72,7 +72,9 @@ class TestEscalateHandlesException:
 
 class TestEscalateResult:
     def test_success_carries_the_value_with_no_timeout_or_error(self) -> None:
-        outcome = escalate_result(lambda: FakeResult(outcome="clean", reason=""), deadline=1.0)
+        outcome = escalate_result(
+            lambda: FakeResult(outcome="clean", reason=""), deadline=1.0
+        )
 
         assert outcome.value == FakeResult(outcome="clean", reason="")
         assert outcome.timed_out is False

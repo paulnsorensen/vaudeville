@@ -36,7 +36,13 @@ from vaudeville.server.effects import (
     with_origin_label,
 )
 from vaudeville.server.event_log import ClassificationEvent, EventLogger
-from vaudeville.server.harness import Adapter, HookEvent, Outcome, RenderResult, get_adapter
+from vaudeville.server.harness import (
+    Adapter,
+    HookEvent,
+    Outcome,
+    RenderResult,
+    get_adapter,
+)
 from vaudeville.server.user_config import UserConfig, load_user_config
 
 from .precedence import EvaluatedAction, merge
@@ -48,6 +54,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_ESCALATE_DEADLINE_SECONDS = 3.0
 RUN_COMMAND_TIMEOUT_SECONDS = 5.0
 DEFAULT_REQUEST_DEADLINE_SECONDS = 6.0
+
+# Actions whose decision record is complete at evaluate time: never a
+# precedence-merge primary or an add-context concatenation, so nothing
+# downstream can add a second row for the same rule (F24).
+_NO_DEFER = frozenset({"run", "allow", "log"})
 
 DecideFn = Callable[[DecideRule, UserConfig, str], DecideResult]
 
@@ -149,7 +160,10 @@ def _run_pipeline(
     result = merge(evaluated)
 
     for dropped_action, reason in result.dropped:
-        _log_dropped(event_logger, dropped_action, reason, prompt_chars=len(event.text))
+        _log_dropped(event_logger, dropped_action, reason)
+
+    for item in result.context_items:
+        _log_evaluated(event_logger, item, downgrade=item.downgrade)
 
     for run_action in result.run_actions:
         if run_action.command:
@@ -172,14 +186,11 @@ def _run_pipeline(
         context=result.context,
     )
     rendered: RenderResult = adapter.render(outcome)
-    render_downgrades = rendered["downgrades"]
-    if render_downgrades:
-        _log_render_downgrade(
-            event_logger,
-            result.primary,
-            render_downgrades,
-            prompt_chars=len(event.text),
-        )
+    _log_evaluated(
+        event_logger,
+        result.primary,
+        downgrade=_merge_downgrade(result.primary.downgrade, rendered["downgrades"]),
+    )
     return _to_wire(rendered)
 
 
@@ -291,20 +302,11 @@ def _evaluate_rule(
 
     effective_name, downgrade = apply_tier_ceiling(action_name, rule.tier)
     if rewrite_downgrade:
-        downgrade = f"{rewrite_downgrade};{downgrade}" if downgrade else rewrite_downgrade
+        downgrade = (
+            f"{rewrite_downgrade};{downgrade}" if downgrade else rewrite_downgrade
+        )
 
-    _log_decision(
-        logger_fn,
-        rule,
-        result,
-        action_name,
-        downgrade,
-        latency_ms,
-        model_name,
-        prompt_chars,
-    )
-
-    return EvaluatedAction(
+    item = EvaluatedAction(
         rule_name=rule.name,
         action_name=effective_name,
         message=message,
@@ -312,7 +314,19 @@ def _evaluate_rule(
         updated_input=updated_input,
         command=command,
         downgrade=downgrade,
+        verdict=result.outcome or "",
+        confidence=result.confidence or 0.0,
+        latency_ms=latency_ms,
+        reason=result.reason or "",
+        tier=rule.tier,
+        outcome=result.outcome,
+        model=model_name,
+        prompt_chars=prompt_chars,
     )
+    if effective_name in _NO_DEFER:
+        _log_evaluated(logger_fn, item, downgrade=downgrade)
+
+    return item
 
 
 def _message_for(rule: DecideRule, result: DecideResult, action_name: str) -> str:
@@ -407,7 +421,9 @@ def _do_rewrite(
         rule_name=target.name,
     )
     if rewrite_outcome.value is None:
-        downgrade = "rewrite-error" if rewrite_outcome.error is not None else "rewrite-timeout"
+        downgrade = (
+            "rewrite-error" if rewrite_outcome.error is not None else "rewrite-timeout"
+        )
         return "allow", "", None, downgrade
     new_text = rewrite_outcome.value
 
@@ -430,33 +446,45 @@ def _do_rewrite(
     return "rewrite", new_text, updated, None
 
 
-def _log_render_downgrade(
-    logger_fn: EventLogger | None,
-    primary: EvaluatedAction,
-    render_downgrades: list[dict[str, str]],
-    *,
-    prompt_chars: int,
-) -> None:
-    """Log the adapter's render-time downgrades against the primary rule (F24).
+def _merge_downgrade(
+    primary_downgrade: str | None, render_downgrades: list[dict[str, str]]
+) -> str | None:
+    """Join the primary's tier downgrade with the adapter's render downgrades.
 
-    Merges with the primary's own tier downgrade (if any) by joining the two
-    with `;` so both survive in one record.
+    Both survive in one `;`-joined record, primary first (F24).
     """
-    if logger_fn is None:
-        return
     rendered = ";".join(
         f"{d.get('from')}->{d.get('to')} on {d.get('event')}" for d in render_downgrades
     )
-    merged = f"{primary.downgrade};{rendered}" if primary.downgrade else rendered
+    if primary_downgrade and rendered:
+        return f"{primary_downgrade};{rendered}"
+    return primary_downgrade or rendered or None
+
+
+def _log_evaluated(
+    logger_fn: EventLogger | None,
+    item: EvaluatedAction,
+    *,
+    downgrade: str | None,
+    kind: str | None = None,
+) -> None:
+    """Log one rule's decision record, once, from its `EvaluatedAction` (F24)."""
+    if logger_fn is None:
+        return
     logger_fn.log_event(
         ClassificationEvent(
-            rule=primary.rule_name,
-            verdict="",
-            confidence=0.0,
-            latency_ms=0.0,
-            prompt_chars=prompt_chars,
-            action=primary.action_name,
-            downgrade=merged,
+            rule=item.rule_name,
+            verdict=item.verdict,
+            confidence=item.confidence,
+            latency_ms=item.latency_ms,
+            prompt_chars=item.prompt_chars,
+            reason=item.reason,
+            tier=item.tier,
+            outcome=item.outcome,
+            action=item.action_name,
+            model=item.model,
+            downgrade=downgrade,
+            kind=kind,
         )
     )
 
@@ -465,23 +493,9 @@ def _log_dropped(
     logger_fn: EventLogger | None,
     dropped: EvaluatedAction,
     reason: str,
-    *,
-    prompt_chars: int,
 ) -> None:
     """Log a primary-channel action that lost the precedence merge (F20)."""
-    if logger_fn is None:
-        return
-    logger_fn.log_event(
-        ClassificationEvent(
-            rule=dropped.rule_name,
-            verdict="",
-            confidence=0.0,
-            latency_ms=0.0,
-            prompt_chars=prompt_chars,
-            action=dropped.action_name,
-            downgrade=reason,
-        )
-    )
+    _log_evaluated(logger_fn, dropped, downgrade=reason, kind="dropped")
 
 
 def _log_decision(

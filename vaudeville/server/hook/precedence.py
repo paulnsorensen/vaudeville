@@ -5,10 +5,16 @@ primary channel; every add-context, log, and run applies in addition, and
 add-context text from multiple rules concatenates. A primary-channel action
 that loses to a more restrictive one is reported in `MergeResult.dropped` so
 the caller can log it (F20).
+
+Each `EvaluatedAction` also carries the decide result and model fields
+needed to build its one events.jsonl row; the caller defers that row for
+any action that could become (or lose to) the render primary, so a rule
+never produces more than one row (F24).
 """
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 from vaudeville.rules.policy import PRIMARY_PRECEDENCE, SECONDARY_ACTIONS
@@ -25,6 +31,14 @@ class EvaluatedAction:
     updated_input: dict[str, object] | None = None
     command: str | None = None
     downgrade: str | None = None
+    verdict: str = ""
+    confidence: float = 0.0
+    latency_ms: float = 0.0
+    reason: str = ""
+    tier: str = "block"
+    outcome: str | None = None
+    model: str | None = None
+    prompt_chars: int = 0
 
 
 @dataclass(frozen=True)
@@ -35,6 +49,7 @@ class MergeResult:
     context: str | None
     run_actions: tuple[EvaluatedAction, ...]
     dropped: tuple[tuple[EvaluatedAction, str], ...] = ()
+    context_items: tuple[EvaluatedAction, ...] = ()
 
 
 def merge(evaluated: list[EvaluatedAction]) -> MergeResult:
@@ -46,6 +61,7 @@ def merge(evaluated: list[EvaluatedAction]) -> MergeResult:
     primary: EvaluatedAction | None = None
     best_rank = len(PRIMARY_PRECEDENCE)
     contexts: list[str] = []
+    context_items: list[EvaluatedAction] = []
     run_actions: list[EvaluatedAction] = []
     primary_candidates: list[EvaluatedAction] = []
 
@@ -59,6 +75,7 @@ def merge(evaluated: list[EvaluatedAction]) -> MergeResult:
         elif item.action_name == "add-context":
             if item.context_text:
                 contexts.append(item.context_text)
+                context_items.append(item)
         elif item.action_name == "run":
             run_actions.append(item)
         elif item.action_name in SECONDARY_ACTIONS:
@@ -77,17 +94,16 @@ def merge(evaluated: list[EvaluatedAction]) -> MergeResult:
     )
 
     if primary is None and contexts:
-        primary = EvaluatedAction(
-            rule_name=evaluated[0].rule_name if evaluated else "",
-            action_name="add-context",
-            message="\n\n".join(contexts),
-            context_text="\n\n".join(contexts),
-        )
+        combined = "\n\n".join(contexts)
+        base = context_items[0]
+        primary = dataclasses.replace(base, message=combined, context_text=combined)
         contexts = []
+        context_items = context_items[1:]
 
     return MergeResult(
         primary=primary,
         context="\n\n".join(contexts) if contexts else None,
         run_actions=tuple(run_actions),
         dropped=dropped,
+        context_items=tuple(context_items),
     )

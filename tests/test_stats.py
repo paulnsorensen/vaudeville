@@ -58,6 +58,21 @@ def test_actions_summarized(tmp_path: pathlib.Path) -> None:
     assert result["actions"] == {"block": 2, "allow": 1}
 
 
+def test_kind_rows_excluded(tmp_path: pathlib.Path) -> None:
+    """F24: `kind: dropped` diagnostic rows are excluded from every
+    aggregate: total, actions, rules, and latency."""
+    events = [
+        {**_make_event(), "action": "block"},
+        {**_make_event(), "action": "block", "kind": "dropped"},
+    ]
+    path = _write_events(tmp_path, events)
+    result = aggregate_events(path)
+
+    assert result["total"] == 1
+    assert result["actions"] == {"block": 1}
+    assert result["rules"]["no-hedging"]["total"] == 1
+
+
 def test_downgrades_counted(tmp_path: pathlib.Path) -> None:
     """Records with a non-empty `downgrade` field are counted."""
     events = [

@@ -132,6 +132,8 @@ def _read_new_events(
             evt = json.loads(stripped)
         except json.JSONDecodeError:
             continue
+        if evt.get("kind"):
+            continue
         events.append(evt)
         total_seen += 1
         if evt.get("verdict") == "violation":

@@ -399,5 +399,35 @@ def test_decision_fields_default_to_none(tmp_path: pathlib.Path) -> None:
         assert evt["action"] is None
         assert evt["model"] is None
         assert evt["downgrade"] is None
+        assert "kind" not in evt
+    finally:
+        logger.close()
+
+
+def test_dropped_kind_excluded_from_violations(tmp_path: pathlib.Path) -> None:
+    """F24: a `kind: dropped` diagnostic row carries `action` but is excluded
+    from violations.jsonl even when the action would otherwise block."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="a-warn-rule",
+                verdict="violation",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+                action="block",
+                kind="dropped",
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        assert len(events) == 1
+        assert events[0]["kind"] == "dropped"
+        assert events[0]["action"] == "block"
+
+        violations_path = tmp_path / "violations.jsonl"
+        assert not violations_path.exists() or not violations_path.read_text().strip()
     finally:
         logger.close()

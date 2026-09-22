@@ -196,7 +196,9 @@ class TestRequestDeadline:
         fn, _ = _decide_fn('{"outcome": "violation"}')
 
         deadlines: list[float] = []
-        from vaudeville.server.effects.escalate import escalate_result as real_escalate_result
+        from vaudeville.server.effects.escalate import (
+            escalate_result as real_escalate_result,
+        )
 
         def recording_escalate_result(
             run: object, *, deadline: float, rule_name: str | None = None
@@ -204,7 +206,9 @@ class TestRequestDeadline:
             deadlines.append(deadline)
             return real_escalate_result(run, deadline=deadline, rule_name=rule_name)  # type: ignore[arg-type]
 
-        monkeypatch.setattr(pipeline_module, "escalate_result", recording_escalate_result)
+        monkeypatch.setattr(
+            pipeline_module, "escalate_result", recording_escalate_result
+        )
 
         handle_hook_request(
             _request(tmp_path), config=_CONFIG, decide_fn=fn, deadline_seconds=1.5
@@ -267,9 +271,7 @@ tier: block
         try:
             wall_start = time.monotonic()
             result = handle_hook_request(
-                _request(
-                    tmp_path, tool_input={"content": "old", "file_path": "a.txt"}
-                ),
+                _request(tmp_path, tool_input={"content": "old", "file_path": "a.txt"}),
                 config=_CONFIG,
                 decide_fn=fn,
                 event_logger=logger,
@@ -331,6 +333,7 @@ class TestRenderDowngradeTelemetry:
 
             lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
             records = [json.loads(line) for line in lines]
+            assert len(records) == 1
             downgrade_records = [r for r in records if r.get("downgrade")]
             assert len(downgrade_records) == 1
             record = downgrade_records[0]

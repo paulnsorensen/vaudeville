@@ -40,6 +40,7 @@ def aggregate_events(
         if "latency_ms" in e
         and "ts" in e
         and (allowed_rules is None or str(e.get("rule", "")) in allowed_rules)
+        and not e.get("kind")
     ]
     if not valid:
         return empty_result()

@@ -114,6 +114,50 @@ tier: block
         assert len(dropped) == 1
         assert "b-block-rule" in dropped[0]["downgrade"]
 
+    def test_one_row_per_rule_dropped_row_carries_kind(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F24: a losing warn rule gets one `kind: dropped` row, excluded from
+        violations; the winning block rule gets exactly one row."""
+        from vaudeville.server.event_log import EventLogger
+        from vaudeville.server.log_config import LogConfig
+
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "a-warn-rule", _decide_rule("a-warn-rule", "warn"))
+        _write_rule(tmp_path, "b-block-rule", _decide_rule("b-block-rule", "block"))
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            handle_hook_request(
+                _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+        finally:
+            logger.close()
+
+        import json
+        import time
+
+        time.sleep(0.05)
+        lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        records = [json.loads(line) for line in lines]
+        assert len(records) == 2
+
+        block_rows = [r for r in records if r["rule"] == "b-block-rule"]
+        assert len(block_rows) == 1
+        assert block_rows[0]["action"] == "block"
+        assert block_rows[0].get("kind") is None
+
+        dropped_rows = [r for r in records if r["rule"] == "a-warn-rule"]
+        assert len(dropped_rows) == 1
+        assert dropped_rows[0]["kind"] == "dropped"
+
+        violations_path = logs_dir / "violations.jsonl"
+        violation_lines = violations_path.read_text().strip().splitlines()
+        violation_records = [json.loads(line) for line in violation_lines]
+        assert len(violation_records) == 1
+        assert violation_records[0]["rule"] == "b-block-rule"
+
     def test_context_accumulates(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

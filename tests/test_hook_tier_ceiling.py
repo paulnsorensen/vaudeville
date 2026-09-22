@@ -78,7 +78,7 @@ class TestTierCeiling:
         time.sleep(0.05)
         lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
         record = json.loads(lines[-1])
-        assert record["action"] == "block"
+        assert record["action"] == "allow"
         assert record["downgrade"] == "tier:shadow"
 
     def test_log_tier_does_not_start_run(

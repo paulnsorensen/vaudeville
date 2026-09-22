@@ -39,6 +39,7 @@ class ClassificationEvent:
     action: str | None = None
     model: str | None = None
     downgrade: str | None = None
+    kind: str | None = None
 
 
 class EventLogger:
@@ -110,10 +111,12 @@ class EventLogger:
             "model": event.model,
             "downgrade": event.downgrade,
         }
+        if event.kind is not None:
+            common["kind"] = event.kind
 
         self._logger.bind(_sink="events").info(json.dumps(common, default=str))
 
-        if event.action in _BLOCKING_ACTIONS:
+        if event.action in _BLOCKING_ACTIONS and event.kind is None:
             violation = {**common}
             self._logger.bind(_sink="violations").info(
                 json.dumps(violation, default=str)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 import os
 import subprocess
@@ -57,11 +58,36 @@ def run_named_command(
     return True
 
 
-def _child_env(config: UserConfig) -> dict[str, str]:
-    """Copy the parent env, dropping every configured provider key env var.
+# Case-sensitive uppercase patterns for env var names commonly used for
+# credentials. This is a best-effort scrub, not an exhaustive guarantee:
+# a secret under an unmatched name still reaches the child process.
+_SECRET_NAME_PATTERNS: tuple[str, ...] = (
+    "*_API_KEY",
+    "*_AUTH_TOKEN",
+    "*_TOKEN",
+    "*SECRET*",
+    "ANTHROPIC_*",
+    "OPENAI_*",
+    "AWS_*",
+)
 
-    Any project rule may invoke any configured command, so a command's
-    child process never sees the API keys used for model inference.
+
+def _looks_like_secret_name(name: str) -> bool:
+    return any(fnmatch.fnmatchcase(name, pattern) for pattern in _SECRET_NAME_PATTERNS)
+
+
+def _child_env(config: UserConfig) -> dict[str, str]:
+    """Copy the parent env, dropping configured provider key env vars and
+    names that look like credentials.
+
+    Any project rule may invoke any configured command. This drops every
+    configured `key_env` plus names matching common credential patterns
+    (`*_API_KEY`, `*_AUTH_TOKEN`, `*_TOKEN`, `*SECRET*`, `ANTHROPIC_*`,
+    `OPENAI_*`, `AWS_*`); it does not guarantee every secret is removed.
     """
     key_envs = {provider.key_env for provider in config.providers.values()}
-    return {k: v for k, v in os.environ.items() if k not in key_envs}
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k not in key_envs and not _looks_like_secret_name(k)
+    }

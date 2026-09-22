@@ -132,3 +132,24 @@ class TestRunStripsProviderKeyEnv:
         child_env = kwargs["env"]
         assert "SECRET_API_KEY" not in child_env
         assert child_env.get("PATH") == os.environ.get("PATH")
+
+    def test_child_env_excludes_credential_lookalike_names(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "sekrit")
+        monkeypatch.setenv("FOO_API_KEY", "sekrit")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "sekrit")
+        config = UserConfig(commands={"notify": ["/bin/echo", "hi"]})
+        fake_process = MagicMock()
+        fake_process.stdin = MagicMock()
+
+        with patch("subprocess.Popen", return_value=fake_process) as popen:
+            run_named_command("notify", config, "{}", timeout=1.0)
+
+        _, kwargs = popen.call_args
+        child_env = kwargs["env"]
+        leaked = {"ANTHROPIC_AUTH_TOKEN", "FOO_API_KEY", "AWS_SECRET_ACCESS_KEY"} & set(
+            child_env
+        )
+        assert leaked == set()
+        assert child_env.get("PATH") == os.environ.get("PATH")

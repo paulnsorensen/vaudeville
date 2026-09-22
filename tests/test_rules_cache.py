@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 import yaml
 
-from vaudeville.rules.cache import clear_cache, load_layered
+from vaudeville.rules.cache import cache_size, clear_cache, load_layered
 
 DECIDE_RULE: dict[str, Any] = {
     "type": "decide",
@@ -106,6 +106,22 @@ class TestCacheInvalidation:
         first = load_layered(str(project))
         second = load_layered(str(project))
         assert first is second
+
+    def test_edited_file_evicts_stale_entry_instead_of_accumulating(
+        self, tmp_path: Path
+    ) -> None:
+        project = tmp_path / "project"
+        rules_dir = project / ".vaudeville" / "rules"
+        _write_rule(rules_dir, "gate.yaml", dict(DECIDE_RULE, tier="shadow"))
+        load_layered(str(project))
+        assert cache_size() == 1
+
+        time.sleep(0.01)
+        _write_rule(rules_dir, "gate.yaml", dict(DECIDE_RULE, tier="block"))
+        os.utime(rules_dir / "gate.yaml", None)
+        load_layered(str(project))
+
+        assert cache_size() == 1
 
     def test_fingerprint_skips_unreadable_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

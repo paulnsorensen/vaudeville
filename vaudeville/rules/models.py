@@ -62,20 +62,24 @@ class DecideRule(BaseModel):
         return self
 
 
-_BASH_COMMAND_TARGET = "tool_input.command"
 _TOOL_INPUT_PREFIX = "tool_input."
 
 
 def _target_is_bash_command(target: str) -> bool:
-    """Return True when `target` resolves to a Bash command's argv, a
-    dotted subpath under it (e.g. `tool_input.command.x`), or any path
-    with a `.command` leaf. Checked unconditionally, regardless of matcher.
+    """Return True when `target` resolves to a forbidden argv leaf
+    (`argv`, `command`, or `commands`) directly under `tool_input.`, a
+    dotted subpath under one, or any path ending in such a leaf. Checked
+    unconditionally, regardless of matcher.
     """
-    return (
-        target == _BASH_COMMAND_TARGET
-        or target.startswith(_BASH_COMMAND_TARGET + ".")
-        or target.endswith(".command")
-    )
+    for leaf in _FORBIDDEN_ARGV_KEYS:
+        full = _TOOL_INPUT_PREFIX + leaf
+        if (
+            target == full
+            or target.startswith(full + ".")
+            or target.endswith("." + leaf)
+        ):
+            return True
+    return False
 
 
 class RewriteRule(BaseModel):

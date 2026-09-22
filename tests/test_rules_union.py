@@ -149,6 +149,44 @@ class TestRewriteBashTargetRejected:
                 }
             )
 
+    def test_argv_leaf_target_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "rewrite-argv",
+                    "event": "PreToolUse",
+                    "matcher": "Bash",
+                    "prompt": "p",
+                    "target": ["tool_input.argv"],
+                }
+            )
+
+    def test_commands_leaf_target_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "rewrite-commands",
+                    "event": "PreToolUse",
+                    "matcher": "Bash",
+                    "prompt": "p",
+                    "target": ["tool_input.commands"],
+                }
+            )
+
+    def test_content_leaf_target_accepted(self) -> None:
+        rule = parse_rule(
+            {
+                "type": "rewrite",
+                "name": "rewrite-content",
+                "event": "PreToolUse",
+                "prompt": "p",
+                "target": ["tool_input.content"],
+            }
+        )
+        assert isinstance(rule, RewriteRule)
+
     def test_non_command_target_with_bash_matcher_is_fine(self) -> None:
         rule = parse_rule(
             {

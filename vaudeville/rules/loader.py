@@ -49,20 +49,50 @@ def load_rule_file(path: str | Path) -> DecideRule | RewriteRule | None:
     return parse_rule(data)
 
 
+def _attempted_rule_name(path: str) -> str | None:
+    """Peek at the raw YAML `name:` of a rule file, before validation."""
+    try:
+        with open(path) as f:
+            data: Any = yaml.safe_load(f)
+    except Exception:
+        return None
+    if isinstance(data, dict):
+        name = data.get("name")
+        if isinstance(name, str):
+            return name
+    return None
+
+
 def load_rules(rules_dir: str) -> dict[str, DecideRule | RewriteRule]:
     """Load every valid rule in a directory; invalid rules are skipped and logged."""
+    rules, _attempted = load_rules_with_attempted(rules_dir)
+    return rules
+
+
+def load_rules_with_attempted(
+    rules_dir: str,
+) -> tuple[dict[str, DecideRule | RewriteRule], dict[str, str]]:
+    """Load valid rules, plus the raw `name:` attempted by every file,
+    including ones that failed validation (needed so an invalid rule
+    still claims its name and blocks a same-named rule in a later layer).
+    """
     rules: dict[str, DecideRule | RewriteRule] = {}
+    attempted: dict[str, str] = {}
     for filename in _rule_filenames(rules_dir):
         path = os.path.join(rules_dir, filename)
+        attempted_name = _attempted_rule_name(path)
         try:
             rule = load_rule_file(path)
         except Exception as exc:
             logger.warning("[vaudeville] Failed to load rule %s: %s", filename, exc)
+            if attempted_name:
+                attempted[attempted_name] = filename
             continue
         if rule is None:
             continue
         rules[rule.name] = rule
-    return rules
+        attempted[rule.name] = filename
+    return rules, attempted
 
 
 def bundled_rules_dir() -> str | None:
@@ -118,16 +148,19 @@ def load_rules_layered(project_root: str | None = None) -> RuleSet:
     merged: dict[str, DecideRule | RewriteRule] = {}
     owner: dict[str, str] = {}
     for rules_dir, layer_name in layers:
-        for name, rule in load_rules(rules_dir).items():
+        kept, attempted = load_rules_with_attempted(rules_dir)
+        for name, filename in attempted.items():
             if layer_name == "project" and name in owner and owner[name] != "project":
                 logger.warning(
-                    "[vaudeville] Skipping project rule %r in %s: name already "
-                    "owned by the %s layer",
+                    "[vaudeville] Skipping project rule %r in %s (file %s): name "
+                    "already owned by the %s layer",
                     name,
                     rules_dir,
+                    filename,
                     owner[name],
                 )
                 continue
-            merged[name] = rule
             owner[name] = layer_name
+            if name in kept:
+                merged[name] = kept[name]
     return RuleSet(rules=tuple(merged.values()))

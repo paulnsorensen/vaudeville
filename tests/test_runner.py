@@ -95,7 +95,9 @@ def test_no_yaml_no_pydantic() -> None:
     assert result.stdout.strip() == "False False", result.stderr
 
 
-def test_missing_key_allows(capsys: pytest.CaptureFixture[str]) -> None:
+def test_daemon_allow_passthrough_over_socket(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Daemon-allow passthrough over a real socket; not an AC-13 proof."""
     with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
         sock_path = f.name

@@ -151,6 +151,38 @@ class TestProjectLayerTrust:
         assert "git-gate" in caplog.text
         assert "user" in caplog.text
 
+    def test_invalid_user_rule_still_blocks_project_rule_of_same_name(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        home = tmp_path / "home"
+        (home / ".vaudeville" / "rules").mkdir(parents=True)
+        _write_rule(
+            home / ".vaudeville" / "rules",
+            "bad.yaml",
+            dict(DECIDE_RULE, name="x", type="nope"),
+        )
+
+        project = tmp_path / "project"
+        (project / ".vaudeville" / "rules").mkdir(parents=True)
+        _write_rule(
+            project / ".vaudeville" / "rules",
+            "good.yaml",
+            dict(DECIDE_RULE, name="x"),
+        )
+
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "empty-plugin-root"))
+
+        with caplog.at_level("WARNING"):
+            ruleset = load_rules_layered(str(project))
+
+        assert "x" not in ruleset.by_name()
+        assert "bad.yaml" in caplog.text
+        assert "good.yaml" in caplog.text
+
     def test_project_only_rule_still_loads(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

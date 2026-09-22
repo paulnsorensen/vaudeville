@@ -41,3 +41,13 @@ class TestServerDaemonImportStillLazyLoads:
             pass
         else:
             raise AssertionError("expected AttributeError for unknown attribute")
+
+
+class TestServerDirListsPublicNames:
+    def test_dir_includes_lazy_attributes(self) -> None:
+        import vaudeville.server as server
+
+        names = dir(server)
+        assert names == sorted(server.__all__)
+        assert "VaudevilleDaemon" in names
+        assert "DaemonConfig" in names

@@ -21,12 +21,6 @@ from vaudeville.server.daemon import DaemonConfig, VaudevilleDaemon
 from vaudeville.server.hook import pipeline as pipeline_module
 
 
-@pytest.fixture(autouse=True)
-def isolate_rule_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "no-plugin-root"))
-    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))
-
-
 def _write_rule(tmp_path: Path) -> None:
     rules_dir = tmp_path / ".vaudeville" / "rules"
     rules_dir.mkdir(parents=True, exist_ok=True)

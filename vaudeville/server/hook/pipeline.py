@@ -181,17 +181,21 @@ def _evaluate_rule(
     context_text: str | None = None
     command: str | None = None
 
+    dispatch_rule = rule
     if action_name == "escalate":
-        action_name, message = _do_escalate(
+        action_name, message, escalate_target, escalate_action = _do_escalate(
             rule, action_obj, by_name, event, config, decide_fn
         )
+        if escalate_target is not None:
+            dispatch_rule = escalate_target
+            action_obj = escalate_action
 
     if action_name == "feedback":
-        message = with_origin_label(rule.name, message)
+        message = with_origin_label(dispatch_rule.name, message)
 
     if action_name == "rewrite":
         action_name, message, updated_input = _do_rewrite(
-            rule, action_obj, by_name, event, config, logger_fn
+            dispatch_rule, action_obj, by_name, event, config, logger_fn
         )
     elif action_name == "add-context":
         context_text = action_obj.text if action_obj is not None else None
@@ -230,10 +234,19 @@ def _do_escalate(
     event: HookEvent,
     config: UserConfig,
     decide_fn: DecideFn,
-) -> tuple[str, str]:
+) -> tuple[str, str, DecideRule | None, Action | None]:
+    """Run the escalate target once and resolve its own `on:` mapping.
+
+    Returns `(action_name, message, target_rule, target_action)`; the
+    caller dispatches the remaining post-escalate branches against
+    `target_rule`/`target_action` so an escalated rewrite, run, or
+    feedback behaves as if the target fired directly. `target_rule` is
+    None when escalation resolves to a plain allow (disabled target,
+    deadline expiry, or an unmapped outcome).
+    """
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
-    if not isinstance(target, DecideRule):
-        return "allow", ""
+    if not isinstance(target, DecideRule) or target.tier == "disabled":
+        return "allow", "", None, None
 
     def _run() -> DecideResult:
         return decide_fn(target, config, event.text)
@@ -242,12 +255,15 @@ def _do_escalate(
         _run, deadline=DEFAULT_ESCALATE_DEADLINE_SECONDS, rule_name=target.name
     )
     if escalated is None or escalated.outcome is None:
-        return "allow", ""
+        return "allow", "", None, None
 
     target_action = target.on.get(escalated.outcome)
     if target_action is None:
-        return "allow", ""
-    return target_action.action, _message_for(target, escalated, target_action.action)
+        return "allow", "", None, None
+
+    action_name, _ = apply_tier_ceiling(target_action.action, target.tier)
+    message = _message_for(target, escalated, action_name)
+    return action_name, message, target, target_action
 
 
 def _do_rewrite(
@@ -260,6 +276,18 @@ def _do_rewrite(
 ) -> tuple[str, str, dict[str, object] | None]:
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
     if not isinstance(target, RewriteRule):
+        return "allow", "", None
+    if target.event != event.event or not _matcher_matches(
+        target.matcher, event.tool_name
+    ):
+        logger.warning(
+            "rewrite rule %r targets %r: event/matcher mismatch against live "
+            "event %r/%r; allowing",
+            rule.name,
+            target.name,
+            event.event,
+            event.tool_name,
+        )
         return "allow", "", None
 
     resolution = resolve_model(target, config)

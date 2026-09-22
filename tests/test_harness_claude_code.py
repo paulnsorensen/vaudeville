@@ -224,3 +224,14 @@ class TestNormalize:
         raw = {"hook_event_name": "SessionStart", "cwd": "/repo"}
         event = adapter.normalize(raw)
         assert event.text == ""
+
+    def test_pre_tool_use_uses_tool_input_body(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        raw = {
+            "hook_event_name": "PreToolUse",
+            "cwd": "/repo",
+            "tool_name": "mcp__github__create_issue",
+            "tool_input": {"body": "deferred: revisit auth flow later"},
+        }
+        event = adapter.normalize(raw)
+        assert event.text == "deferred: revisit auth flow later"

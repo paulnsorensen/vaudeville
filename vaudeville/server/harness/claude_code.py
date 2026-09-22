@@ -58,7 +58,7 @@ _TEXT_FIELDS_BY_EVENT: dict[str, tuple[str, ...]] = {
     "SubagentStop": ("last_assistant_message",),
 }
 
-_TOOL_INPUT_TEXT_FIELDS = ("command", "content", "new_string", "prompt")
+_TOOL_INPUT_TEXT_FIELDS = ("command", "content", "new_string", "prompt", "body")
 
 
 def _derive_text(event: str, raw: Mapping[str, object]) -> str:

@@ -104,6 +104,7 @@ class ClaudeCodeAdapter:
         )
 
     def render(self, outcome: Outcome) -> dict[str, object]:
+        self.downgrades = []
         name = outcome.action.action
         renderers: dict[str, Callable[[Outcome], dict[str, object]]] = {
             "allow": self._render_allow,
@@ -118,9 +119,8 @@ class ClaudeCodeAdapter:
             "run": self._render_run,
         }
         method = renderers.get(name)
-        if method is None:
-            return self._degrade(outcome, name)
-        return method(outcome)
+        result = self._degrade(outcome, name) if method is None else method(outcome)
+        return {**result, "downgrades": list(self.downgrades)}
 
     def _degrade(
         self, outcome: Outcome, action_name: str, text: str | None = None

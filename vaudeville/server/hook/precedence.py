@@ -24,6 +24,7 @@ class EvaluatedAction:
     context_text: str | None = None
     updated_input: dict[str, object] | None = None
     command: str | None = None
+    downgrade: str | None = None
 
 
 @dataclass(frozen=True)

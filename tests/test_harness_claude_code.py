@@ -45,13 +45,13 @@ class TestRenderMatrix:
     def test_allow(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("allow", "PreToolUse"))
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
         assert adapter.downgrades == []
 
     def test_log(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("log", "PostToolUse"))
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
 
     def test_warn(self) -> None:
         adapter = ClaudeCodeAdapter()
@@ -114,7 +114,7 @@ class TestRenderMatrix:
     def test_escalate(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("escalate", "PreToolUse"))
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
         assert adapter.downgrades == []
 
     def test_ask(self) -> None:
@@ -147,7 +147,7 @@ class TestRenderMatrix:
     def test_run(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("run", "PostToolUse"))
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
         assert adapter.downgrades == []
 
 

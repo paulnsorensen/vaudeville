@@ -151,6 +151,14 @@ def _run_pipeline(
         context=result.context,
     )
     rendered: dict[str, object] = adapter.render(outcome)  # type: ignore[attr-defined]
+    render_downgrades = rendered.pop("downgrades", [])
+    if render_downgrades:
+        _log_render_downgrade(
+            event_logger,
+            result.primary,
+            render_downgrades,  # type: ignore[arg-type]
+            prompt_chars=len(event.text),
+        )
     return rendered
 
 
@@ -246,6 +254,7 @@ def _evaluate_rule(
         context_text=context_text,
         updated_input=updated_input,
         command=command,
+        downgrade=downgrade,
     )
 
 
@@ -344,6 +353,38 @@ def _do_rewrite(
         event.tool_input, target.target, new_values, rule_name=rule.name, log=_log
     )
     return "rewrite", new_text, updated
+
+
+def _log_render_downgrade(
+    logger_fn: EventLogger | None,
+    primary: EvaluatedAction,
+    render_downgrades: list[dict[str, str]],
+    *,
+    prompt_chars: int,
+) -> None:
+    """Log the adapter's render-time downgrades against the primary rule (F24).
+
+    Merges with the primary's own tier downgrade (if any) by joining the two
+    with `;` so both survive in one record.
+    """
+    if logger_fn is None:
+        return
+    rendered = ";".join(
+        f"{d.get('from')}->{d.get('to')} on {d.get('event')}"
+        for d in render_downgrades
+    )
+    merged = f"{primary.downgrade};{rendered}" if primary.downgrade else rendered
+    logger_fn.log_event(
+        ClassificationEvent(
+            rule=primary.rule_name,
+            verdict="",
+            confidence=0.0,
+            latency_ms=0.0,
+            prompt_chars=prompt_chars,
+            action=primary.action_name,
+            downgrade=merged,
+        )
+    )
 
 
 def _log_dropped(

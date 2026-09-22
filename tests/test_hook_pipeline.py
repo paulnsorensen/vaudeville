@@ -120,6 +120,61 @@ class TestDecisionRecord:
             logger.close()
 
 
+STOP_ASK_RULE_YAML = """
+type: decide
+name: pipeline-stop-ask
+event: Stop
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: ask
+tier: block
+"""
+
+
+class TestRenderDowngradeTelemetry:
+    def test_ask_on_stop_downgrade_logged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F24: an `ask` on Stop degrades in the adapter; the downgrade lands
+        in events.jsonl naming `from`, `to`, and `event`."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-stop-ask", STOP_ASK_RULE_YAML)
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        request = {
+            "op": "hook",
+            "harness": "claude-code",
+            "event": "Stop",
+            "cwd": str(tmp_path),
+            "payload": {
+                "hook_event_name": "Stop",
+                "last_assistant_message": "some text",
+                "cwd": str(tmp_path),
+            },
+        }
+        try:
+            handle_hook_request(
+                request, config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+            time.sleep(0.05)
+
+            lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+            records = [json.loads(line) for line in lines]
+            downgrade_records = [r for r in records if r.get("downgrade")]
+            assert len(downgrade_records) == 1
+            record = downgrade_records[0]
+            assert record["rule"] == "pipeline-stop-ask"
+            assert record["action"] == "ask"
+            assert "ask" in record["downgrade"]
+            assert "warn" in record["downgrade"]
+            assert "Stop" in record["downgrade"]
+        finally:
+            logger.close()
+
+
 REASON_RULE_YAML = """
 type: decide
 name: secret-gate

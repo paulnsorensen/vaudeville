@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import functools
-from pathlib import Path
 from typing import Any
 
 import pytest
+from pathlib import Path
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -36,13 +36,6 @@ def decide_fn(output: str) -> tuple[Any, Recorder]:
     recorder = Recorder(output)
     fn = functools.partial(decide, model_override=recorder.model)
     return fn, recorder
-
-
-@pytest.fixture(autouse=True)
-def isolate_rule_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep hook tests from loading the real bundled or user rule layers."""
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "no-plugin-root"))
-    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))
 
 
 def write_rule(tmp_path: Path, name: str, body: str) -> None:

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from vaudeville.core.protocol import GENERIC_ALLOW
 from vaudeville.rules import DecideRule
 from vaudeville.server.harness import get_adapter as _get_adapter
 from vaudeville.server.hook import handle_hook_request
@@ -22,7 +23,6 @@ from vaudeville.server.user_config import UserConfig
 
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
-from _hook_helpers import isolate_rule_layers  # noqa: F401
 from _hook_helpers import make_request as _request
 from _hook_helpers import write_rule as _write_rule
 
@@ -193,6 +193,9 @@ class TestInternalFaultsFailOpen:
         real_get_adapter = _get_adapter
 
         class ExplodingAdapter:
+            def __init__(self) -> None:
+                self.render_allow_calls = 0
+
             def normalize(self, raw: Mapping[str, object]) -> object:
                 adapter = real_get_adapter("claude-code")
                 assert adapter is not None
@@ -201,13 +204,19 @@ class TestInternalFaultsFailOpen:
             def render(self, outcome: object) -> dict[str, object]:
                 raise RuntimeError("render exploded")
 
-        monkeypatch.setattr(
-            pipeline_module, "get_adapter", lambda name: ExplodingAdapter()
-        )
+            def render_allow(self) -> dict[str, object]:
+                self.render_allow_calls += 1
+                return {"stdout": "exploding-adapter-allow", "exit_code": 0}
+
+        exploding = ExplodingAdapter()
+        monkeypatch.setattr(pipeline_module, "get_adapter", lambda name: exploding)
 
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
-        assert result == _ALLOW
+        # F0: `render` raised, so the pipeline's outer fail-open catch calls
+        # the adapter's own `render_allow`, not the harness-neutral GENERIC_ALLOW.
+        assert result == {"stdout": "exploding-adapter-allow", "exit_code": 0}
+        assert exploding.render_allow_calls == 1
 
     def test_run_named_command_raising_allows(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -245,7 +254,10 @@ tier: block
 
         result = handle_hook_request(request, config=_CONFIG)
 
-        assert result == _ALLOW
+        # F0: no adapter exists for an unknown harness, so the pipeline
+        # falls back to the harness-neutral GENERIC_ALLOW, not a known
+        # adapter's allow shape.
+        assert result == GENERIC_ALLOW
 
     def test_missing_harness_key_allows(self, tmp_path: Path) -> None:
         request = _request(tmp_path)
@@ -253,4 +265,4 @@ tier: block
 
         result = handle_hook_request(request, config=_CONFIG)
 
-        assert result == _ALLOW
+        assert result == GENERIC_ALLOW

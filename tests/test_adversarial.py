@@ -36,13 +36,6 @@ from vaudeville.server.agents import decide
 from vaudeville.server.hook import pipeline as pipeline_module
 
 
-@pytest.fixture(autouse=True)
-def isolate_rule_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep adversarial tests from loading the real bundled or user rule layers."""
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "no-plugin-root"))
-    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))
-
-
 def _write_rule(rules_root: Path) -> None:
     rules_dir = rules_root / ".vaudeville" / "rules"
     rules_dir.mkdir(parents=True, exist_ok=True)

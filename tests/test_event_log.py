@@ -350,10 +350,7 @@ def test_violation_verdict_without_blocking_action_not_in_violations(
         time.sleep(0.05)
 
         violations_path = tmp_path / "violations.jsonl"
-        assert (
-            not violations_path.exists()
-            or violations_path.read_text().strip() == ""
-        )
+        assert not violations_path.exists() or violations_path.read_text().strip() == ""
     finally:
         logger.close()
 

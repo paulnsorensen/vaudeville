@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Callable
 
 import pytest
@@ -56,3 +57,10 @@ class FakeRalphRunner:
 @pytest.fixture
 def rules_dir() -> str:
     return os.path.join(PROJECT_ROOT, "rules")
+
+
+@pytest.fixture(autouse=True)
+def isolate_rule_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep every test from loading the real bundled or user rule layers."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "no-plugin-root"))
+    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))

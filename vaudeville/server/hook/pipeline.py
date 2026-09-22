@@ -409,8 +409,7 @@ def _log_render_downgrade(
     if logger_fn is None:
         return
     rendered = ";".join(
-        f"{d.get('from')}->{d.get('to')} on {d.get('event')}"
-        for d in render_downgrades
+        f"{d.get('from')}->{d.get('to')} on {d.get('event')}" for d in render_downgrades
     )
     merged = f"{primary.downgrade};{rendered}" if primary.downgrade else rendered
     logger_fn.log_event(

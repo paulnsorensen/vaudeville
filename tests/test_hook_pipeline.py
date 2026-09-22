@@ -27,7 +27,6 @@ from vaudeville.server.user_config import UserConfig
 
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
-from _hook_helpers import isolate_rule_layers  # noqa: F401
 from _hook_helpers import make_request as _request
 from _hook_helpers import patch_rewrite, patch_run_command
 from _hook_helpers import write_rule as _write_rule
@@ -130,9 +129,7 @@ class TestRequestDeadline:
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(tmp_path, "pipeline-git-gate", DECIDE_RULE_YAML)
 
-        def slow_decide_fn(
-            rule: object, config: object, text: str
-        ) -> DecideResult:
+        def slow_decide_fn(rule: object, config: object, text: str) -> DecideResult:
             time.sleep(0.5)
             return DecideResult(outcome="violation")
 

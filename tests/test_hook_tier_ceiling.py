@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,10 +11,10 @@ from vaudeville.server.hook import handle_hook_request
 
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
-from _hook_helpers import isolate_rule_layers  # noqa: F401
 from _hook_helpers import make_request as _request
 from _hook_helpers import patch_rewrite, patch_run_command
 from _hook_helpers import write_rule as _write_rule
+from vaudeville.server.agents import DecideResult
 
 
 def _decide_rule(name: str, action_yaml: str, tier: str) -> str:
@@ -198,12 +199,22 @@ outcomes: [violation, clean]
 tier: block
 """,
         )
-        fn, _ = _decide_fn('{"outcome": "violation"}')
+        calls: dict[str, int] = {}
 
-        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+        def counting_decide_fn(rule: object, config: object, text: str) -> DecideResult:
+            del config, text
+            name = getattr(rule, "name", "")
+            calls[name] = calls.get(name, 0) + 1
+            return DecideResult(outcome="violation")
 
+        result = handle_hook_request(
+            _request(tmp_path), config=_CONFIG, decide_fn=counting_decide_fn
+        )
+
+        assert calls.get("escalate-target") == 1
         assert result["exit_code"] == 0
-        assert "systemMessage" in str(result["stdout"])
+        payload = dict(json.loads(str(result["stdout"])))
+        assert payload["systemMessage"] == "violation"
         assert "permissionDecision" not in str(result["stdout"])
 
     def test_warn_keeps_add_context(

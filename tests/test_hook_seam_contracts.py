@@ -26,7 +26,6 @@ from vaudeville.server.user_config import ProviderConfig, UserConfig
 
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
-from _hook_helpers import isolate_rule_layers  # noqa: F401
 from _hook_helpers import make_request as _request
 from _hook_helpers import patch_rewrite
 from _hook_helpers import write_rule as _write_rule
@@ -104,6 +103,32 @@ surprise_field: nope
     ]
     assert failed_unknown_type
     assert failed_unknown_field
+    assert not any("valid-rewrite.yaml" in r.getMessage() for r in caplog.records)
+
+    _write_rule(
+        tmp_path,
+        "trigger-rewrite",
+        """
+type: decide
+name: trigger-rewrite
+event: PreToolUse
+matcher: Read
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {action: rewrite, rule: valid-rewrite}
+tier: block
+""",
+    )
+    fn2, _ = _decide_fn('{"outcome": "violation"}')
+    patch_rewrite(monkeypatch, "sanitized text")
+    request2 = _request(tmp_path, tool_name="Read", tool_input={"content": "old text"})
+
+    result2 = handle_hook_request(request2, config=_CONFIG, decide_fn=fn2)
+
+    payload2 = dict(json.loads(str(result2["stdout"])))
+    assert payload2["hookSpecificOutput"]["updatedInput"]["content"] == "sanitized text"
 
 
 def test_ac2_typesafe_model_with_text_reason_rejected_at_load(
@@ -675,3 +700,244 @@ def test_handler_exception_allows_and_exits_zero(
 
     assert result == {"stdout": "{}", "exit_code": 0}
     assert any("hook pipeline raised" in r.getMessage() for r in caplog.records)
+
+
+def test_ac7_ask_on_pretooluse_renders_permission_decision_ask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_KEY", "x")
+    _write_rule(
+        tmp_path,
+        "ask-gate",
+        """
+type: decide
+name: ask-gate
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: ask
+tier: block
+""",
+    )
+    fn, _ = _decide_fn('{"outcome": "violation"}')
+
+    result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+
+    payload = dict(json.loads(str(result["stdout"])))
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+def test_ac7_escalate_renders_as_target_rule_action(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_KEY", "x")
+    _write_rule(
+        tmp_path,
+        "outer-gate",
+        """
+type: decide
+name: outer-gate
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {action: escalate, rule: escalate-target}
+tier: block
+""",
+    )
+    _write_rule(
+        tmp_path,
+        "escalate-target",
+        """
+type: decide
+name: escalate-target
+event: PreToolUse
+matcher: Read
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+""",
+    )
+    fn, _ = _decide_fn('{"outcome": "violation"}')
+
+    result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+
+    payload = dict(json.loads(str(result["stdout"])))
+    assert payload["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_ac7_allow_action_renders_generic_allow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_KEY", "x")
+    _write_rule(
+        tmp_path,
+        "clean-gate",
+        """
+type: decide
+name: clean-gate
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+""",
+    )
+    fn, _ = _decide_fn('{"outcome": "clean"}')
+
+    result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+
+    assert result == {"stdout": "{}", "exit_code": 0}
+
+
+def test_ac7_log_action_allows_and_logs_decision_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from vaudeville.server.event_log import EventLogger
+    from vaudeville.server.log_config import LogConfig
+
+    monkeypatch.setenv("FAKE_KEY", "x")
+    _write_rule(
+        tmp_path,
+        "log-gate",
+        """
+type: decide
+name: log-gate
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: log
+tier: block
+""",
+    )
+    fn, _ = _decide_fn('{"outcome": "violation"}')
+    logs_dir = tmp_path / "logs"
+    logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+    try:
+        result = handle_hook_request(
+            _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+        )
+    finally:
+        logger.close()
+
+    assert result == {"stdout": "{}", "exit_code": 0}
+    time.sleep(0.05)
+    lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+    record = json.loads(lines[-1])
+    assert record["action"] == "log"
+
+
+def test_ac7_ask_on_stop_degrades_to_warn_and_logs_downgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from vaudeville.server.event_log import EventLogger
+    from vaudeville.server.log_config import LogConfig
+
+    monkeypatch.setenv("FAKE_KEY", "x")
+    _write_rule(
+        tmp_path,
+        "stop-ask-gate",
+        """
+type: decide
+name: stop-ask-gate
+event: Stop
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: ask
+tier: block
+""",
+    )
+    fn, _ = _decide_fn('{"outcome": "violation"}')
+    logs_dir = tmp_path / "logs"
+    logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+    request = {
+        "op": "hook",
+        "harness": "claude-code",
+        "event": "Stop",
+        "cwd": str(tmp_path),
+        "payload": {
+            "hook_event_name": "Stop",
+            "last_assistant_message": "some transcript text",
+            "cwd": str(tmp_path),
+        },
+    }
+    try:
+        result = handle_hook_request(
+            request, config=_CONFIG, decide_fn=fn, event_logger=logger
+        )
+    finally:
+        logger.close()
+
+    payload = dict(json.loads(str(result["stdout"])))
+    assert payload["systemMessage"]
+    time.sleep(0.05)
+    lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+    record = json.loads(lines[-1])
+    assert "ask->warn" in record["downgrade"]
+
+
+def test_ac7_add_context_on_notification_degrades_to_warn_and_logs_downgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from vaudeville.server.event_log import EventLogger
+    from vaudeville.server.log_config import LogConfig
+
+    monkeypatch.setenv("FAKE_KEY", "x")
+    _write_rule(
+        tmp_path,
+        "notify-context-gate",
+        """
+type: decide
+name: notify-context-gate
+event: Notification
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {action: add-context, text: "extra context"}
+tier: block
+""",
+    )
+    fn, _ = _decide_fn('{"outcome": "violation"}')
+    logs_dir = tmp_path / "logs"
+    logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+    request = {
+        "op": "hook",
+        "harness": "claude-code",
+        "event": "Notification",
+        "cwd": str(tmp_path),
+        "payload": {
+            "hook_event_name": "Notification",
+            "tool_input": {"command": "some notification text"},
+            "cwd": str(tmp_path),
+        },
+    }
+    try:
+        result = handle_hook_request(
+            request, config=_CONFIG, decide_fn=fn, event_logger=logger
+        )
+    finally:
+        logger.close()
+
+    payload = dict(json.loads(str(result["stdout"])))
+    assert payload["systemMessage"] == "extra context"
+    time.sleep(0.05)
+    lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+    record = json.loads(lines[-1])
+    assert "add-context->warn" in record["downgrade"]

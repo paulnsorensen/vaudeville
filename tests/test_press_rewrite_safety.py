@@ -25,7 +25,6 @@ from vaudeville.server.hook import handle_hook_request
 
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
-from _hook_helpers import isolate_rule_layers  # noqa: F401
 from _hook_helpers import make_request as _request
 from _hook_helpers import patch_rewrite
 from _hook_helpers import write_rule as _write_rule

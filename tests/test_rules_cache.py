@@ -23,9 +23,7 @@ DECIDE_RULE: dict[str, Any] = {
 
 
 @pytest.fixture(autouse=True)
-def _isolated_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "empty-plugin-root"))
-    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))
+def _isolated_layers() -> None:
     clear_cache()
 
 

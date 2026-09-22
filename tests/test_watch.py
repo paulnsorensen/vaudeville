@@ -366,3 +366,27 @@ def test_watch_seeks_to_end(tmp_path: Any) -> None:
         table = last_call[0][0]
         # Should only see 1 event (the new one), not the pre-existing one
         assert "1 events" in (table.caption or "")
+
+
+# --- _read_new_events ---
+
+
+def test_read_new_events_excludes_dropped_kind_lines() -> None:
+    from io import StringIO
+
+    from vaudeville.server.watch import _read_new_events
+
+    lines = (
+        json.dumps({"rule": "a", "verdict": "violation", "kind": "dropped"})
+        + "\n"
+        + json.dumps({"rule": "b", "verdict": "clean"})
+        + "\n"
+    )
+    events, (total_seen, violations), changed = _read_new_events(
+        StringIO(lines), [], (0, 0)
+    )
+
+    assert changed is True
+    assert [e["rule"] for e in events] == ["b"]
+    assert total_seen == 1
+    assert violations == 0

@@ -4,19 +4,9 @@ set dotenv-load := true
 @default:
     just --list
 
-# Install dependencies (MLX on Apple Silicon, gguf everywhere else incl. Linux aarch64)
+# Install dependencies
 install:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    os=$(uname -s)
-    arch=$(uname -m)
-    if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
-        echo "Apple Silicon detected — installing with mlx backend"
-        uv sync --group dev --group mlx
-    else
-        echo "${os}/${arch} detected — installing with gguf backend"
-        uv sync --group dev --group gguf
-    fi
+    uv sync --group dev
 
 # Run the full test suite
 test *args:
@@ -86,17 +76,8 @@ type-check:
 install-cli:
     #!/usr/bin/env bash
     set -euo pipefail
-    os=$(uname -s)
-    arch=$(uname -m)
-    if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
-        backend="mlx"
-        with_args=(--with "mlx-lm>=0.31.0")
-    else
-        backend="gguf"
-        with_args=(--with "llama-cpp-python>=0.3.4" --with "huggingface-hub>=0.24.0")
-    fi
-    echo "Installing vaudeville CLI (backend: $backend)..."
-    uv tool install --force "${with_args[@]}" .
+    echo "Installing vaudeville CLI..."
+    uv tool install --force .
     bin_dir="${HOME}/.local/bin"
     if [[ ":${PATH}:" == *":${bin_dir}:"* ]]; then
         echo "✓ vaudeville installed. ${bin_dir} is already on PATH."
@@ -115,21 +96,6 @@ install-cli:
     esac
     echo ""
     echo "   Or run \`uv tool update-shell\` to let uv patch it for you."
-
-# One-time model download (~2.4 GB; MLX on Apple Silicon, gguf everywhere else)
-setup:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    os=$(uname -s)
-    arch=$(uname -m)
-    if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
-        echo "Apple Silicon detected — syncing mlx backend"
-        uv sync --group mlx
-    else
-        echo "${os}/${arch} detected — syncing gguf backend"
-        uv sync --group gguf
-    fi
-    uv run python -m vaudeville.setup
 
 # Run the eval harness on all rules
 eval:

@@ -8,7 +8,7 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Paul Sorensen" },
 ]
-keywords = ["claude-code", "hooks", "llm", "phi-4", "slm", "ai-safety", "quality-enforcement"]
+keywords = ["claude-code", "hooks", "llm", "slm", "ai-safety", "quality-enforcement"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -30,6 +30,8 @@ dependencies = [
     "loguru>=0.7.0",
     "pyyaml>=6.0.1",
     "rich>=13.0",
+    "pydantic>=2.13.5",
+    "pydantic-ai-slim[typesafe]>=2.47.0",
 ]
 
 [project.scripts]
@@ -73,11 +75,4 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.11.0",
     "types-pyyaml>=6.0.12.20250915",
-]
-mlx = [
-    "mlx-lm>=0.31.0",
-]
-gguf = [
-    "llama-cpp-python>=0.3.4",
-    "huggingface-hub>=0.24.0",
 ]

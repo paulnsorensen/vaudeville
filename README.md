@@ -8,7 +8,7 @@ pydantic-ai-powered semantic hook enforcement for [Claude Code](https://claude.a
 
 In turn-of-the-century vaudeville theatres, a stagehand waited in the wings with a long shepherd's crook. When an act started flailing — forgetting lines, losing the crowd, running past its slot — the manager would signal and the hook would shoot out from the curtain and yank the performer offstage before the audience soured on the whole bill. "Get the hook!" became shorthand for cutting a bad act short.
 
-That's the job here. A model watches what Claude is about to say or do and, when the performance goes off the rails — hedging about untested code, dismissing a test failure as "pre-existing," deferring a reviewer's concern to a follow-up PR, declaring work complete with known gaps — it reaches out from the wings and pulls the act. Unlike regex hooks, the SLM reads *intent*, so it catches the act whether Claude says "this should work," "I believe this addresses it," or "we can tighten this up later." Bad patterns get yanked; honest uncertainty gets through.
+That's the job here. A model watches what Claude is about to say or do and, when the performance goes off the rails — hedging about untested code, dismissing a test failure as "pre-existing," deferring a reviewer's concern to a follow-up PR, declaring work complete with known gaps — it reaches out from the wings and pulls the act. Unlike regex hooks, the model reads *intent*, so it catches the act whether Claude says "this should work," "I believe this addresses it," or "we can tighten this up later." Bad patterns get yanked; honest uncertainty gets through.
 
 ## How It Works
 

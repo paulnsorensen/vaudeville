@@ -27,13 +27,6 @@ _ARCH = os.uname().machine
 _OS = os.uname().sysname
 
 
-def _model_cache_relpath() -> str:
-    """Return the model-cache subdirectory (relative to HOME) for this platform."""
-    if _OS == "Darwin" and _ARCH == "arm64":
-        return ".cache/huggingface/hub/models--mlx-community--Phi-4-mini-instruct-4bit"
-    return ".cache/huggingface/hub/models--microsoft--Phi-4-mini-instruct-gguf"
-
-
 def _skip_if_unsupported() -> None:
     """Skip on platforms the script itself refuses to run on."""
     supported = (_OS == "Darwin" and _ARCH == "arm64") or _ARCH in (
@@ -56,8 +49,6 @@ def session_env(tmp_path: pathlib.Path) -> SessionEnv:
     """Build a minimal sandboxed environment for session-start.sh.
 
     * VAUDEVILLE_RUNTIME_DIR — points to a fresh temp runtime dir.
-    * HOME — a temp home containing a fake (empty) model-cache directory so
-      the model-cache check passes without real weights.
     * PATH — prepends a fake ``uv`` that exits 0 immediately, so no real
       daemon is ever spawned.
     * CLAUDE_ENV_FILE — removed so export_socket_path is a no-op.
@@ -67,8 +58,6 @@ def session_env(tmp_path: pathlib.Path) -> SessionEnv:
 
     fake_home = tmp_path / "home"
     fake_home.mkdir()
-    model_cache = fake_home / _model_cache_relpath()
-    model_cache.mkdir(parents=True)
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()

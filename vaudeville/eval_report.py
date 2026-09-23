@@ -59,8 +59,14 @@ def cross_validate_rule(
     cases: list[DecideTestCase],
     rules: dict[str, DecideRule | RewriteRule],
     config: UserConfig,
+    *,
+    model_override: Model | None = None,
 ) -> EvalResults:
-    """Leave-one-out cross-validation: evaluate each case as its own fold."""
+    """Leave-one-out cross-validation: evaluate each case as its own fold.
+
+    `model_override` substitutes for the resolved model on every fold (for
+    tests, a FunctionModel; no network call).
+    """
     from .eval import EvalResults, classify_case
 
     rule = rules.get(rule_name)
@@ -72,7 +78,9 @@ def cross_validate_rule(
 
     for i, case in enumerate(cases):
         fold = EvalResults(rule=rule_name)
-        case_result = classify_case(case, rule, config, fold, case_id=i)
+        case_result = classify_case(
+            case, rule, config, fold, case_id=i, model_override=model_override
+        )
 
         aggregate.tp += fold.tp
         aggregate.fp += fold.fp
@@ -118,7 +126,9 @@ def run_evaluations(
         print(f"\nEvaluating {rule_name} ({len(cases)} cases)...")
         if args.cross_validate:
             print(f"  Leave-one-out cross-validation ({len(cases)} folds):")
-            results = cross_validate_rule(rule_name, cases, rules, config)
+            results = cross_validate_rule(
+                rule_name, cases, rules, config, model_override=model_override
+            )
         else:
             results, case_results = evaluate_rule(
                 rule_name, cases, rules, config, model_override=model_override

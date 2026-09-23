@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich import box
 from rich.table import Table
 
-from vaudeville.tui import latency_text, styled_table
+from vaudeville.tui import latency_text, styled_table, verdict_text
 
 
 class TestStyledTable:
@@ -82,3 +82,27 @@ class TestLatencyText:
     def test_formatted_value(self) -> None:
         text = latency_text(123.456)
         assert text.plain == "123.5"
+
+
+class TestVerdictText:
+    def test_literal_violation_without_action_is_red(self) -> None:
+        text = verdict_text("violation")
+        assert "red" in str(text.style)
+
+    def test_literal_clean_without_action_is_green(self) -> None:
+        text = verdict_text("clean")
+        assert "green" in str(text.style)
+
+    def test_block_action_is_violation_regardless_of_verdict_name(self) -> None:
+        """F19: outcomes [unsafe, safe] mapped to action `block` render red."""
+        text = verdict_text("unsafe", "block")
+        assert text.plain == "unsafe"
+        assert "red" in str(text.style)
+
+    def test_ask_action_is_violation(self) -> None:
+        text = verdict_text("unsafe", "ask")
+        assert "red" in str(text.style)
+
+    def test_allow_action_is_not_violation(self) -> None:
+        text = verdict_text("safe", "allow")
+        assert "green" in str(text.style)

@@ -30,6 +30,9 @@ _EVENTS_LOG = os.path.join(
 _MAX_ROWS = 20
 _POLL_INTERVAL = 0.2
 
+# Actions that gate the session; mirrors event_log._BLOCKING_ACTIONS (F23).
+_VIOLATION_ACTIONS = frozenset({"block", "ask"})
+
 # Minimum column widths keep fixed-content columns readable on narrow terminals.
 # Reason and Text flex to fill remaining space (and wrap) via `ratio`.
 _TIME_MIN_WIDTH = 8
@@ -72,11 +75,13 @@ def _sanitize_display(value: object) -> Text:
     return Text(text)
 
 
-def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table:
-    total_seen, violations = totals
+def _build_table(events: list[dict[str, Any]], totals: tuple[int, int, int]) -> Table:
+    total_seen, violations, dropped = totals
     table = styled_table(
         title="Vaudeville \u2014 Live Rule Firings",
-        caption=f"Session: {total_seen} events, {violations} violations",
+        caption=(
+            f"Session: {total_seen} events, {violations} violations, {dropped} dropped"
+        ),
     )
     table.add_column("Time", style="dim", min_width=_TIME_MIN_WIDTH, no_wrap=True)
     table.add_column("Rule", min_width=_RULE_MIN_WIDTH, overflow="fold")
@@ -106,7 +111,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
             _parse_ts_display(evt.get("ts", "")),
             evt.get("rule", "<unknown>"),
             _tier_text(evt.get("tier", "block")),
-            _verdict_text(evt.get("verdict", "?")),
+            _verdict_text(evt.get("verdict", "?"), evt.get("action")),
             _confidence_text(_to_float(evt.get("confidence", 0))),
             _latency_text(_to_float(evt.get("latency_ms", 0))),
             _sanitize_display(evt.get("action", "")),
@@ -120,9 +125,9 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int]) -> Table
 def _read_new_events(
     f: IO[str],
     events: list[dict[str, Any]],
-    totals: tuple[int, int],
-) -> tuple[list[dict[str, Any]], tuple[int, int], bool]:
-    total_seen, violations = totals
+    totals: tuple[int, int, int],
+) -> tuple[list[dict[str, Any]], tuple[int, int, int], bool]:
+    total_seen, violations, dropped = totals
     changed = False
     for line in f:
         stripped = line.strip()
@@ -132,18 +137,19 @@ def _read_new_events(
             evt = json.loads(stripped)
         except json.JSONDecodeError:
             continue
-        if evt.get("kind"):
+        total_seen += 1
+        changed = True
+        if evt.get("kind") == "dropped":
+            dropped += 1
             continue
         events.append(evt)
-        total_seen += 1
-        if evt.get("verdict") == "violation":
+        if evt.get("action") in _VIOLATION_ACTIONS:
             violations += 1
-        changed = True
 
     if len(events) > _MAX_ROWS:
         events = events[-_MAX_ROWS:]
 
-    return events, (total_seen, violations), changed
+    return events, (total_seen, violations, dropped), changed
 
 
 def _ensure_log_exists(log_path: str) -> None:
@@ -159,7 +165,7 @@ def watch(log_path: str = _EVENTS_LOG) -> None:
     _ensure_log_exists(log_path)
 
     events: list[dict[str, Any]] = []
-    totals = (0, 0)
+    totals = (0, 0, 0)
 
     with open(log_path) as f:
         f.seek(0, 2)  # seek to end

@@ -14,6 +14,9 @@ from typing import Any
 
 _HISTOGRAM_BUCKETS = [50, 100, 200, 500, 1000]
 
+# Actions that gate the session; mirrors event_log._BLOCKING_ACTIONS (F23).
+_VIOLATION_ACTIONS = frozenset({"block", "ask"})
+
 
 def _empty_histogram() -> dict[str, int]:
     h: dict[str, int] = {f"<={b}ms": 0 for b in _HISTOGRAM_BUCKETS}
@@ -40,7 +43,6 @@ def aggregate_events(
         if "latency_ms" in e
         and "ts" in e
         and (allowed_rules is None or str(e.get("rule", "")) in allowed_rules)
-        and not e.get("kind")
     ]
     if not valid:
         return empty_result()
@@ -74,11 +76,13 @@ def _summarize_rules(
     for evt in events:
         rule = evt.get("rule", "<unknown>")
         if rule not in rules:
-            rules[rule] = {"total": 0, "violations": 0, "latencies": []}
+            rules[rule] = {"total": 0, "violations": 0, "dropped": 0, "latencies": []}
         rules[rule]["total"] += 1
-        if evt.get("verdict") == "violation":
-            rules[rule]["violations"] += 1
         rules[rule]["latencies"].append(evt["latency_ms"])
+        if evt.get("kind") == "dropped":
+            rules[rule]["dropped"] += 1
+        elif evt.get("action") in _VIOLATION_ACTIONS:
+            rules[rule]["violations"] += 1
 
     summaries: dict[str, dict[str, Any]] = {}
     for name, data in sorted(rules.items()):
@@ -89,6 +93,7 @@ def _summarize_rules(
         summaries[name] = {
             "total": total,
             "violations": violations,
+            "dropped": data["dropped"],
             "pass_rate": round(pass_rate, 1),
             "avg_latency_ms": round(statistics.mean(data["latencies"]), 1),
             "p50_latency_ms": round(p50, 1),

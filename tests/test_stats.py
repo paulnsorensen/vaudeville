@@ -23,8 +23,9 @@ def _make_event(
     latency_ms: float = 50.0,
     prompt_chars: int = 100,
     ts: str = "2026-04-12T10:00:00+00:00",
+    action: str | None = None,
 ) -> dict[str, object]:
-    return {
+    event: dict[str, object] = {
         "ts": ts,
         "rule": rule,
         "verdict": verdict,
@@ -32,6 +33,9 @@ def _make_event(
         "latency_ms": latency_ms,
         "prompt_chars": prompt_chars,
     }
+    if action is not None:
+        event["action"] = action
+    return event
 
 
 def test_missing_file(tmp_path: pathlib.Path) -> None:
@@ -58,19 +62,23 @@ def test_actions_summarized(tmp_path: pathlib.Path) -> None:
     assert result["actions"] == {"block": 2, "allow": 1}
 
 
-def test_kind_rows_excluded(tmp_path: pathlib.Path) -> None:
-    """F24: `kind: dropped` diagnostic rows are excluded from every
-    aggregate: total, actions, rules, and latency."""
+def test_dropped_kind_rows_counted_in_rule_totals_and_latency(
+    tmp_path: pathlib.Path,
+) -> None:
+    """F18: `kind: dropped` rows (lost the precedence merge) still count
+    toward per-rule totals and latency, with a separate `dropped` count."""
     events = [
-        {**_make_event(), "action": "block"},
-        {**_make_event(), "action": "block", "kind": "dropped"},
+        {**_make_event(action="block"), "kind": None},
+        {**_make_event(action="block", latency_ms=100.0), "kind": "dropped"},
     ]
     path = _write_events(tmp_path, events)
     result = aggregate_events(path)
 
-    assert result["total"] == 1
-    assert result["actions"] == {"block": 1}
-    assert result["rules"]["no-hedging"]["total"] == 1
+    rule = result["rules"]["no-hedging"]
+    assert rule["total"] == 2
+    assert rule["dropped"] == 1
+    assert rule["violations"] == 1
+    assert rule["avg_latency_ms"] == 75.0
 
 
 def test_downgrades_counted(tmp_path: pathlib.Path) -> None:
@@ -132,7 +140,7 @@ def test_per_rule_breakdown(tmp_path: pathlib.Path) -> None:
     """Multiple rules produce separate breakdowns."""
     events = [
         _make_event(rule="no-hedging", verdict="clean"),
-        _make_event(rule="no-hedging", verdict="violation"),
+        _make_event(rule="no-hedging", verdict="violation", action="block"),
         _make_event(rule="no-sycophancy", verdict="clean"),
     ]
     path = _write_events(tmp_path, events)
@@ -228,8 +236,8 @@ def test_rules_sorted_alphabetically(tmp_path: pathlib.Path) -> None:
 def test_all_violations(tmp_path: pathlib.Path) -> None:
     """Pass rate is 0% when all events are violations."""
     events = [
-        _make_event(verdict="violation"),
-        _make_event(verdict="violation"),
+        _make_event(verdict="violation", action="block"),
+        _make_event(verdict="violation", action="block"),
     ]
     path = _write_events(tmp_path, events)
     result = aggregate_events(path)
@@ -237,6 +245,21 @@ def test_all_violations(tmp_path: pathlib.Path) -> None:
     rule = result["rules"]["no-hedging"]
     assert rule["pass_rate"] == 0.0
     assert rule["violations"] == 2
+
+
+def test_violation_derived_from_action_not_verdict(tmp_path: pathlib.Path) -> None:
+    """F19: a rule with outcomes [unsafe, safe] mapped to action `block`
+    counts as a violation because of the recorded action, not the literal
+    verdict string."""
+    events = [
+        _make_event(verdict="unsafe", action="block"),
+        _make_event(verdict="safe", action="allow"),
+    ]
+    path = _write_events(tmp_path, events)
+    result = aggregate_events(path)
+
+    rule = result["rules"]["no-hedging"]
+    assert rule["violations"] == 1
 
 
 def test_blank_lines_ignored(tmp_path: pathlib.Path) -> None:

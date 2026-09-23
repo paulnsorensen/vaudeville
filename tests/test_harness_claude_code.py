@@ -105,11 +105,22 @@ class TestRenderMatrix:
         assert payload == {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
+                "permissionDecision": "ask",
                 "updatedInput": {"command": "git push --force-with-lease"},
             }
         }
         assert result["downgrades"] == []
+
+    def test_rewrite_never_emits_allow(self) -> None:
+        """A rewrite changes tool input only; it must not skip the permission prompt."""
+        adapter = ClaudeCodeAdapter()
+        events = ("PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop")
+        for event in events:
+            for updated in ({"content": "x"}, None):
+                result = adapter.render(
+                    _outcome("rewrite", event, message="m", updated_input=updated)
+                )
+                assert '"allow"' not in result["stdout"], (event, updated)
 
     def test_escalate(self) -> None:
         adapter = ClaudeCodeAdapter()

@@ -203,6 +203,8 @@ class ClaudeCodeAdapter:
     def _render_rewrite(
         self, outcome: Outcome
     ) -> tuple[dict[str, object], dict[str, str] | None]:
+        # `ask` shows the changed input for approval; a rewrite never grants
+        # more permission than the unmodified call gets.
         if (
             outcome.event in _PERMISSION_DECISION_EVENTS
             and outcome.updated_input is not None
@@ -212,7 +214,7 @@ class ClaudeCodeAdapter:
                     {
                         "hookSpecificOutput": {
                             "hookEventName": outcome.event,
-                            "permissionDecision": "allow",
+                            "permissionDecision": "ask",
                             "updatedInput": outcome.updated_input,
                         }
                     }

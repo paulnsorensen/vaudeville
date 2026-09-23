@@ -727,6 +727,39 @@ tier: block
     assert "deny" in str(result["stdout"])
 
 
+def test_ac24_subdirectory_cwd_loads_project_root_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F12: hook `cwd` follows `cd`; rules still load from the git root."""
+    monkeypatch.setenv("FAKE_KEY", "x")
+    project = tmp_path / "repo"
+    (project / ".git").mkdir(parents=True)
+    subdir = project / "src" / "pkg"
+    subdir.mkdir(parents=True)
+    _write_rule(
+        project,
+        "gate",
+        """
+type: decide
+name: gate
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+""",
+    )
+    fn, recorder = _decide_fn('{"outcome": "violation"}')
+
+    result = handle_hook_request(_request(subdir), config=_CONFIG, decide_fn=fn)
+
+    assert recorder.call_count == 1
+    assert "deny" in str(result["stdout"])
+
+
 def test_ac24_edited_rule_file_and_second_project_root_are_independent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

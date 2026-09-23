@@ -21,7 +21,7 @@ from vaudeville.rules import (
     RewriteRule,
     RuleSet,
 )
-from vaudeville.rules.cache import load_layered
+from vaudeville.rules.cache import load_layered, project_root_for
 from vaudeville.server.agents import DecideResult
 from vaudeville.server.agents import decide as default_decide
 from vaudeville.server.agents import resolve_model
@@ -126,7 +126,7 @@ def _run_pipeline(
     text = _truncate_for_event(prepare_text(event.text, event.event), event.event)
     event = event.model_copy(update={"text": text})
 
-    ruleset: RuleSet = load_layered(event.cwd)
+    ruleset: RuleSet = load_layered(project_root_for(event.cwd) if event.cwd else None)
     by_name = ruleset.by_name()
     matching = [
         rule

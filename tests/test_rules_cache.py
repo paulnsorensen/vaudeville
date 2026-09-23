@@ -10,7 +10,13 @@ from typing import Any
 import pytest
 import yaml
 
-from vaudeville.rules.cache import cache_size, clear_cache, load_layered
+from vaudeville.rules import cache as cache_module
+from vaudeville.rules.cache import (
+    cache_size,
+    clear_cache,
+    load_layered,
+    project_root_for,
+)
 
 DECIDE_RULE: dict[str, Any] = {
     "type": "decide",
@@ -169,3 +175,59 @@ class TestCacheInvalidation:
 
         result = load_layered(str(project))
         assert set(result.by_name()) == {"git-gate"}
+
+
+class TestCacheBound:
+    """F32: the cache holds at most `_MAX_ROOTS` project roots."""
+
+    def test_distinct_roots_stay_bounded(self, tmp_path: Path) -> None:
+        for i in range(cache_module._MAX_ROOTS + 8):
+            load_layered(str(tmp_path / f"root-{i}"))
+
+        assert cache_size() == cache_module._MAX_ROOTS
+
+    def test_least_recently_used_root_evicted_first(self, tmp_path: Path) -> None:
+        roots = [str(tmp_path / f"root-{i}") for i in range(cache_module._MAX_ROOTS)]
+        for root in roots:
+            load_layered(root)
+        load_layered(roots[0])
+
+        load_layered(str(tmp_path / "one-more"))
+
+        assert os.path.realpath(roots[0]) in cache_module._cache
+        assert os.path.realpath(roots[1]) not in cache_module._cache
+
+    def test_symlinked_root_shares_one_entry(self, tmp_path: Path) -> None:
+        project = tmp_path / "project"
+        _write_rule(project / ".vaudeville" / "rules", "gate.yaml", DECIDE_RULE)
+        link = tmp_path / "link"
+        link.symlink_to(project)
+
+        load_layered(str(project))
+        load_layered(str(link))
+
+        assert cache_size() == 1
+
+
+class TestProjectRootFor:
+    """F12: resolve the project root by walking up to the nearest `.git`."""
+
+    def test_subdirectory_resolves_to_git_root(self, tmp_path: Path) -> None:
+        (tmp_path / "repo" / ".git").mkdir(parents=True)
+        subdir = tmp_path / "repo" / "a" / "b"
+        subdir.mkdir(parents=True)
+
+        assert project_root_for(str(subdir)) == str(tmp_path / "repo")
+
+    def test_git_file_marks_a_worktree_root(self, tmp_path: Path) -> None:
+        (tmp_path / "wt").mkdir()
+        (tmp_path / "wt" / ".git").write_text("gitdir: /elsewhere\n")
+        (tmp_path / "wt" / "src").mkdir()
+
+        assert project_root_for(str(tmp_path / "wt" / "src")) == str(tmp_path / "wt")
+
+    def test_no_git_falls_back_to_cwd(self, tmp_path: Path) -> None:
+        cwd = tmp_path / "plain"
+        cwd.mkdir()
+
+        assert project_root_for(str(cwd)) == str(cwd)

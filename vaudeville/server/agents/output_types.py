@@ -21,8 +21,9 @@ def build_decide_output_type(rule: DecideRule) -> type[BaseModel]:
     """Build a pydantic model for a decide agent's output.
 
     `outcome` is a Literal over `rule.outcomes`. `reason` is a Literal over
-    the `rule.reasons` bucket ids when the rule declares them, otherwise
-    the field is absent. `confidence`, when present, is bounded to [0, 1].
+    the `rule.reasons` bucket ids when the rule declares them, a free-text
+    string when the rule declares `reason: text`, otherwise the field is
+    absent. `confidence`, when present, is bounded to [0, 1].
     """
     outcome_type: Any = Literal[tuple(rule.outcomes)]
     fields: dict[str, Any] = {
@@ -32,6 +33,8 @@ def build_decide_output_type(rule: DecideRule) -> type[BaseModel]:
     if rule.reasons:
         reason_type: Any = Literal[tuple(rule.reasons.keys())]
         fields["reason"] = (reason_type | None, None)
+    elif rule.reason == "text":
+        fields["reason"] = (str | None, None)
     model: type[BaseModel] = create_model(
         _class_name(rule.name),
         __config__=ConfigDict(extra="forbid"),

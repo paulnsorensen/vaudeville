@@ -86,6 +86,18 @@ class TestBuildDecideAgent:
 
         assert result.output.reason == "secret-leak"
 
+    def test_output_type_includes_reason_when_rule_declares_reason_text(self) -> None:
+        rule = parse_rule({**DECIDE_RULE, "reason": "text"})
+        assert isinstance(rule, DecideRule)
+        recorder = _RecordingModel(
+            '{"outcome": "violation", "reason": "leaked a secret in the diff"}'
+        )
+
+        agent = build_decide_agent(rule, recorder.model)
+        result = agent.run_sync("some transcript text")
+
+        assert result.output.reason == "leaked a secret in the diff"
+
 
 class TestAnthropicModelConstruction:
     def test_anthropic_model_builds_without_import_error(

@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# Preserve Organization UI settings that this repository does not override.
+inheritance: true
+
+reviews:
+  profile: chill
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: []
+
+knowledge_base:
+  code_guidelines:
+    # CodeRabbit detects the root CLAUDE.md and applies it to all repository paths.
+    enabled: true

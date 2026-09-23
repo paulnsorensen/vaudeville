@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Callable
 
@@ -57,6 +60,20 @@ class FakeRalphRunner:
 @pytest.fixture
 def rules_dir() -> str:
     return os.path.join(PROJECT_ROOT, "rules")
+
+
+@pytest.fixture
+def short_sock_path() -> Iterator[str]:
+    """A short /tmp-rooted directory for AF_UNIX sockets.
+
+    macOS enforces a 104-byte AF_UNIX path limit; pytest `tmp_path` nests
+    deep enough to exceed it. This fixture keeps socket paths short.
+    """
+    directory = tempfile.mkdtemp(prefix="vd-", dir="/tmp")
+    try:
+        yield directory
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)

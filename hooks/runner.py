@@ -36,7 +36,7 @@ _ALLOW_OUTPUT: dict[str, HookResponse] = {"claude-code": GENERIC_ALLOW}
 def _parse_harness(argv: list[str]) -> str:
     parser = argparse.ArgumentParser()
     parser.add_argument("--harness", default="claude-code")
-    args = parser.parse_args(argv)
+    args, _unknown = parser.parse_known_args(argv)
     return str(args.harness)
 
 
@@ -47,7 +47,10 @@ def _exit_allow(harness: str) -> NoReturn:
 
 
 def _run() -> None:
-    harness = _parse_harness(sys.argv[1:])
+    try:
+        harness = _parse_harness(sys.argv[1:])
+    except SystemExit:
+        _exit_allow("claude-code")
     if harness not in _ALLOW_OUTPUT:
         _exit_allow(harness)
 

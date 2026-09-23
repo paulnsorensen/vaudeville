@@ -9,7 +9,6 @@ import socket
 import sys
 import threading
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -36,8 +35,8 @@ def _run_and_capture(
     return exc_info.value.code, capsys.readouterr().out.strip()  # type: ignore[return-value]
 
 
-def test_unreachable(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    sock_path = str(tmp_path / "nonexistent.sock")
+def test_unreachable(short_sock_path: str, capsys: pytest.CaptureFixture[str]) -> None:
+    sock_path = os.path.join(short_sock_path, "nonexistent.sock")
     with patch("vaudeville.core.client.SOCKET_PATH", sock_path):
         code, out = _run_and_capture(
             ["runner.py", "--harness", "claude-code"], HOOK_INPUT, capsys
@@ -46,8 +45,8 @@ def test_unreachable(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     assert out == ""
 
 
-def test_timeout(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    sock_path = str(tmp_path / "timeout.sock")
+def test_timeout(short_sock_path: str, capsys: pytest.CaptureFixture[str]) -> None:
+    sock_path = os.path.join(short_sock_path, "timeout.sock")
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     srv.bind(sock_path)
     srv.listen(1)
@@ -74,15 +73,16 @@ def test_timeout(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         srv.close()
 
 
-def test_daemon_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    sock_path = str(tmp_path / "error.sock")
+def test_daemon_error(short_sock_path: str, capsys: pytest.CaptureFixture[str]) -> None:
+    sock_path = os.path.join(short_sock_path, "error.sock")
     server_done = threading.Event()
 
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(sock_path)
+    srv.listen(1)
+    srv.settimeout(3.0)
+
     def _serve() -> None:
-        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        srv.bind(sock_path)
-        srv.listen(1)
-        srv.settimeout(3.0)
         conn, _ = srv.accept()
         data = b""
         while b"\n" not in data:
@@ -94,13 +94,13 @@ def test_daemon_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
 
     t = threading.Thread(target=_serve, daemon=True)
     t.start()
-    time.sleep(0.05)
 
     with patch("vaudeville.core.client.SOCKET_PATH", sock_path):
         code, out = _run_and_capture(
             ["runner.py", "--harness", "claude-code"], HOOK_INPUT, capsys
         )
     server_done.wait(timeout=3.0)
+    assert server_done.is_set()
     assert code == 0
     assert out == ""
 

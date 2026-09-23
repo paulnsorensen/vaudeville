@@ -81,6 +81,20 @@ class TestBuildDecideAgent:
         assert result.output.reason == "secret-leak"
 
 
+class TestAnthropicModelConstruction:
+    def test_anthropic_model_builds_without_import_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC: `anthropic:claude-haiku-4-5` must build without a network call."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        rule = parse_rule({**DECIDE_RULE, "model": "anthropic:claude-haiku-4-5"})
+        assert isinstance(rule, DecideRule)
+
+        agent = build_decide_agent(rule, "anthropic:claude-haiku-4-5")
+
+        assert agent is not None
+
+
 class TestResolveModel:
     def test_typesafe_model_built_and_never_called(
         self, monkeypatch: pytest.MonkeyPatch

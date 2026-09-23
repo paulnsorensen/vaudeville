@@ -31,7 +31,7 @@ dependencies = [
     "pyyaml>=6.0.1",
     "rich>=13.0",
     "pydantic>=2.13.5",
-    "pydantic-ai-slim[typesafe]>=2.47.0",
+    "pydantic-ai-slim[typesafe,anthropic]>=2.47.0",
 ]
 
 [project.scripts]

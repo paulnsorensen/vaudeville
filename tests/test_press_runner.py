@@ -16,7 +16,6 @@ import sys
 import threading
 import time
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -89,8 +88,8 @@ class _FakeDaemon:
 
 
 @pytest.fixture
-def sock_path(tmp_path: Path) -> Iterator[str]:
-    yield str(tmp_path / "vaudeville.sock")
+def sock_path(short_sock_path: str) -> Iterator[str]:
+    yield os.path.join(short_sock_path, "vaudeville.sock")
 
 
 class TestMalformedStdin:
@@ -210,6 +209,24 @@ class TestHarnessArgument:
     ) -> None:
         code, out = _run_main_and_capture(
             ["runner.py", "--harness", "../claude-code"], HOOK_INPUT, capsys
+        )
+        assert code == 0
+        assert out == ""
+
+    def test_unknown_extra_argument_falls_open_instead_of_exit_2(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out = _run_main_and_capture(
+            ["runner.py", "--event", "Stop"], HOOK_INPUT, capsys
+        )
+        assert code == 0
+        assert out == ""
+
+    def test_bare_harness_flag_without_value_falls_open(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        code, out = _run_main_and_capture(
+            ["runner.py", "--harness"], HOOK_INPUT, capsys
         )
         assert code == 0
         assert out == ""

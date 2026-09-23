@@ -1,12 +1,12 @@
 ---
-description: Install prerequisites and download the SLM model for vaudeville
+description: Install prerequisites and sync dependencies for vaudeville
 allowed-tools:
   - Bash
 ---
 
 # Vaudeville Setup
 
-Run the full setup sequence: install `uv` if missing, sync Python dependencies, and download the inference model.
+Run the full setup sequence: install `uv` if missing, sync Python dependencies, and write the provider config.
 
 Each step below is a self-contained bash block. `~/.local/bin` is prepended to `PATH` at the top of each block so a freshly-installed `uv` (or `uv tool`-installed binary) is visible even if the user's shell rc hasn't been reloaded — Claude Code runs each block in a separate subshell, so `export PATH=...` does not persist across steps.
 
@@ -36,19 +36,11 @@ if [ "$(printf '%s\n' "$_uv_min" "$_uv_actual" | sort -V | head -n1)" != "$_uv_m
 fi
 ```
 
-2. **Sync dependencies** — install the correct backend for this OS+arch. MLX is Apple Silicon only; everything else (incl. Linux aarch64) uses gguf:
+2. **Sync dependencies**:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-os=$(uname -s)
-arch=$(uname -m)
-if [[ "$os" == "Darwin" && "$arch" == "arm64" ]]; then
-  echo "Apple Silicon detected — syncing mlx backend..."
-  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group mlx
-else
-  echo "${os}/${arch} detected — syncing gguf backend..."
-  uv sync --project "${CLAUDE_PLUGIN_ROOT}" --group gguf
-fi
+uv sync --project "${CLAUDE_PLUGIN_ROOT}"
 ```
 
 3. **Expose the `vaudeville` CLI on PATH** — editable install against the plugin root so `git pull` updates take effect immediately, with `--force` to handle plugin path changes on re-runs:
@@ -65,7 +57,7 @@ uv tool update-shell
 uv tool install --force argcomplete
 ```
 
-The `vaudeville` tool install only pulls core deps (argcomplete, loguru, pyyaml, rich). Model access comes from your own provider API key, configured in the `~/.vaudeville/config` step below.
+The `vaudeville` tool install only pulls core deps (argcomplete, loguru, pyyaml, rich, pydantic, pydantic-ai-slim). Model access comes from your own provider API key, configured in the `~/.vaudeville/config` step below.
 
 **Activate tab completion** — print the shell-specific one-liner for the user to add to their shell rc (do not modify their rc automatically):
 

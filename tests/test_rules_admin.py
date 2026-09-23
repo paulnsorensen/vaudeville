@@ -227,7 +227,7 @@ class TestListAndDrafts:
 
 
 class TestAdminMatchesDaemonDanglingRefFix:
-    """R3: admin and daemon views share one resolve step, so a dangling
+    """admin and daemon views share one resolve step, so a dangling
     escalate/rewrite outcome maps to allow the same way in both."""
 
     def test_dangling_ref_mapping_matches_daemon_load(

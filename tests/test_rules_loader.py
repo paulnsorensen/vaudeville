@@ -102,7 +102,7 @@ class TestLoadRulesLayered:
     def test_bundled_layer_not_loaded_by_daemon(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """R2: the bundled examples layer is inert for the daemon; only
+        """the bundled examples layer is inert for the daemon; only
         `just eval` loads it, directly via `bundled_rules_dir`."""
         plugin_root = tmp_path / "plugin"
         (plugin_root / "examples" / "rules").mkdir(parents=True)
@@ -310,7 +310,7 @@ class TestReferenceValidation:
         caplog: pytest.LogCaptureFixture,
         action: dict[str, str],
     ) -> None:
-        """R1: a dangling outcome becomes allow; the rule and its siblings stay."""
+        """a dangling outcome becomes allow; the rule and its siblings stay."""
         with caplog.at_level("WARNING"):
             ruleset = self._load(
                 tmp_path,
@@ -332,7 +332,7 @@ class TestReferenceValidation:
     def test_dangling_outcome_replaced_with_allow_keeps_sibling_outcomes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """R1 proving test: `guard`'s `long` outcome dangles; `bad` still blocks."""
+        """`guard`'s `long` outcome dangles; `bad` still blocks."""
         ruleset = self._load(
             tmp_path,
             monkeypatch,

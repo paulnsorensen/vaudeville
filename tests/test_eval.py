@@ -211,7 +211,7 @@ class TestRunEvaluationsModelOverride:
 
 
 class TestUpdateResultsPositiveOutcomes:
-    """R6: the positive class is the `on:`-blocking outcome, not outcomes[0]."""
+    """The positive class is the `on:`-blocking outcome, not outcomes[0]."""
 
     def test_non_positive_mismatch_is_misclassified_not_tn(self) -> None:
         from vaudeville.eval import EvalResults, _update_results

@@ -124,7 +124,7 @@ class TestMain:
     def test_bundled_rules_load_for_eval_when_daemon_layers_are_bare(
         self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """R2: `just eval` still loads the bundled examples layer directly,
+        """`just eval` still loads the bundled examples layer directly,
         even though the daemon no longer includes it."""
         import yaml
 

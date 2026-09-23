@@ -354,7 +354,7 @@ class TestActionShorthand:
 
 
 class TestOutcomesCoverage:
-    """R5: an `on` key or test-case outcome outside `outcomes` fails loud."""
+    """an `on` key or test-case outcome outside `outcomes` fails loud."""
 
     def test_bad_on_key_rejected(self) -> None:
         with pytest.raises(ValidationError, match="git-gate") as exc_info:
@@ -388,7 +388,7 @@ class TestOutcomesCoverage:
 
 class TestTargetHasLeafAllSegments:
     def test_leaf_buried_mid_path_rejected(self) -> None:
-        """R11: every path segment is checked, not just the first and last."""
+        """every path segment is checked, not just the first and last."""
         with pytest.raises(ValidationError, match="resolves to a Bash command"):
             parse_rule(
                 {

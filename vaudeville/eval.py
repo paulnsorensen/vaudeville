@@ -80,7 +80,7 @@ def _positive_outcomes(rule: DecideRule) -> set[str]:
     """Outcomes whose `on:` action is not allow; falls back to `outcomes[0]`.
 
     The eval harness scores a rule against its blocking outcomes, not
-    outcome list order (R6): an outcome with no `on:` entry, or an `on:`
+    outcome list order: an outcome with no `on:` entry, or an `on:`
     entry mapped to `allow`, fails open and is not a positive.
     """
     positives = {

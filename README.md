@@ -75,7 +75,7 @@ Any rule can be gated with `draft: true` at the top of its YAML — the loader w
 
 ## Custom Rules
 
-Rules live in `~/.vaudeville/rules/` (global) or `.vaudeville/rules/` (per-project). A project rule cannot override a global or bundled rule of the same name: the daemon skips it and logs a warning. Give project rules unique names.
+Rules live in `~/.vaudeville/rules/` (global) or `.vaudeville/rules/` (per-project). A project rule cannot override a global rule of the same name: the daemon skips it and logs a warning. Give project rules unique names.
 
 See [`examples/rules/`](examples/rules/) for the bundled rules as starting points for your own.
 

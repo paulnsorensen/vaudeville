@@ -122,7 +122,7 @@ def project_rules_dir(project_root: str | None) -> str | None:
 
 def rule_layers(project_root: str | None = None) -> list[tuple[str, str]]:
     """(directory, layer) pairs that exist, in layering order: user ->
-    project. The bundled examples layer is not included here (R2): it is
+    project. The bundled examples layer is not included here: it is
     inert for the daemon and loads only through `bundled_rules_dir` in
     the eval CLI."""
     candidates = (
@@ -189,8 +189,8 @@ def resolve_rules_layered(project_root: str | None = None) -> dict[str, Resolved
 
 def resolve_active_rules(project_root: str | None = None) -> dict[str, ResolvedRule]:
     """Resolve every layer, then fix each decide rule's dangling
-    escalate/rewrite outcome (R1). Both the daemon load and the admin
-    editable view share this step, so they agree (R3)."""
+    escalate/rewrite outcome. Both the daemon load and the admin
+    editable view share this step, so they agree."""
     resolved = resolve_rules_layered(project_root)
     fixed_rules = _drop_dangling_refs(
         {name: entry.rule for name, entry in resolved.items()}
@@ -247,7 +247,7 @@ def _drop_dangling_refs(
 ) -> dict[str, DecideRule | RewriteRule]:
     """Replace a decide rule's dangling escalate/rewrite outcome with
     allow, instead of dropping the whole rule. A rule's sibling outcomes
-    (for example `block`, `ask`) keep working (R1). The name is kept for
+    (for example `block`, `ask`) keep working. The name is kept for
     an existing test seam even though the function no longer drops the
     rule. Rule identities never change, so one pass is enough: no rule
     disappears to leave another reference dangling."""

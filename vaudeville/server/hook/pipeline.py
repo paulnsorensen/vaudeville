@@ -673,20 +673,19 @@ def _log_decision(
     model_name: str | None,
     prompt_chars: int,
 ) -> None:
-    if logger_fn is None:
-        return
-    logger_fn.log_event(
-        ClassificationEvent(
-            rule=rule.name,
-            verdict=result.outcome or "",
-            confidence=result.confidence or 0.0,
-            latency_ms=latency_ms,
-            prompt_chars=prompt_chars,
-            reason=result.reason or "",
-            tier=rule.tier,
-            outcome=result.outcome,
-            action=action_name,
-            model=model_name,
-            downgrade=downgrade,
-        )
+    """Log the record of a rule that resolved to no action."""
+    item = EvaluatedAction(
+        rule_name=rule.name,
+        action_name=action_name,
+        message="",
+        downgrade=downgrade,
+        verdict=result.outcome or "",
+        confidence=result.confidence or 0.0,
+        latency_ms=latency_ms,
+        reason=result.reason or "",
+        tier=rule.tier,
+        outcome=result.outcome,
+        model=model_name,
+        prompt_chars=prompt_chars,
     )
+    _log_evaluated(logger_fn, item, downgrade=downgrade)

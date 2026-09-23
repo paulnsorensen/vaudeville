@@ -1,9 +1,12 @@
 """YAML rule file loading with layered directory resolution.
 
-Layers, lowest to highest priority: bundled `examples/rules/`, user
-`~/.vaudeville/rules/`, project `.vaudeville/rules/`. Later layers override
-earlier ones by rule name. Invalid files are skipped and logged; the rest
-still load (AC-1).
+Layers, lowest to highest priority: user `~/.vaudeville/rules/`, project
+`.vaudeville/rules/`. Later layers override earlier ones by rule name.
+Invalid files are skipped and logged; the rest still load (AC-1).
+
+The bundled `examples/rules/` directory is not a daemon layer: it is
+inert except for `just eval`, which loads it directly via
+`bundled_rules_dir`.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from typing import Any, NamedTuple
 
 import yaml
 
+from .actions import Action
 from .models import DecideRule, RewriteRule, RuleSet, parse_rule
 
 logger = logging.getLogger(__name__)
@@ -117,10 +121,11 @@ def project_rules_dir(project_root: str | None) -> str | None:
 
 
 def rule_layers(project_root: str | None = None) -> list[tuple[str, str]]:
-    """(directory, layer) pairs that exist, in layering order:
-    bundled -> user -> project."""
+    """(directory, layer) pairs that exist, in layering order: user ->
+    project. The bundled examples layer is not included here (R2): it is
+    inert for the daemon and loads only through `bundled_rules_dir` in
+    the eval CLI."""
     candidates = (
-        (bundled_rules_dir(), "bundled"),
         (user_rules_dir(), "user"),
         (project_rules_dir(project_root), "project"),
     )
@@ -128,7 +133,7 @@ def rule_layers(project_root: str | None = None) -> list[tuple[str, str]]:
 
 
 def layered_search_path(project_root: str | None = None) -> list[str]:
-    """Directories that exist, in layering order: bundled -> user -> project."""
+    """Directories that exist, in layering order: user -> project."""
     return [rules_dir for rules_dir, _layer in rule_layers(project_root)]
 
 
@@ -182,13 +187,24 @@ def resolve_rules_layered(project_root: str | None = None) -> dict[str, Resolved
     return resolved
 
 
+def resolve_active_rules(project_root: str | None = None) -> dict[str, ResolvedRule]:
+    """Resolve every layer, then fix each decide rule's dangling
+    escalate/rewrite outcome (R1). Both the daemon load and the admin
+    editable view share this step, so they agree (R3)."""
+    resolved = resolve_rules_layered(project_root)
+    fixed_rules = _drop_dangling_refs(
+        {name: entry.rule for name, entry in resolved.items()}
+    )
+    return {
+        name: entry._replace(rule=fixed_rules[name]) for name, entry in resolved.items()
+    }
+
+
 def load_rules_layered(project_root: str | None = None) -> RuleSet:
     """Load rules from every layer, uncached, with the ownership rule of
-    `resolve_rules_layered`."""
-    merged = {
-        name: entry.rule for name, entry in resolve_rules_layered(project_root).items()
-    }
-    return RuleSet(rules=tuple(_drop_dangling_refs(merged).values()))
+    `resolve_rules_layered` and the dangling-ref fix of `_drop_dangling_refs`."""
+    merged = resolve_active_rules(project_root)
+    return RuleSet(rules=tuple(entry.rule for entry in merged.values()))
 
 
 _TOOL_EVENTS = ("PreToolUse", "PostToolUse")
@@ -211,39 +227,50 @@ _REF_TYPES: dict[str, type[DecideRule] | type[RewriteRule]] = {
 }
 
 
-def _dangling_ref(
+def _dangling_outcomes(
     rule: DecideRule, rules: dict[str, DecideRule | RewriteRule]
-) -> str | None:
-    for action in rule.on.values():
+) -> list[str]:
+    """Outcome names whose action references a rule that does not resolve
+    to the expected type."""
+    dangling: list[str] = []
+    for outcome, action in rule.on.items():
         expected = _REF_TYPES.get(action.action)
         if expected is None or action.rule is None:
             continue
         if not isinstance(rules.get(action.rule), expected):
-            return f"{action.action} -> {action.rule!r}"
-    return None
+            dangling.append(outcome)
+    return dangling
 
 
 def _drop_dangling_refs(
     rules: dict[str, DecideRule | RewriteRule],
 ) -> dict[str, DecideRule | RewriteRule]:
-    """Skip decide rules whose escalate/rewrite reference is missing or of the
-    wrong type. Repeat until stable, because a skipped rule can leave another
-    reference dangling."""
-    kept = dict(rules)
-    changed = True
-    while changed:
-        changed = False
-        for name, rule in list(kept.items()):
-            if not isinstance(rule, DecideRule):
-                continue
-            ref = _dangling_ref(rule, kept)
-            if ref is not None:
-                logger.warning(
-                    "[vaudeville] Skipping rule %r: reference %s does not "
-                    "resolve to a rule of the right type",
-                    name,
-                    ref,
-                )
-                del kept[name]
-                changed = True
-    return kept
+    """Replace a decide rule's dangling escalate/rewrite outcome with
+    allow, instead of dropping the whole rule. A rule's sibling outcomes
+    (for example `block`, `ask`) keep working (R1). The name is kept for
+    an existing test seam even though the function no longer drops the
+    rule. Rule identities never change, so one pass is enough: no rule
+    disappears to leave another reference dangling."""
+    fixed: dict[str, DecideRule | RewriteRule] = {}
+    for name, rule in rules.items():
+        if not isinstance(rule, DecideRule):
+            fixed[name] = rule
+            continue
+        dangling = _dangling_outcomes(rule, rules)
+        if not dangling:
+            fixed[name] = rule
+            continue
+        new_on = dict(rule.on)
+        for outcome in dangling:
+            action = new_on[outcome]
+            logger.warning(
+                "[vaudeville] Rule %r outcome %r: reference %s -> %r does "
+                "not resolve to a rule of the right type; using allow",
+                name,
+                outcome,
+                action.action,
+                action.rule,
+            )
+            new_on[outcome] = Action(action="allow")
+        fixed[name] = rule.model_copy(update={"on": new_on})
+    return fixed

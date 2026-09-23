@@ -10,7 +10,6 @@ import yaml
 
 from vaudeville.rules import (
     DecideRule,
-    RewriteRule,
     RuleSet,
     load_rule_file,
     load_rules,
@@ -100,9 +99,11 @@ class TestLoadRulesDirectory:
 
 
 class TestLoadRulesLayered:
-    def test_bundled_layer_loads_below_user_and_project(
+    def test_bundled_layer_not_loaded_by_daemon(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """R2: the bundled examples layer is inert for the daemon; only
+        `just eval` loads it, directly via `bundled_rules_dir`."""
         plugin_root = tmp_path / "plugin"
         (plugin_root / "examples" / "rules").mkdir(parents=True)
         _write_rule(plugin_root / "examples" / "rules", "bundled.yaml", REWRITE_RULE)
@@ -115,7 +116,7 @@ class TestLoadRulesLayered:
 
         ruleset = load_rules_layered(None)
         rules = ruleset.by_name()
-        assert isinstance(rules["trim"], RewriteRule)
+        assert "trim" not in rules
 
 
 class TestProjectLayerTrust:
@@ -302,13 +303,14 @@ class TestReferenceValidation:
             {"action": "rewrite", "rule": "b"},
         ],
     )
-    def test_dangling_or_wrong_type_reference_skipped_and_logged(
+    def test_dangling_or_wrong_type_reference_becomes_allow_and_logged(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
         action: dict[str, str],
     ) -> None:
+        """R1: a dangling outcome becomes allow; the rule and its siblings stay."""
         with caplog.at_level("WARNING"):
             ruleset = self._load(
                 tmp_path,
@@ -319,11 +321,40 @@ class TestReferenceValidation:
                     REWRITE_RULE,
                 ],
             )
-        assert set(ruleset.by_name()) == {"b", "trim"}
+        rules = ruleset.by_name()
+        assert set(rules) == {"a", "b", "trim"}
+        rule_a = rules["a"]
+        assert isinstance(rule_a, DecideRule)
+        assert rule_a.on["violation"].action == "allow"
         assert "'a'" in caplog.text
         assert action["rule"] in caplog.text
 
-    def test_skip_cascades_to_rules_that_reference_a_skipped_rule(
+    def test_dangling_outcome_replaced_with_allow_keeps_sibling_outcomes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """R1 proving test: `guard`'s `long` outcome dangles; `bad` still blocks."""
+        ruleset = self._load(
+            tmp_path,
+            monkeypatch,
+            [
+                dict(
+                    DECIDE_RULE,
+                    name="guard",
+                    outcomes=["bad", "long"],
+                    on={
+                        "bad": "block",
+                        "long": {"action": "rewrite", "rule": "missing"},
+                    },
+                )
+            ],
+        )
+        rules = ruleset.by_name()
+        guard = rules["guard"]
+        assert isinstance(guard, DecideRule)
+        assert guard.on["bad"].action == "block"
+        assert guard.on["long"].action == "allow"
+
+    def test_dangling_ref_no_longer_cascades_to_the_referencing_rule(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         ruleset = self._load(
@@ -342,7 +373,13 @@ class TestReferenceValidation:
                 ),
             ],
         )
-        assert ruleset.by_name() == {}
+        rules = ruleset.by_name()
+        assert set(rules) == {"a", "b"}
+        rule_a, rule_b = rules["a"], rules["b"]
+        assert isinstance(rule_a, DecideRule)
+        assert isinstance(rule_b, DecideRule)
+        assert rule_a.on["violation"].action == "escalate"
+        assert rule_b.on["violation"].action == "allow"
 
 
 class TestObsoleteContextKey:

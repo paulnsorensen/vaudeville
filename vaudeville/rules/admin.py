@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from .loader import ResolvedRule, load_rule_file, resolve_rules_layered, rule_layers
+from .loader import ResolvedRule, load_rule_file, resolve_active_rules, rule_layers
 from .models import VALID_TIERS, DecideRule, RewriteRule
 
 _EDITABLE_LAYERS = ("user", "project")
@@ -33,7 +33,7 @@ def _active_editable(
 ) -> dict[str, ResolvedRule]:
     return {
         name: entry
-        for name, entry in resolve_rules_layered(project_root).items()
+        for name, entry in resolve_active_rules(project_root).items()
         if entry.layer in _EDITABLE_LAYERS
     }
 

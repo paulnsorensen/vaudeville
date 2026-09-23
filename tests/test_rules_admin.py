@@ -14,6 +14,7 @@ from vaudeville.rules import (
     VALID_TIERS,
     get_draft_rule_names,
     list_rules_with_source,
+    load_rules_layered,
     locate_all_rule_files,
     locate_rule_file,
     rules_search_path,
@@ -223,3 +224,31 @@ class TestListAndDrafts:
 
     def test_valid_tiers_constant(self) -> None:
         assert VALID_TIERS == ("disabled", "shadow", "log", "warn", "block")
+
+
+class TestAdminMatchesDaemonDanglingRefFix:
+    """R3: admin and daemon views share one resolve step, so a dangling
+    escalate/rewrite outcome maps to allow the same way in both."""
+
+    def test_dangling_ref_mapping_matches_daemon_load(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        rule = dict(
+            DECIDE_RULE,
+            name="guard",
+            on={"violation": {"action": "rewrite", "rule": "missing"}},
+        )
+        _write_rule(home / ".vaudeville" / "rules", "guard.yaml", rule)
+        monkeypatch.setenv("HOME", str(home))
+
+        daemon_rules = load_rules_layered(None).by_name()
+        admin_rule = next(
+            r for r, _source in list_rules_with_source(None) if r.name == "guard"
+        )
+
+        guard = daemon_rules["guard"]
+        assert isinstance(guard, DecideRule)
+        assert isinstance(admin_rule, DecideRule)
+        assert guard.on["violation"].action == "allow"
+        assert admin_rule.on["violation"].action == "allow"

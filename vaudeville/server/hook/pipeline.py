@@ -28,7 +28,6 @@ from vaudeville.rules import (
 from vaudeville.rules.cache import load_layered, project_root_for
 from vaudeville.server.agents import DecideResult
 from vaudeville.server.agents import decide as default_decide
-from vaudeville.server.agents import resolve_model
 from vaudeville.server.agents import rewrite as run_rewrite
 from vaudeville.server.effects import (
     EscalateResult,
@@ -551,15 +550,10 @@ def _do_rewrite(
         )
         return "allow", "", None, None
 
-    resolution = resolve_model(target, config)
-    if resolution.model is None:
-        return "allow", "", None, None
-    model = resolution.model
-
     def _rewrite_sources() -> dict[str, str] | None:
         rewritten: dict[str, str] = {}
         for path, text in sources.items():
-            output = run_rewrite(target, model, text)
+            output = run_rewrite(target, config, text)
             if output is None:
                 return None
             rewritten[path] = output

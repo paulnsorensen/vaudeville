@@ -1,4 +1,4 @@
-"""Resolve a decide/rewrite rule's model string against the user config.
+"""Resolve a decide/rewrite rule's model and build its pydantic-ai agent.
 
 No provider is hard-coded: the default model, the allowed providers, and
 each provider's key environment variable all come from `UserConfig`. A
@@ -11,13 +11,16 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
+from pydantic_ai import Agent
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.providers import Provider, infer_provider_class
 
 from vaudeville.rules import DecideRule, RewriteRule
 from vaudeville.server.user_config import UserConfig
+
+from .delimit import DATA_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,8 @@ MODEL_REQUEST_TIMEOUT_SECONDS = 6.0
 
 # Providers whose missing-key notice this process already logged.
 _notified_providers: set[str] = set()
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -93,3 +98,18 @@ def _build_model(model_name: str, api_key: str) -> Model:
         return provider
 
     return infer_model(model_name, provider_factory=_provider)
+
+
+def build_agent(
+    prompt: str, model: Model | str, output_type: type[T]
+) -> Agent[None, T]:
+    """Build an agent with the data instruction, temperature 0.0, and the request timeout."""
+    return Agent(
+        model,
+        output_type=output_type,
+        system_prompt=f"{prompt}\n\n{DATA_INSTRUCTION}",
+        model_settings={
+            "temperature": 0.0,
+            "timeout": MODEL_REQUEST_TIMEOUT_SECONDS,
+        },
+    )

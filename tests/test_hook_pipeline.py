@@ -17,7 +17,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from vaudeville.core.truncation import CHARS_PER_TOKEN, MAX_INPUT_TOKENS
 from vaudeville.rules import DecideRule
-from vaudeville.server.agents import DecideResult, ModelResolution, decide
+from vaudeville.server.agents import DecideResult, decide
 from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.hook import handle_hook_request
@@ -254,13 +254,7 @@ tier: block
         )
         fn, _ = _decide_fn('{"outcome": "violation"}')
 
-        monkeypatch.setattr(
-            pipeline_module,
-            "resolve_model",
-            lambda rule, config: ModelResolution(model="fake:model"),
-        )
-
-        def slow_run_rewrite(rule: object, model: object, text: str) -> str:
+        def slow_run_rewrite(rule: object, config: object, text: str) -> str:
             time.sleep(0.5)
             return "rewritten"
 
@@ -593,14 +587,9 @@ class TestRewritePerTarget:
         monkeypatch.setenv("FAKE_KEY", "x")
         self._write_rules(tmp_path, "[tool_input.content, tool_input.description]")
         fn, _ = _decide_fn('{"outcome": "violation"}')
-        monkeypatch.setattr(
-            pipeline_module,
-            "resolve_model",
-            lambda rule, config: ModelResolution(model="fake:model"),
-        )
         seen: list[str] = []
 
-        def upper(rule: object, model: object, text: str) -> str:
+        def upper(rule: object, config: object, text: str) -> str:
             seen.append(text)
             return text.upper()
 
@@ -629,14 +618,9 @@ class TestRewritePerTarget:
         monkeypatch.setenv("FAKE_KEY", "x")
         self._write_rules(tmp_path, "[tool_input.content]")
         fn, _ = _decide_fn('{"outcome": "violation"}')
-        monkeypatch.setattr(
-            pipeline_module,
-            "resolve_model",
-            lambda rule, config: ModelResolution(model="fake:model"),
-        )
         calls: list[str] = []
 
-        def recording_rewrite(rule: object, model: object, text: str) -> str:
+        def recording_rewrite(rule: object, config: object, text: str) -> str:
             calls.append(text)
             return "x"
 
@@ -662,13 +646,8 @@ class TestRewritePerTarget:
         fn, _ = _decide_fn('{"outcome": "violation"}')
         monkeypatch.setattr(
             pipeline_module,
-            "resolve_model",
-            lambda rule, config: ModelResolution(model="fake:model"),
-        )
-        monkeypatch.setattr(
-            pipeline_module,
             "run_rewrite",
-            lambda rule, model, text: None if text == "beta" else text.upper(),
+            lambda rule, config, text: None if text == "beta" else text.upper(),
         )
 
         result = handle_hook_request(

@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from vaudeville.server.agents import ModelResolution, decide
+from vaudeville.server.agents import decide
 from vaudeville.server.hook import pipeline as pipeline_module
 from vaudeville.server.user_config import ProviderConfig, UserConfig
 
@@ -88,10 +88,5 @@ def patch_run_command(monkeypatch: pytest.MonkeyPatch) -> RunRecorder:
 def patch_rewrite(monkeypatch: pytest.MonkeyPatch, output: str) -> None:
     """Skip the real rewrite model call; `run_rewrite` returns `output`."""
     monkeypatch.setattr(
-        pipeline_module,
-        "resolve_model",
-        lambda rule, config: ModelResolution(model="fake:model"),
-    )
-    monkeypatch.setattr(
-        pipeline_module, "run_rewrite", lambda rule, model, text: output
+        pipeline_module, "run_rewrite", lambda rule, config, text: output
     )

@@ -12,8 +12,8 @@ from pydantic_ai.models import Model
 from vaudeville.rules import DecideRule
 from vaudeville.server.user_config import UserConfig
 
-from .delimit import DATA_INSTRUCTION, delimit_hook_text
-from .model_resolution import MODEL_REQUEST_TIMEOUT_SECONDS, resolve_model
+from .delimit import delimit_hook_text
+from .model_resolution import build_agent, resolve_model
 from .output_types import build_decide_output_type
 
 # Suppress the first-run startup banner pydantic-ai prints to stderr; it
@@ -35,17 +35,7 @@ ALLOW = DecideResult(outcome=None)
 
 def build_decide_agent(rule: DecideRule, model: Model | str) -> Agent[None, Any]:
     """Build the pydantic-ai agent for `rule`, its output type built from `outcomes`."""
-    output_type = build_decide_output_type(rule)
-    system_prompt = f"{rule.prompt}\n\n{DATA_INSTRUCTION}"
-    return Agent(
-        model,
-        output_type=output_type,
-        system_prompt=system_prompt,
-        model_settings={
-            "temperature": 0.0,
-            "timeout": MODEL_REQUEST_TIMEOUT_SECONDS,
-        },
-    )
+    return build_agent(rule.prompt, model, build_decide_output_type(rule))
 
 
 def decide(

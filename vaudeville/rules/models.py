@@ -108,22 +108,13 @@ _FORBIDDEN_IO_KEYS: tuple[str, ...] = (
 
 
 def _target_has_leaf(target: str, leaves: tuple[str, ...]) -> bool:
-    for leaf in leaves:
-        full = _TOOL_INPUT_PREFIX + leaf
-        if (
-            target == full
-            or target.startswith(full + ".")
-            or target.endswith("." + leaf)
-        ):
-            return True
-    return False
+    return any(segment in leaves for segment in target.split("."))
 
 
 def _target_is_bash_command(target: str) -> bool:
-    """Return True when `target` resolves to a forbidden argv leaf
-    (`argv`, `command`, or `commands`) directly under `tool_input.`, a
-    dotted subpath under one, or any path ending in such a leaf. Checked
-    unconditionally, regardless of matcher.
+    """Return True when any path segment of `target` is a forbidden argv
+    leaf (`argv`, `command`, or `commands`). Checked unconditionally,
+    regardless of matcher.
     """
     return _target_has_leaf(target, _FORBIDDEN_ARGV_KEYS)
 

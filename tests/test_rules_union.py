@@ -386,3 +386,17 @@ class TestOutcomesCoverage:
         assert "violaiton" in str(exc_info.value)
 
 
+class TestTargetHasLeafAllSegments:
+    def test_leaf_buried_mid_path_rejected(self) -> None:
+        """R11: every path segment is checked, not just the first and last."""
+        with pytest.raises(ValidationError, match="resolves to a Bash command"):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "rewrite-buried",
+                    "event": "PreToolUse",
+                    "matcher": "Bash",
+                    "prompt": "p",
+                    "target": ["tool_input.options.command.0"],
+                }
+            )

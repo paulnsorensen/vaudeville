@@ -198,10 +198,59 @@ tier: disabled
 
         monkeypatch.setattr(pipeline_module, "run_rewrite", _record_call)
 
-        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+        result = handle_hook_request(
+            _request(tmp_path, tool_input={"content": "old", "file_path": "a.txt"}),
+            config=_CONFIG,
+            decide_fn=fn,
+        )
 
         assert calls == []
         assert result == {"stdout": "", "exit_code": 0}
+
+    def test_block_rewrite_target_makes_one_model_call(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Positive control for `test_disabled_rewrite_target_skips_model_call`:
+        the same target at `tier: block` reaches the rewrite model once."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "block-rewrite",
+            _decide_rule(
+                "block-rewrite", "{action: rewrite, rule: rewrite-target}", "block"
+            ),
+        )
+        _write_rule(
+            tmp_path,
+            "rewrite-target",
+            """
+type: rewrite
+name: rewrite-target
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Rewrite.
+target: [tool_input.content]
+tier: block
+""",
+        )
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        calls: list[int] = []
+        from vaudeville.server.hook import pipeline as pipeline_module
+
+        def _record_call(rule: object, model: object, text: object) -> str:
+            calls.append(1)
+            return "x"
+
+        monkeypatch.setattr(pipeline_module, "run_rewrite", _record_call)
+
+        handle_hook_request(
+            _request(tmp_path, tool_input={"content": "old", "file_path": "a.txt"}),
+            config=_CONFIG,
+            decide_fn=fn,
+        )
+
+        assert calls == [1]
 
     def test_warn_tier_rewrite_target_downgrades_to_warn(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

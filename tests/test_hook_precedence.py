@@ -11,7 +11,6 @@ from vaudeville.server.hook import handle_hook_request
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
 from _hook_helpers import make_request as _request
-from _hook_helpers import patch_rewrite
 from _hook_helpers import write_rule as _write_rule
 
 
@@ -65,19 +64,33 @@ event: PreToolUse
 matcher: Write
 model: fake:model
 prompt: Rewrite.
-target: [command]
+target: [tool_input.content]
 tier: block
 """,
         )
         fn, _ = _decide_fn('{"outcome": "violation"}')
-        patch_rewrite(monkeypatch, "safe command")
+        rewrite_calls: list[str] = []
+        from vaudeville.server.hook import pipeline as pipeline_module
 
-        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+        def _record_rewrite(rule: object, config: object, text: object) -> str:
+            rewrite_calls.append(str(text))
+            return "safe command"
+
+        monkeypatch.setattr(pipeline_module, "run_rewrite", _record_rewrite)
+
+        result = handle_hook_request(
+            _request(tmp_path, tool_input={"content": "old", "file_path": "a.txt"}),
+            config=_CONFIG,
+            decide_fn=fn,
+        )
 
         assert result["exit_code"] == 0
         assert "permissionDecision" in str(result["stdout"])
         assert '"ask"' in str(result["stdout"])
         assert "updatedInput" not in str(result["stdout"])
+        # The rewrite rule loaded and was a precedence candidate: it reached
+        # the rewrite model even though `ask` won the primary channel.
+        assert rewrite_calls == ["old"]
 
     def test_dropped_rule_logged_with_reason(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

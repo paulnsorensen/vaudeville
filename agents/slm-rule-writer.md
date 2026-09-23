@@ -62,10 +62,13 @@ Every rule is a single YAML file placed in one of the resolution layer directori
 (project `.vaudeville/rules/` or `~/.vaudeville/rules/`). Complete schema:
 
 ```yaml
-name: my-detector              # Unique identifier (kebab-case, matches filename)
-event: Stop                     # Hook event: Stop, PostToolUse, PreToolUse, UserPromptSubmit
-tier: warn                      # disabled | shadow | log | warn | block (see "Tiers" below)
-prompt: |                       # SLM classification prompt
+type: decide                     # decide | rewrite
+name: my-detector                # Unique identifier (kebab-case, matches filename)
+event: Stop                      # Hook event: Stop, PostToolUse, PreToolUse, UserPromptSubmit
+matcher: "*"                     # optional tool-name matcher (PreToolUse/PostToolUse)
+model: anthropic:claude-haiku-4-5 # optional; defaults to config default_model
+tier: warn                       # disabled | shadow | log | warn | block (see "Tiers" below)
+prompt: |                        # classification prompt
   Classify this text as "violation" or "clean".
 
   VIOLATION if:
@@ -88,33 +91,42 @@ prompt: |                       # SLM classification prompt
 
   Now classify:
   {text}
-
-  VERDICT: violation or clean
-  REASON: one sentence
-context:                        # How to extract text from hook input
-  - field: last_assistant_message    # Dot-notation path into hook JSON
-labels: [violation, clean]      # Valid verdict labels (always exactly 2)
-message: "Quality violation: {reason}"  # Template with {reason} placeholder
-threshold: 0.5                  # Minimum confidence (0.0–1.0) to trigger action
+outcomes: [violation, clean]     # labels the model may return (always exactly 2)
+reasons:                         # optional outcome -> canned reason text
+  violation: "quality violation"
+"on":                             # outcome -> action
+  violation: block
+draft: false                     # true skips loading while iterating
+test_cases:                      # eval fixtures
+  - text: "<example text>"
+    outcome: violation
 ```
+
+A `type: rewrite` rule replaces `outcomes`/`on`/`reasons`/`test_cases` with
+`target` (a list of `tool_input.*` field paths to rewrite).
 
 ### Required Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `type` | string | `decide` or `rewrite` |
 | `name` | string | Unique rule name, kebab-case, matches filename without `.yaml` |
-| `prompt` | string | SLM prompt with `{text}` placeholder (and optional `{context}`) |
-| `context` | list | At least one entry with `field:` (dot-path) or `file:` (disk path) |
-| `labels` | list | Exactly 2 verdict labels |
+| `event` | string | Hook event this rule fires on |
+| `prompt` | string | Prompt with `{text}` placeholder |
+| `outcomes` | list | (decide only) at least one label the model may return |
+| `target` | list | (rewrite only) `tool_input.*` field paths to rewrite |
 
 ### Optional Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `event` | (none) | Hook event — informational, used by `hooks.json` |
+| `matcher` | (none) | Tool-name matcher for `PreToolUse`/`PostToolUse` |
+| `model` | config default | Overrides `default_model` from `~/.vaudeville/config` |
 | `tier` | `block` | `disabled` (off) \| `shadow` (silent telemetry, non-terminal) \| `log` (stderr only, terminal) \| `warn` (systemMessage nudge) \| `block` (rejects the action). See "Tiers and impact" below. |
-| `message` | `{reason}` | User-facing message template, `{reason}` replaced by SLM output |
-| `threshold` | `0.5` | Minimum confidence (0.0–1.0) to trigger action. Use `just eval --threshold-sweep` to find optimal value. |
+| `on` | `{}` | (decide only) maps each outcome to an action: `allow`, `log`, `warn`, `block`, `feedback`, `rewrite`, `escalate`, `ask`, `add-context`, `run` |
+| `reasons` | (none) | (decide only) maps an outcome to a canned reason string |
+| `draft` | `false` | `true` excludes the rule from loading/eval |
+| `test_cases` | `[]` | (decide only) labeled examples for `uv run python -m vaudeville.eval` |
 
 ## Will this rule actually matter?
 
@@ -233,9 +245,10 @@ cases:
 
 ## Registration
 
-The runner discovers rules automatically via `--event <EventName>`. Just ensure
-your rule YAML has the `event:` field set (e.g. `event: Stop`). No manual
-registration in hooks.json needed — hooks.json already has a runner entry per event.
+`hooks.json` already wires `hooks/runner.py --harness claude-code` to every
+Claude Code hook event; the runner matches loaded rules to the live event by
+each rule's `event:` field. No manual registration is needed — just set
+`event:` (e.g. `event: Stop`) in the rule YAML.
 
 ## Rule Resolution Layers
 
@@ -266,7 +279,7 @@ If the answer is "the rule fires after the fact AND tier is shadow/warn AND ther
 ### 3. Write the rule YAML
 
 Create `<name>.yaml` in the target rules directory. Start with 4 examples in the prompt (2 violation, 2 clean).
-Always include `tier:` and `threshold: 0.5` explicitly — rules without these default to `block`/`0.5` but being explicit prevents accidental hard-blocks on untuned rules.
+Always include `tier:` explicitly — a rule without it defaults to `block`, and being explicit prevents accidental hard-blocks on untuned rules.
 
 ### 4. Write test cases
 
@@ -310,17 +323,16 @@ label conventions, context field usage, and test case patterns:
 - `deferral-detector` — PreToolUse rule detecting "follow-up PR" deferrals in reviews
 ## Gotchas
 
-- `runner.py` skips input text shorter than 50 characters (`MIN_TEXT_LENGTH = 50`)
-  — test cases under 50 chars pass in eval but never fire in production
+- The hook pipeline skips a rule only when its extracted text is empty
+  (`event.text` falsy); there is no minimum-length skip
 - The eval harness uses direct inference, not the daemon socket — rules can
   score 100% in eval but fail at runtime if the daemon isn't running
 - Rule names must match filenames exactly (without `.yaml`)
 - The `{text}` placeholder must appear exactly once in the prompt
 - If eval shows high recall but low precision, check for unbalanced few-shot examples
-- The `labels` field is enforced: `labels[0]` is the positive/trigger label,
-  `labels[1]` is the negative/pass label. The daemon, runner, and eval all use
-  these for verdict matching — custom labels work but must be consistent across
-  the rule prompt, test cases, and YAML `labels` field
+- The `outcomes` field is enforced: the model's structured output is
+  restricted to exactly these labels, and `on`/`reasons`/`test_cases` must
+  use outcomes drawn from this list
 
 ## Deliverables
 

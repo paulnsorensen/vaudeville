@@ -70,19 +70,30 @@ If the data doesn't support promotion, leave the rule at warn — that's working
 ## Rule Format
 
 ```yaml
-name: my-rule              # unique identifier
-event: Stop                # Claude Code hook event to trigger on
-tier: warn                 # disabled | shadow | log | warn | block
-prompt: |                  # few-shot classification prompt
+type: decide                # decide | rewrite
+name: my-rule                # unique identifier, matches the filename
+event: Stop                  # Claude Code hook event to trigger on
+matcher: "*"                 # optional tool-name matcher (PreToolUse/PostToolUse)
+model: anthropic:claude-haiku-4-5   # optional; defaults to config default_model
+prompt: |                    # few-shot classification prompt
   Classify as "violation" or "clean".
   ...
-  {text}                   # placeholder — replaced with hook input
-context:
-  - field: last_assistant_message   # JSON path into hook input
-labels: [violation, clean]          # valid classification labels
-message: "Reason: {reason}"         # verdict message template
-threshold: 0.5                      # minimum confidence to trigger (0.0-1.0)
+outcomes: [violation, clean] # labels the model may return
+reasons:                     # optional map of outcome -> canned reason text
+  violation: "explain why"
+"on":                         # outcome -> action
+  violation: block
+tier: warn                   # disabled | shadow | log | warn | block
+draft: false                 # true skips loading while iterating
+test_cases:                  # eval fixtures for `uv run python -m vaudeville.eval`
+  - text: "example violation text"
+    outcome: violation
+  - text: "example clean text"
+    outcome: clean
 ```
+
+A `type: rewrite` rule replaces `outcomes`/`on`/`reasons` with `target` (a
+list of `tool_input.*` field paths to rewrite) and has no `test_cases`.
 
 ### Context sources
 

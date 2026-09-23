@@ -81,7 +81,7 @@ See [`examples/rules/`](examples/rules/) for the bundled rules as starting point
 
 ### Authoring Rules
 
-Each rule is a YAML file with a `name`, `event`, `prompt`, `labels`, `tier`, and `threshold`. The `tier` field controls enforcement level (`disabled | shadow | log | warn | block`). The `event` field determines *when* the rule fires during a Claude Code session.
+Each rule is a YAML file of `type: decide` or `type: rewrite`. A decide rule sets `name`, `event`, `prompt`, and `outcomes` (the labels the model may return), plus an `on` map from an outcome to an action (`allow`, `log`, `warn`, `block`, `feedback`, `rewrite`, `escalate`, `ask`, `add-context`, `run`). A rewrite rule sets `target` (the `tool_input.*` fields to rewrite) instead of `outcomes`/`on`. Both accept `tier` (`disabled | shadow | log | warn | block`), and optional `matcher` and `model`. The `event` field determines *when* the rule fires during a Claude Code session.
 
 ### Choosing an Event
 
@@ -186,7 +186,7 @@ Check `~/.vaudeville/config` exists and has a valid `default_model` and provider
 Verify rules are in `~/.vaudeville/rules/` and have valid YAML. Check the daemon socket exists: `ls /tmp/vaudeville-*/vaudeville.sock`.
 
 **False positives?**
-Raise the rule's `threshold` value in its YAML file (e.g., `threshold: 0.7` → `threshold: 0.85`). Higher threshold = fewer but more confident matches.
+Tighten the rule's `prompt` with clearer VIOLATION/CLEAN conditions and more balanced examples, or drop its `tier` (e.g. `warn` → `shadow`) until it is retuned. There is no separate confidence threshold field; the model's outcome choice is the verdict.
 
 ## License
 

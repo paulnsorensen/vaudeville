@@ -55,7 +55,7 @@ class TestSearchPathAndLocate:
             str(project / ".vaudeville" / "rules"),
         ]
 
-    def test_locate_rule_file_prefers_project(
+    def test_locate_rule_file_prefers_user_over_project(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         home = tmp_path / "home"
@@ -65,7 +65,7 @@ class TestSearchPathAndLocate:
         monkeypatch.setenv("HOME", str(home))
 
         path = locate_rule_file("git-gate", str(project))
-        assert path == project / ".vaudeville" / "rules" / "git-gate.yaml"
+        assert path == home / ".vaudeville" / "rules" / "git-gate.yaml"
         assert len(locate_all_rule_files("git-gate", str(project))) == 2
 
     def test_locate_rule_file_missing_raises(
@@ -128,8 +128,8 @@ class TestListAndDrafts:
         pairs = list_rules_with_source(str(project))
         assert len(pairs) == 1
         rule, source_dir = pairs[0]
-        assert rule.tier == "block"
-        assert source_dir == str(project_rules)
+        assert rule.tier != "block"
+        assert source_dir == str(home_rules)
 
     def test_get_draft_rule_names(self, tmp_path: Path) -> None:
         rules_dir = tmp_path / "rules"

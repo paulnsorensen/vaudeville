@@ -1,8 +1,8 @@
 """Rule admin helpers: locate, list, and edit rule files on disk.
 
-Mirrors the search order of the old `vaudeville/core/rules.py` admin
-helpers -- global then project -- since these operate on user-writable
-rule files, not the read-only bundled examples.
+These helpers use the same layered resolver as the daemon, so they show
+and edit the file that the daemon runs. They operate on user-writable
+rule files only, not the read-only bundled examples.
 """
 
 from __future__ import annotations
@@ -13,44 +13,52 @@ from pathlib import Path
 
 import yaml
 
-from .loader import load_rule_file, project_rules_dir, user_rules_dir
+from .loader import ResolvedRule, load_rule_file, resolve_rules_layered, rule_layers
 from .models import VALID_TIERS, DecideRule, RewriteRule
+
+_EDITABLE_LAYERS = ("user", "project")
 
 
 def rules_search_path(project_root: str | None = None) -> list[str]:
     """Directories that exist, in priority order: global (user) then project."""
-    dirs: list[str] = []
-    if (global_dir := user_rules_dir()) is not None:
-        dirs.append(global_dir)
-    if (project_dir := project_rules_dir(project_root)) is not None:
-        dirs.append(project_dir)
-    return dirs
+    return [
+        rules_dir
+        for rules_dir, layer in rule_layers(project_root)
+        if layer in _EDITABLE_LAYERS
+    ]
+
+
+def _active_editable(
+    project_root: str | None,
+) -> dict[str, ResolvedRule]:
+    return {
+        name: entry
+        for name, entry in resolve_rules_layered(project_root).items()
+        if entry.layer in _EDITABLE_LAYERS
+    }
 
 
 def locate_all_rule_files(
     rule_name: str, project_root: str | None = None
 ) -> list[Path]:
-    """Return every candidate rule file path that exists, in the reverse of
-    `rules_search_path` order: project first, then global (user).
+    """Return every user or project file for `rule_name`. The file that the
+    daemon runs comes first; other files named `<rule_name>.yaml|yml`
+    follow in `rules_search_path` order.
     """
-    candidates: list[Path] = []
-    if (project_dir := project_rules_dir(project_root)) is not None:
-        proj_rules = Path(project_dir)
-        candidates += [
-            proj_rules / f"{rule_name}.yaml",
-            proj_rules / f"{rule_name}.yml",
-        ]
-    if (global_dir := user_rules_dir()) is not None:
-        home_rules = Path(global_dir)
-        candidates += [
-            home_rules / f"{rule_name}.yaml",
-            home_rules / f"{rule_name}.yml",
-        ]
-    return [p for p in candidates if p.exists()]
+    paths: list[Path] = []
+    active = _active_editable(project_root).get(rule_name)
+    if active is not None:
+        paths.append(Path(active.path))
+    for rules_dir in rules_search_path(project_root):
+        for suffix in (".yaml", ".yml"):
+            candidate = Path(rules_dir) / f"{rule_name}{suffix}"
+            if candidate.exists() and candidate not in paths:
+                paths.append(candidate)
+    return paths
 
 
 def locate_rule_file(rule_name: str, project_root: str | None = None) -> Path:
-    """Find a rule YAML; searches project then home, raises if absent."""
+    """Find the rule file that the daemon runs; raises if absent."""
     for path in locate_all_rule_files(rule_name, project_root):
         return path
     raise FileNotFoundError(f"rule file not found for {rule_name!r}")
@@ -75,25 +83,11 @@ def set_tier(rule_name: str, new_tier: str, project_root: str | None = None) -> 
 def list_rules_with_source(
     project_root: str | None = None,
 ) -> list[tuple[DecideRule | RewriteRule, str]]:
-    """Return (rule, source_dir) pairs; project-level rules override global by name."""
-    seen: dict[str, tuple[DecideRule | RewriteRule, str]] = {}
-    for rules_dir in rules_search_path(project_root):
-        try:
-            filenames = os.listdir(rules_dir)
-        except OSError:
-            continue
-        for filename in filenames:
-            if not filename.endswith((".yaml", ".yml")):
-                continue
-            path = os.path.join(rules_dir, filename)
-            try:
-                rule = load_rule_file(path)
-            except Exception:
-                continue
-            if rule is None:
-                continue
-            seen[rule.name] = (rule, rules_dir)
-    return list(seen.values())
+    """Return (rule, source_dir) pairs for the active user and project rules."""
+    return [
+        (entry.rule, os.path.dirname(entry.path))
+        for entry in _active_editable(project_root).values()
+    ]
 
 
 def get_draft_rule_names(rules_dir: str) -> set[str]:

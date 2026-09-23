@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import yaml
 
@@ -116,38 +116,41 @@ def project_rules_dir(project_root: str | None) -> str | None:
     return candidate if os.path.isdir(candidate) else None
 
 
+def rule_layers(project_root: str | None = None) -> list[tuple[str, str]]:
+    """(directory, layer) pairs that exist, in layering order:
+    bundled -> user -> project."""
+    candidates = (
+        (bundled_rules_dir(), "bundled"),
+        (user_rules_dir(), "user"),
+        (project_rules_dir(project_root), "project"),
+    )
+    return [(rules_dir, layer) for rules_dir, layer in candidates if rules_dir]
+
+
 def layered_search_path(project_root: str | None = None) -> list[str]:
     """Directories that exist, in layering order: bundled -> user -> project."""
-    dirs: list[str] = []
-    for candidate in (
-        bundled_rules_dir(),
-        user_rules_dir(),
-        project_rules_dir(project_root),
-    ):
-        if candidate:
-            dirs.append(candidate)
-    return dirs
+    return [rules_dir for rules_dir, _layer in rule_layers(project_root)]
 
 
-def load_rules_layered(project_root: str | None = None) -> RuleSet:
-    """Load rules from every layer, uncached; later layers override by name.
+class ResolvedRule(NamedTuple):
+    """An active rule, the layer that owns it, and the file it came from."""
+
+    rule: DecideRule | RewriteRule
+    layer: str
+    path: str
+
+
+def resolve_rules_layered(project_root: str | None = None) -> dict[str, ResolvedRule]:
+    """Resolve every layer by rule name; later layers override earlier ones.
 
     Bundled and user rules may override an earlier layer of the same name
     (AC-1). A project-layer rule sharing a name already owned by the
     bundled or user layer is refused: it is skipped and logged, so a
     project cannot silently shadow a trusted rule.
     """
-    layers: list[tuple[str, str]] = []
-    if (bundled := bundled_rules_dir()) is not None:
-        layers.append((bundled, "bundled"))
-    if (user := user_rules_dir()) is not None:
-        layers.append((user, "user"))
-    if (project := project_rules_dir(project_root)) is not None:
-        layers.append((project, "project"))
-
-    merged: dict[str, DecideRule | RewriteRule] = {}
+    resolved: dict[str, ResolvedRule] = {}
     owner: dict[str, str] = {}
-    for rules_dir, layer_name in layers:
+    for rules_dir, layer_name in rule_layers(project_root):
         kept, attempted = load_rules_with_attempted(rules_dir)
         for name, filename in attempted.items():
             if layer_name == "project" and name in owner and owner[name] != "project":
@@ -173,7 +176,18 @@ def load_rules_layered(project_root: str | None = None) -> RuleSet:
                     filename,
                 )
                 continue
-            merged[name] = rule
+            resolved[name] = ResolvedRule(
+                rule, layer_name, os.path.join(rules_dir, filename)
+            )
+    return resolved
+
+
+def load_rules_layered(project_root: str | None = None) -> RuleSet:
+    """Load rules from every layer, uncached, with the ownership rule of
+    `resolve_rules_layered`."""
+    merged = {
+        name: entry.rule for name, entry in resolve_rules_layered(project_root).items()
+    }
     return RuleSet(rules=tuple(_drop_dangling_refs(merged).values()))
 
 

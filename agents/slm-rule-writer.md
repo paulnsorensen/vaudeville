@@ -297,13 +297,7 @@ Target: **>90% accuracy**. If low:
 - Check for ambiguous test cases
 - Ensure labels are consistent
 
-### 6. Tune the threshold
-
-Run `uv run python -m vaudeville.eval --threshold-sweep` to find the optimal
-confidence threshold for your rule. Set `threshold:` in the rule YAML to the
-best value that maintains ≥95% precision.
-
-### 7. Test end-to-end
+### 6. Test end-to-end
 
 Verify: daemon running → hook fires → rule classifies → action triggers at the chosen tier. Confirm the user-visible output matches the tier:
 - `shadow` → only `[vaudeville:debug]` line in stderr
@@ -337,10 +331,9 @@ label conventions, context field usage, and test case patterns:
 ## Deliverables
 
 For each rule created, deliver:
-1. Rule YAML in the target rules directory (with `event:` and `threshold:` fields set)
+1. Rule YAML in the target rules directory (with `event:` field set)
 2. Test cases YAML (minimum 10 cases, balanced labels)
 3. Eval results showing >90% accuracy
-4. Threshold sweep results justifying the chosen threshold
 
 ## What This Agent Does NOT Do
 

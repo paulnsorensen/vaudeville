@@ -95,13 +95,6 @@ test_cases:                  # eval fixtures for `uv run python -m vaudeville.ev
 A `type: rewrite` rule replaces `outcomes`/`on`/`reasons` with `target` (a
 list of `tool_input.*` field paths to rewrite) and has no `test_cases`.
 
-### Context sources
-
-Rules extract text to classify from hook input via `context` entries:
-
-- `field: <json.path>` — dot-notation path into the hook JSON (e.g., `last_assistant_message`, `tool_input.body`)
-- `file: <path>` — read from disk (relative paths resolve from plugin root)
-
 ## Designing new rules
 
 Before writing a YAML, run the impact filter:
@@ -120,7 +113,6 @@ Use `vaudeville:add-hook` (which routes to `vaudeville:slm-rule-writer` for sema
 | Add a new rule | `vaudeville:add-hook` |
 | Tune an existing rule against test cases | `vaudeville tune <name>` (or `/tune`) |
 | Check eval accuracy | `uv run python -m vaudeville.eval --rule <name>` |
-| Sweep thresholds | `uv run python -m vaudeville.eval --threshold-sweep` |
 | Promote/demote based on runtime data | `/tier-advisor` then `/rule-admin` |
 | Audit rule design (find useless rules) | `/rule-audit` |
 | Suggest hooks from your session history | `/hook-suggester` |

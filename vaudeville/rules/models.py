@@ -3,13 +3,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal, Union, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from .actions import Action
 
-VALID_TIERS: tuple[str, ...] = ("disabled", "shadow", "log", "warn", "block")
+Tier = Literal["disabled", "shadow", "log", "warn", "block"]
+
+VALID_TIERS: tuple[Tier, ...] = get_args(Tier)
+
+
+def _check_tier(value: object, rule_name: object) -> object:
+    if value not in VALID_TIERS:
+        raise ValueError(
+            f"rule {rule_name!r}: invalid tier {value!r}, must be one of {VALID_TIERS}"
+        )
+    return value
+
 
 # Rule-level keys that would let a rule carry command argv directly. Only a
 # `run` action may reference a command, and only by name (AC-12).
@@ -40,17 +59,14 @@ class DecideRule(BaseModel):
     reason: Literal["text"] | None = None
     reasons: dict[str, str] | None = None
     on: dict[str, Action] = Field(default_factory=dict)
-    tier: str = "block"
+    tier: Tier = "block"
     draft: bool = False
     test_cases: list[DecideTestCase] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def _validate_tier(self) -> "DecideRule":
-        if self.tier not in VALID_TIERS:
-            raise ValueError(
-                f"rule {self.name!r}: invalid tier {self.tier!r}, must be one of {VALID_TIERS}"
-            )
-        return self
+    @field_validator("tier", mode="before")
+    @classmethod
+    def _validate_tier(cls, value: object, info: ValidationInfo) -> object:
+        return _check_tier(value, info.data.get("name", "?"))
 
     @model_validator(mode="after")
     def _validate_typesafe_reason(self) -> "DecideRule":
@@ -108,16 +124,13 @@ class RewriteRule(BaseModel):
     model: str | None = None
     prompt: str
     target: list[str] = Field(min_length=1)
-    tier: str = "block"
+    tier: Tier = "block"
     draft: bool = False
 
-    @model_validator(mode="after")
-    def _validate_tier(self) -> "RewriteRule":
-        if self.tier not in VALID_TIERS:
-            raise ValueError(
-                f"rule {self.name!r}: invalid tier {self.tier!r}, must be one of {VALID_TIERS}"
-            )
-        return self
+    @field_validator("tier", mode="before")
+    @classmethod
+    def _validate_tier(cls, value: object, info: ValidationInfo) -> object:
+        return _check_tier(value, info.data.get("name", "?"))
 
     @model_validator(mode="after")
     def _validate_target_no_bash(self) -> "RewriteRule":

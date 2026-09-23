@@ -33,6 +33,7 @@ from .models import (
     RewriteRule,
     Rule,
     RuleSet,
+    Tier,
     parse_rule,
 )
 from .policy import (
@@ -54,6 +55,7 @@ __all__ = [
     "RewriteRule",
     "Rule",
     "RuleSet",
+    "Tier",
     "VALID_TIERS",
     "parse_rule",
     "load_layered",

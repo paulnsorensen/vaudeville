@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from vaudeville.rules.actions import ActionName
+from vaudeville.rules.models import Tier
 from vaudeville.rules.policy import SILENT_TIER_ALLOWED, WARN_DOWNGRADES
 
-SILENT_TIERS = frozenset({"shadow", "log"})
+SILENT_TIERS: frozenset[Tier] = frozenset({"shadow", "log"})
 
 
 def apply_tier_ceiling(
-    action_name: ActionName, tier: str
+    action_name: ActionName, tier: Tier
 ) -> tuple[ActionName, str | None]:
     """Return (effective_action_name, downgrade_reason_or_None).
 

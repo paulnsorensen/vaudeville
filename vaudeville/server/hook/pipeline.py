@@ -302,6 +302,11 @@ def _evaluate_rule(
         if escalate_target is not None:
             dispatch_rule = escalate_target
             action_obj = escalate_action
+        if action_name == "escalate":
+            # Escalation is one hop: a nested escalate resolves to allow. The
+            # tier ceiling kept `escalate`, so it set no reason to join.
+            action_name, message = "allow", ""
+            escalate_ceiling_reason = "escalate:one-hop"
 
     if action_name == "feedback":
         message = with_origin_label(dispatch_rule.name, message)

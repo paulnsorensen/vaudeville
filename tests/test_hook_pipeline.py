@@ -713,6 +713,52 @@ tier: warn
         assert rows[0]["downgrade"]
         assert "tier:warn" in rows[0]["downgrade"]
 
+    def test_nested_escalate_allows_and_logs_one_hop_downgrade(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F17: an escalate target that maps to `escalate` resolves to allow
+        and still writes the outer rule's decision record (AC-21)."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        for name, on_violation, matcher in (
+            ("outer-gate", "{action: escalate, rule: escalate-target}", "Write"),
+            ("escalate-target", "{action: escalate, rule: third-gate}", "Write"),
+            ("third-gate", "block", "Read"),
+        ):
+            _write_rule(
+                tmp_path,
+                name,
+                f"""
+type: decide
+name: {name}
+event: PreToolUse
+matcher: {matcher}
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {on_violation}
+tier: block
+""",
+            )
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+            )
+        finally:
+            logger.close()
+
+        assert result == {"stdout": "{}", "exit_code": 0}
+        time.sleep(0.05)
+        lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        rows = [json.loads(line) for line in lines]
+        outer = [r for r in rows if r["rule"] == "outer-gate"]
+        assert len(outer) == 1
+        assert outer[0]["action"] == "allow"
+        assert outer[0]["downgrade"] == "escalate:one-hop"
+
 
 STOP_RULE_YAML = """
 type: decide

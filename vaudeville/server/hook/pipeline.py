@@ -8,8 +8,10 @@ and appends a decision record per evaluated rule to the event log.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 import time
 from collections.abc import Callable, Mapping
 
@@ -511,7 +513,7 @@ def _do_rewrite(
     new_text = rewrite_outcome.value
 
     def _log(record: dict[str, object]) -> None:
-        logger.info("rewrite effect for rule %r: %r", rule.name, record)
+        _log_rewrite_effect(rule.name, record)
 
     downgraded = rewrite_or_feedback(event, new_text, rule_name=rule.name, log=_log)
     if downgraded is not None:
@@ -527,6 +529,39 @@ def _do_rewrite(
     if action_name != "rewrite":
         return action_name, new_text, None, reason
     return "rewrite", new_text, updated, None
+
+
+def _log_rewrite_effect(rule_name: str, record: dict[str, object]) -> None:
+    """Log a rewrite effect record without its raw tool-input values (F21).
+
+    INFO carries the path, value lengths, and a sha256 prefix. The full
+    record goes to DEBUG only when `VAUDEVILLE_DEBUG=1`, because tool input
+    can hold secrets.
+    """
+    if os.environ.get("VAUDEVILLE_DEBUG") == "1":
+        logger.debug("rewrite effect for rule %r: %r", rule_name, record)
+    if "path" not in record:
+        logger.info("rewrite effect for rule %r: %r", rule_name, record)
+        return
+    before_len, before_hash = _fingerprint(record.get("before"))
+    after_len, after_hash = _fingerprint(record.get("after"))
+    logger.info(
+        "rewrite effect for rule %r: path=%s before_len=%d before_sha256=%s "
+        "after_len=%d after_sha256=%s",
+        rule_name,
+        record["path"],
+        before_len,
+        before_hash,
+        after_len,
+        after_hash,
+    )
+
+
+def _fingerprint(value: object) -> tuple[int, str]:
+    if value is None:
+        return 0, "-"
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    return len(text), hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
 def _merge_downgrade(

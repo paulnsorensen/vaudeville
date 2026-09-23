@@ -7,6 +7,7 @@ AC-23, AC-24, plus unknown-harness and handler-exception fail-open rows.
 from __future__ import annotations
 
 import functools
+import hashlib
 import importlib
 import json
 import logging
@@ -212,8 +213,16 @@ tier: block
     assert not updated["content"].startswith("[vaudeville hook:")
     assert updated["file_path"] == "notes.txt"
     rewrite_logs = [r for r in caplog.records if "rewrite effect" in r.getMessage()]
-    assert any("'before': 'old text'" in r.getMessage() for r in rewrite_logs)
-    assert any("'after': 'sanitized text'" in r.getMessage() for r in rewrite_logs)
+    before_hash = hashlib.sha256(b"old text").hexdigest()[:12]
+    after_hash = hashlib.sha256(b"sanitized text").hexdigest()[:12]
+    # F21: INFO carries lengths and hashes of before/after, never raw values.
+    assert any(
+        "path=tool_input.content" in r.getMessage()
+        and f"before_len=8 before_sha256={before_hash}" in r.getMessage()
+        and f"after_len=14 after_sha256={after_hash}" in r.getMessage()
+        for r in rewrite_logs
+    )
+    assert not any("old text" in r.getMessage() for r in rewrite_logs)
 
 
 def test_ac9_rewrite_on_stop_event_downgrades_to_feedback_and_logs(

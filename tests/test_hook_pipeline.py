@@ -487,6 +487,95 @@ tier: block
         assert any("event/matcher mismatch" in r.getMessage() for r in caplog.records)
 
 
+REWRITE_GATE_YAML = """
+type: decide
+name: pipeline-rewrite-gate
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {action: rewrite, rule: rewrite-target}
+tier: block
+"""
+
+REWRITE_TARGET_YAML = """
+type: rewrite
+name: rewrite-target
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Rewrite.
+target: [tool_input.content]
+tier: block
+"""
+
+
+class TestRewriteLogRedaction:
+    """F21: rewrite logs keep raw tool-input values out of the INFO log."""
+
+    def _run(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-rewrite-gate", REWRITE_GATE_YAML)
+        _write_rule(tmp_path, "rewrite-target", REWRITE_TARGET_YAML)
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        patch_rewrite(monkeypatch, "REWRITTEN_SECRET_VALUE")
+        handle_hook_request(
+            _request(
+                tmp_path,
+                tool_input={"content": "API_KEY=hunter2secret", "file_path": ".env"},
+            ),
+            config=_CONFIG,
+            decide_fn=fn,
+        )
+
+    def test_info_log_has_lengths_and_hash_but_no_raw_values(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.delenv("VAUDEVILLE_DEBUG", raising=False)
+        caplog.set_level(logging.DEBUG, logger=pipeline_module.__name__)
+
+        self._run(tmp_path, monkeypatch)
+
+        assert "hunter2secret" not in caplog.text
+        assert "REWRITTEN_SECRET_VALUE" not in caplog.text
+        summary = [
+            r.getMessage()
+            for r in caplog.records
+            if r.levelno == logging.INFO and "tool_input.content" in r.getMessage()
+        ]
+        assert len(summary) == 1
+        assert "before_len=21" in summary[0]
+        assert "after_len=22" in summary[0]
+        assert "sha256=" in summary[0]
+
+    def test_debug_env_logs_full_values(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setenv("VAUDEVILLE_DEBUG", "1")
+        caplog.set_level(logging.DEBUG, logger=pipeline_module.__name__)
+
+        self._run(tmp_path, monkeypatch)
+
+        assert "hunter2secret" in caplog.text
+        assert "REWRITTEN_SECRET_VALUE" in caplog.text
+
+    def test_fingerprint_marks_a_missing_value_and_hashes_structured_values(
+        self,
+    ) -> None:
+        assert pipeline_module._fingerprint(None) == (0, "-")
+        length, digest = pipeline_module._fingerprint({"k": "v"})
+        assert length == len('{"k": "v"}')
+        assert len(digest) == 12
+
+
 class TestEscalateDispatch:
     """F9: post-escalate branches dispatch against the target's own action."""
 

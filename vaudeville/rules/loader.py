@@ -161,9 +161,34 @@ def load_rules_layered(project_root: str | None = None) -> RuleSet:
                 )
                 continue
             owner[name] = layer_name
-            if name in kept:
-                merged[name] = kept[name]
+            rule = kept.get(name)
+            if rule is None:
+                continue
+            if layer_name == "project" and _unscoped_rewrite(rule):
+                logger.warning(
+                    "[vaudeville] Skipping project rule %r in %s (file %s): a "
+                    "project rewrite rule needs a matcher that is not an MCP tool",
+                    name,
+                    rules_dir,
+                    filename,
+                )
+                continue
+            merged[name] = rule
     return RuleSet(rules=tuple(_drop_dangling_refs(merged).values()))
+
+
+_TOOL_EVENTS = ("PreToolUse", "PostToolUse")
+
+
+def _unscoped_rewrite(rule: DecideRule | RewriteRule) -> bool:
+    """A project rewrite with an MCP matcher, or with no matcher on a tool
+    event, can reach tools whose input the target guard cannot vet. A
+    rewrite on an event with no tool input only downgrades to feedback."""
+    if not isinstance(rule, RewriteRule):
+        return False
+    if rule.matcher is None:
+        return rule.event in _TOOL_EVENTS
+    return "mcp__" in rule.matcher
 
 
 _REF_TYPES: dict[str, type[DecideRule] | type[RewriteRule]] = {

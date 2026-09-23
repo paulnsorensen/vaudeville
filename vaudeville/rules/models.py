@@ -64,14 +64,19 @@ class DecideRule(BaseModel):
 
 _TOOL_INPUT_PREFIX = "tool_input."
 
+# Leaves that route I/O or execute code; a rewrite must not redirect them.
+_FORBIDDEN_IO_KEYS: tuple[str, ...] = (
+    "file_path",
+    "url",
+    "path",
+    "code",
+    "script",
+    "query",
+)
 
-def _target_is_bash_command(target: str) -> bool:
-    """Return True when `target` resolves to a forbidden argv leaf
-    (`argv`, `command`, or `commands`) directly under `tool_input.`, a
-    dotted subpath under one, or any path ending in such a leaf. Checked
-    unconditionally, regardless of matcher.
-    """
-    for leaf in _FORBIDDEN_ARGV_KEYS:
+
+def _target_has_leaf(target: str, leaves: tuple[str, ...]) -> bool:
+    for leaf in leaves:
         full = _TOOL_INPUT_PREFIX + leaf
         if (
             target == full
@@ -80,6 +85,15 @@ def _target_is_bash_command(target: str) -> bool:
         ):
             return True
     return False
+
+
+def _target_is_bash_command(target: str) -> bool:
+    """Return True when `target` resolves to a forbidden argv leaf
+    (`argv`, `command`, or `commands`) directly under `tool_input.`, a
+    dotted subpath under one, or any path ending in such a leaf. Checked
+    unconditionally, regardless of matcher.
+    """
+    return _target_has_leaf(target, _FORBIDDEN_ARGV_KEYS)
 
 
 class RewriteRule(BaseModel):
@@ -116,6 +130,11 @@ class RewriteRule(BaseModel):
             if _target_is_bash_command(target):
                 raise ValueError(
                     f"rule {self.name!r}: target {target!r} resolves to a Bash command "
+                    "and cannot be rewritten"
+                )
+            if _target_has_leaf(target, _FORBIDDEN_IO_KEYS):
+                raise ValueError(
+                    f"rule {self.name!r}: target {target!r} routes I/O or executes "
                     "and cannot be rewritten"
                 )
         return self

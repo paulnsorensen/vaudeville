@@ -63,6 +63,35 @@ class TestUnionDiscrimination:
             )
 
 
+class TestRewriteTargetGuard:
+    @pytest.mark.parametrize(
+        "target",
+        [
+            "tool_input.file_path",
+            "tool_input.url",
+            "tool_input.path",
+            "tool_input.code",
+            "tool_input.script",
+            "tool_input.query",
+            "tool_input.args.url",
+            "tool_input.code.body",
+        ],
+    )
+    def test_io_or_exec_target_rejected(self, target: str) -> None:
+        """F22: a rewrite must not redirect where a tool reads, writes, or runs."""
+        with pytest.raises(ValidationError, match="routes I/O or executes"):
+            parse_rule(
+                {
+                    "type": "rewrite",
+                    "name": "redirect",
+                    "event": "PreToolUse",
+                    "matcher": "Write",
+                    "prompt": "p",
+                    "target": ["tool_input.content", target],
+                }
+            )
+
+
 class TestActionParameters:
     @pytest.mark.parametrize(
         "action",

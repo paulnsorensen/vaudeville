@@ -200,6 +200,61 @@ class TestProjectLayerTrust:
         assert "git-gate" in ruleset.by_name()
 
 
+class TestProjectRewriteScope:
+    """F22: a project rewrite must name a non-MCP tool matcher."""
+
+    def _load(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layer: str, rule: Any
+    ) -> RuleSet:
+        home = tmp_path / "home"
+        project = tmp_path / "project"
+        (home / ".vaudeville" / "rules").mkdir(parents=True)
+        (project / ".vaudeville" / "rules").mkdir(parents=True)
+        target = home if layer == "user" else project
+        _write_rule(target / ".vaudeville" / "rules", "trim.yaml", rule)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "empty-plugin-root"))
+        return load_rules_layered(str(project))
+
+    @pytest.mark.parametrize("matcher", [None, "mcp__shell__exec", "Write|mcp__.*"])
+    def test_unscoped_project_rewrite_skipped_and_logged(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        matcher: str | None,
+    ) -> None:
+        rule = {k: v for k, v in REWRITE_RULE.items() if k != "matcher"}
+        if matcher is not None:
+            rule["matcher"] = matcher
+        with caplog.at_level("WARNING"):
+            ruleset = self._load(tmp_path, monkeypatch, "project", rule)
+        assert "trim" not in ruleset.by_name()
+        assert "trim" in caplog.text
+
+    def test_scoped_project_rewrite_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ruleset = self._load(tmp_path, monkeypatch, "project", REWRITE_RULE)
+        assert "trim" in ruleset.by_name()
+
+    def test_user_rewrite_without_matcher_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rule = {k: v for k, v in REWRITE_RULE.items() if k != "matcher"}
+        ruleset = self._load(tmp_path, monkeypatch, "user", rule)
+        assert "trim" in ruleset.by_name()
+
+    def test_project_rewrite_without_matcher_on_non_tool_event_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A Stop rewrite has no tool input to redirect; it downgrades to feedback."""
+        rule = {k: v for k, v in REWRITE_RULE.items() if k != "matcher"}
+        rule["event"] = "Stop"
+        ruleset = self._load(tmp_path, monkeypatch, "project", rule)
+        assert "trim" in ruleset.by_name()
+
+
 class TestReferenceValidation:
     """F10: an escalate/rewrite reference must resolve to a rule of the right type."""
 

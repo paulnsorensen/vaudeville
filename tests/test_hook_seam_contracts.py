@@ -1125,3 +1125,88 @@ tier: block
     lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
     record = json.loads(lines[-1])
     assert "add-context->warn" in record["downgrade"]
+
+
+def _write_warn_and_context_rules(tmp_path: Path, event: str) -> None:
+    for name, action in (
+        ("warn-gate", "warn"),
+        ("context-gate", '{action: add-context, text: "branch: main"}'),
+    ):
+        _write_rule(
+            tmp_path,
+            name,
+            f"""
+type: decide
+name: {name}
+event: {event}
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {action}
+tier: block
+""",
+        )
+
+
+def _run_logged(
+    tmp_path: Path, request: dict[str, object]
+) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
+    from vaudeville.server.event_log import EventLogger
+    from vaudeville.server.log_config import LogConfig
+
+    fn, _ = _decide_fn('{"outcome": "violation"}')
+    logs_dir = tmp_path / "logs"
+    logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+    try:
+        result = handle_hook_request(
+            request, config=_CONFIG, decide_fn=fn, event_logger=logger
+        )
+    finally:
+        logger.close()
+    time.sleep(0.05)
+    lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
+    rows = {str(r["rule"]): r for r in map(json.loads, lines)}
+    return dict(json.loads(str(result["stdout"]))), rows
+
+
+def test_ac16_warn_plus_add_context_puts_context_on_the_wire(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_KEY", "x")
+    _write_warn_and_context_rules(tmp_path, "PreToolUse")
+
+    payload, rows = _run_logged(tmp_path, _request(tmp_path))
+
+    assert payload["systemMessage"]
+    assert payload["hookSpecificOutput"] == {
+        "hookEventName": "PreToolUse",
+        "additionalContext": "branch: main",
+    }
+    assert rows["context-gate"]["action"] == "add-context"
+    assert rows["context-gate"]["downgrade"] is None
+    assert rows["warn-gate"]["downgrade"] is None
+
+
+def test_ac16_context_beside_warn_on_notification_logs_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_KEY", "x")
+    _write_warn_and_context_rules(tmp_path, "Notification")
+    request: dict[str, object] = {
+        "op": "hook",
+        "harness": "claude-code",
+        "event": "Notification",
+        "cwd": str(tmp_path),
+        "payload": {
+            "hook_event_name": "Notification",
+            "tool_input": {"command": "some notification text"},
+            "cwd": str(tmp_path),
+        },
+    }
+
+    payload, rows = _run_logged(tmp_path, request)
+
+    assert "hookSpecificOutput" not in payload
+    assert rows["context-gate"]["downgrade"] == "add-context->dropped on Notification"
+    assert rows["warn-gate"]["downgrade"] is None

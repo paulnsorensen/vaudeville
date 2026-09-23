@@ -216,6 +216,46 @@ class TestDegrade:
         ]
 
 
+class TestContextBesidePrimary:
+    """F15: add-context text survives a non-add-context primary (AC-16)."""
+
+    def test_warn_carries_context_in_additional_context(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(
+            _outcome("warn", "PreToolUse", message="careful", context="branch: main")
+        )
+        assert _stdout_json(result) == {
+            "systemMessage": "careful",
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": "branch: main",
+            },
+        }
+        assert result["downgrades"] == []
+
+    def test_feedback_appends_context_after_its_own_text(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(
+            _outcome("feedback", "Stop", message="fix it", context="branch: main")
+        )
+        payload = _stdout_json(result)
+        assert payload["hookSpecificOutput"] == {
+            "hookEventName": "Stop",
+            "additionalContext": "fix it\n\nbranch: main",
+        }
+        assert result["downgrades"] == []
+
+    def test_event_without_context_channel_reports_dropped_context(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(
+            _outcome("warn", "Notification", message="careful", context="ctx")
+        )
+        assert _stdout_json(result) == {"systemMessage": "careful"}
+        assert result["downgrades"] == [
+            {"from": "add-context", "to": "dropped", "event": "Notification"}
+        ]
+
+
 class TestNormalize:
     def test_pre_tool_use_carries_tool_fields(self) -> None:
         adapter = ClaudeCodeAdapter()

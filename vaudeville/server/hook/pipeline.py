@@ -169,9 +169,6 @@ def _run_pipeline(
     for dropped_action, reason in result.dropped:
         _log_dropped(event_logger, dropped_action, reason)
 
-    for item in result.context_items:
-        _log_evaluated(event_logger, item, downgrade=item.downgrade)
-
     for run_action in result.run_actions:
         if run_action.command:
             run_named_command(
@@ -194,11 +191,23 @@ def _run_pipeline(
         context=result.context,
     )
     rendered: RenderResult = adapter.render(outcome)
+    context_drops = [
+        d
+        for d in rendered["downgrades"]
+        if d.get("from") == "add-context" and d.get("to") == "dropped"
+    ]
+    primary_downgrades = [d for d in rendered["downgrades"] if d not in context_drops]
     _log_evaluated(
         event_logger,
         result.primary,
-        downgrade=_merge_downgrade(result.primary.downgrade, rendered["downgrades"]),
+        downgrade=_merge_downgrade(result.primary.downgrade, primary_downgrades),
     )
+    for item in result.context_items:
+        _log_evaluated(
+            event_logger,
+            item,
+            downgrade=_merge_downgrade(item.downgrade, context_drops),
+        )
     return _to_wire(rendered)
 
 

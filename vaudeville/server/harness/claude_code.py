@@ -85,6 +85,15 @@ def _json(payload: dict[str, object]) -> dict[str, object]:
     return {"stdout": json.dumps(payload), "exit_code": 0}
 
 
+def _with_additional_context(stdout: str, event: str, context: str) -> str:
+    """Put merged add-context text beside a primary action's payload (AC-16)."""
+    body = json.loads(stdout)
+    specific = body.setdefault("hookSpecificOutput", {"hookEventName": event})
+    existing = specific.get("additionalContext")
+    specific["additionalContext"] = f"{existing}\n\n{context}" if existing else context
+    return json.dumps(body)
+
+
 class ClaudeCodeAdapter:
     """Adapter for the Claude Code harness."""
 
@@ -121,8 +130,18 @@ class ClaudeCodeAdapter:
             self._degrade(outcome, name) if method is None else method(outcome)
         )
         downgrades = [downgrade] if downgrade is not None else []
+        stdout = str(payload["stdout"])
+        if outcome.context and name != "add-context":
+            if outcome.event in _ADDITIONAL_CONTEXT_EVENTS:
+                stdout = _with_additional_context(
+                    stdout, outcome.event, outcome.context
+                )
+            else:
+                downgrades.append(
+                    {"from": "add-context", "to": "dropped", "event": outcome.event}
+                )
         return {
-            "stdout": str(payload["stdout"]),
+            "stdout": stdout,
             "exit_code": int(payload["exit_code"]),  # type: ignore[call-overload]
             "downgrades": downgrades,
         }

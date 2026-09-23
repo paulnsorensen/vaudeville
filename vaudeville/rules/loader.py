@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _rule_filenames(rules_dir: str) -> list[str]:
+def rule_filenames(rules_dir: str) -> list[str]:
     try:
         names = os.listdir(rules_dir)
     except OSError:
@@ -78,7 +78,7 @@ def load_rules_with_attempted(
     """
     rules: dict[str, DecideRule | RewriteRule] = {}
     attempted: dict[str, str] = {}
-    for filename in _rule_filenames(rules_dir):
+    for filename in rule_filenames(rules_dir):
         path = os.path.join(rules_dir, filename)
         attempted_name = _attempted_rule_name(path)
         try:

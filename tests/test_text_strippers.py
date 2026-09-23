@@ -8,9 +8,9 @@ from vaudeville.core.truncation import (
     CHARS_PER_TOKEN,
     MAX_INPUT_TOKENS,
     _strip_code_blocks,
-    _truncate_for_event,
     front_truncate,
     prepare_text,
+    truncate_for_event,
 )
 
 
@@ -123,23 +123,23 @@ class TestFrontTruncate:
 class TestTruncateForEvent:
     def test_stop_uses_sandwich_truncation(self) -> None:
         text = "START" + "x" * 200 + "END"
-        result = _truncate_for_event(text, "Stop", max_tokens=20)
+        result = truncate_for_event(text, "Stop", max_tokens=20)
         assert result.endswith("END")
         assert result.startswith("START")
         assert "[...]" in result
 
     def test_pretooluse_uses_front_truncation(self) -> None:
         text = "START" + "x" * 100 + "END"
-        result = _truncate_for_event(text, "PreToolUse", max_tokens=5)
+        result = truncate_for_event(text, "PreToolUse", max_tokens=5)
         assert result.startswith("START")
         assert "END" not in result
 
     def test_unknown_event_defaults_to_back_truncation(self) -> None:
         text = "START" + "x" * 100 + "END"
-        result = _truncate_for_event(text, "PostToolUse", max_tokens=5)
+        result = truncate_for_event(text, "PostToolUse", max_tokens=5)
         assert result.endswith("END")
         assert "START" not in result
 
     def test_short_text_unchanged(self) -> None:
-        assert _truncate_for_event("hi", "Stop") == "hi"
-        assert _truncate_for_event("hi", "PreToolUse") == "hi"
+        assert truncate_for_event("hi", "Stop") == "hi"
+        assert truncate_for_event("hi", "PreToolUse") == "hi"

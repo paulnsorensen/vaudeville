@@ -6,7 +6,7 @@ import functools
 import os
 from collections import OrderedDict
 
-from .loader import _rule_filenames, layered_search_path, load_rules_layered
+from .loader import layered_search_path, load_rules_layered, rule_filenames
 from .models import RuleSet
 
 _Fingerprint = tuple[tuple[str, int], ...]
@@ -39,7 +39,7 @@ def project_root_for(cwd: str) -> str:
 def _fingerprint(project_root: str | None) -> _Fingerprint:
     stats: list[tuple[str, int]] = []
     for rules_dir in layered_search_path(project_root):
-        for name in _rule_filenames(rules_dir):
+        for name in rule_filenames(rules_dir):
             path = os.path.join(rules_dir, name)
             try:
                 stats.append((path, os.stat(path).st_mtime_ns))

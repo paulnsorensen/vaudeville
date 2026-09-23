@@ -15,8 +15,8 @@ import os
 import time
 from collections.abc import Callable, Mapping
 
+from vaudeville.core import prepare_text, truncate_for_event
 from vaudeville.core.protocol import GENERIC_ALLOW
-from vaudeville.core.truncation import _truncate_for_event, prepare_text
 from vaudeville.rules import (
     Action,
     DecideRule,
@@ -129,7 +129,7 @@ def _run_pipeline(
     payload = request.get("payload")
     raw = payload if isinstance(payload, Mapping) else {}
     event: HookEvent = adapter.normalize(raw)
-    text = _truncate_for_event(prepare_text(event.text, event.event), event.event)
+    text = truncate_for_event(prepare_text(event.text, event.event), event.event)
     event = event.model_copy(update={"text": text})
 
     ruleset: RuleSet = load_layered(project_root_for(event.cwd) if event.cwd else None)

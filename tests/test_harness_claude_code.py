@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 
+from vaudeville.core.protocol import GENERIC_ALLOW
 from vaudeville.rules import Action, ActionName
 from vaudeville.server.harness import Outcome, RenderResult
 from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
@@ -45,13 +46,29 @@ class TestRenderMatrix:
     def test_allow(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("allow", "PreToolUse"))
-        assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
+        assert result == {"stdout": "", "exit_code": 0, "downgrades": []}
         assert result["downgrades"] == []
+
+    def test_render_allow_matches_the_runner_fail_open_allow(self) -> None:
+        """One allow shape on the wire: empty stdout, exit 0."""
+        adapter = ClaudeCodeAdapter()
+        assert adapter.render_allow() == {**GENERIC_ALLOW, "downgrades": []}
+        assert adapter.render(_outcome("allow", "Stop"))["stdout"] == ""
+
+    def test_log_with_context_puts_context_on_the_wire(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(_outcome("log", "PreToolUse", context="branch: main"))
+        assert _stdout_json(result) == {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": "branch: main",
+            }
+        }
 
     def test_log(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("log", "PostToolUse"))
-        assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
+        assert result == {"stdout": "", "exit_code": 0, "downgrades": []}
 
     def test_warn(self) -> None:
         adapter = ClaudeCodeAdapter()
@@ -126,7 +143,7 @@ class TestRenderMatrix:
     def test_escalate(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("escalate", "PreToolUse"))
-        assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
+        assert result == {"stdout": "", "exit_code": 0, "downgrades": []}
         assert result["downgrades"] == []
 
     def test_ask(self) -> None:
@@ -159,7 +176,7 @@ class TestRenderMatrix:
     def test_run(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("run", "PostToolUse"))
-        assert result == {"stdout": "{}", "exit_code": 0, "downgrades": []}
+        assert result == {"stdout": "", "exit_code": 0, "downgrades": []}
         assert result["downgrades"] == []
 
 

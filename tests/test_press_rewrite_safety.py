@@ -248,7 +248,7 @@ tier: block
 
         # `run_rewrite` returning None (discarded) makes the action fall
         # back to allow, since `_do_rewrite` treats None as "no rewrite".
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
 
 class TestModelInputContainsDelimiterOnce:

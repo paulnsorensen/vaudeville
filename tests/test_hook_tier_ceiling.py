@@ -48,7 +48,7 @@ class TestTierCeiling:
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
         assert recorder.call_count == 0
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
     def test_shadow_logs_without_action(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -71,7 +71,7 @@ class TestTierCeiling:
             logger.close()
 
         assert recorder.call_count == 1
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
         import json
         import time
@@ -97,7 +97,7 @@ class TestTierCeiling:
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
         assert run_recorder.calls == []
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
     def test_warn_caps_block(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -201,7 +201,7 @@ tier: disabled
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
         assert calls == []
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
     def test_warn_tier_rewrite_target_downgrades_to_warn(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -378,7 +378,7 @@ tier: block
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
         assert run_recorder.calls == ["notify"]
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
     def test_block_tier_denies(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

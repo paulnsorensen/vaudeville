@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 
+from vaudeville.core.protocol import GENERIC_ALLOW
+
 from .event_log import EventLogger
 from .hook import handle_hook_request
 
 logger = logging.getLogger(__name__)
-
-_ALLOW = {"stdout": "", "exit_code": 0}
 
 
 def handle_request(
@@ -27,8 +27,8 @@ def handle_request(
             response = handle_hook_request(request, event_logger=event_logger)
         else:
             logger.warning("Unknown op %r — allowing", op)
-            response = dict(_ALLOW)
+            response = dict(GENERIC_ALLOW)
     except Exception as exc:
         logger.error("Request error: %s — allowing", exc)
-        response = dict(_ALLOW)
+        response = dict(GENERIC_ALLOW)
     return json.dumps(response).encode() + b"\n"

@@ -119,7 +119,7 @@ tier: block
         # The user-layer RewriteRule wins and shadows the project decide
         # rule of the same name; since no decide rule fires, the pipeline
         # neither crashes nor blocks the request -- it falls open (allow).
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
 
 class TestOnOutcomeNotInOutcomes:
@@ -159,7 +159,7 @@ tier: block
         # The rule loads without error even though its `on:` key can never
         # be produced by `outcomes:`. Since "violation" has no `on:` entry,
         # the pipeline must fall open (allow), not crash.
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
     def test_on_key_outside_outcomes_is_reachable_if_a_decide_fn_defies_the_schema(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

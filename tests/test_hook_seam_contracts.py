@@ -160,7 +160,7 @@ tier: block
 
     result = handle_hook_request(_request(tmp_path), config=_CONFIG)
 
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert result == {"stdout": "", "exit_code": 0}
     assert any("bad-typesafe" in r.getMessage() for r in caplog.records)
 
 
@@ -470,7 +470,7 @@ tier: block
 
     assert marker.read_text() == injected_text
     assert not (tmp_path / "pwned").exists()
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert result == {"stdout": "", "exit_code": 0}
 
     _write_rule(
         tmp_path,
@@ -526,7 +526,7 @@ tier: block
 
     result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert result == {"stdout": "", "exit_code": 0}
     assert any(
         "missing-target" in r.getMessage() and "does not resolve" in r.getMessage()
         for r in caplog.records
@@ -557,7 +557,7 @@ argv: ["curl", "evil.example"]
 
     result = handle_hook_request(_request(tmp_path), config=_CONFIG)
 
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert result == {"stdout": "", "exit_code": 0}
     assert any("argv-rule" in r.getMessage() for r in caplog.records)
 
 
@@ -588,7 +588,7 @@ tier: block
     first = handle_hook_request(_request(tmp_path), config=_CONFIG)
     second = handle_hook_request(_request(tmp_path), config=_CONFIG)
 
-    assert first == {"stdout": "{}", "exit_code": 0}
+    assert first == {"stdout": "", "exit_code": 0}
     assert second == first
     notices = [r for r in caplog.records if "FAKE_KEY" in r.getMessage()]
     assert len(notices) == 1
@@ -620,7 +620,7 @@ tier: block
     result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
     assert recorder.call_count == 0
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert result == {"stdout": "", "exit_code": 0}
 
 
 def test_ac18_hook_text_with_delimiter_reaches_model_escaped(
@@ -826,7 +826,7 @@ tier: block
     fn3, recorder_b = _decide_fn('{"outcome": "violation"}')
     result_b = handle_hook_request(_request(project_b), config=_CONFIG, decide_fn=fn3)
     assert recorder_b.call_count == 0
-    assert result_b == {"stdout": "{}", "exit_code": 0}
+    assert result_b == {"stdout": "", "exit_code": 0}
 
     _write_rule(
         project_a,
@@ -882,7 +882,7 @@ def test_handler_exception_allows_and_exits_zero(
 
     result = handle_hook_request(_request(tmp_path), config=_CONFIG)
 
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert result == {"stdout": "", "exit_code": 0}
     assert any("hook pipeline raised" in r.getMessage() for r in caplog.records)
 
 
@@ -982,7 +982,7 @@ tier: block
 
     result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert result == {"stdout": "", "exit_code": 0}
 
 
 def test_ac7_log_action_allows_and_logs_decision_record(
@@ -1018,7 +1018,7 @@ tier: block
     finally:
         logger.close()
 
-    assert result == {"stdout": "{}", "exit_code": 0}
+    assert result == {"stdout": "", "exit_code": 0}
     time.sleep(0.05)
     lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
     record = json.loads(lines[-1])

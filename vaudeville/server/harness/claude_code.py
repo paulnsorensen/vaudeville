@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 
-from vaudeville.core.protocol import HookResponse
+from vaudeville.core.protocol import GENERIC_ALLOW, HookResponse
 from vaudeville.server.harness import HookEvent, Outcome, RenderResult
 
 _Rendered = tuple[HookResponse, dict[str, str] | None]
@@ -89,7 +89,7 @@ def _json(payload: dict[str, object]) -> HookResponse:
 
 def _with_additional_context(stdout: str, event: str, context: str) -> str:
     """Put merged add-context text beside a primary action's payload (AC-16)."""
-    body = json.loads(stdout)
+    body = json.loads(stdout) if stdout else {}
     specific = body.setdefault("hookSpecificOutput", {"hookEventName": event})
     existing = specific.get("additionalContext")
     specific["additionalContext"] = f"{existing}\n\n{context}" if existing else context
@@ -158,11 +158,11 @@ class ClaudeCodeAdapter:
         return payload, downgrade
 
     def render_allow(self) -> RenderResult:
-        return {"stdout": "{}", "exit_code": 0, "downgrades": []}
+        return {**GENERIC_ALLOW, "downgrades": []}
 
     def _render_allow(self, outcome: Outcome) -> _Rendered:
         del outcome
-        return {"stdout": "{}", "exit_code": 0}, None
+        return GENERIC_ALLOW.copy(), None
 
     # `log`'s side effect belongs to the pipeline; the hook output is allow.
     _render_log = _render_allow

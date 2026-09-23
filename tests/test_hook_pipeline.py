@@ -71,7 +71,7 @@ class TestOnMap:
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
         assert recorder.call_count == 1
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
 
 class TestMatcher:
@@ -87,7 +87,7 @@ class TestMatcher:
         )
 
         assert recorder.call_count == 0
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
 
 class TestDecisionRecord:
@@ -146,7 +146,7 @@ class TestRequestDeadline:
             )
             elapsed = time.monotonic() - wall_start
 
-            assert result == {"stdout": "{}", "exit_code": 0}
+            assert result == {"stdout": "", "exit_code": 0}
             assert elapsed < 0.6
 
             time.sleep(0.05)
@@ -177,7 +177,7 @@ class TestRequestDeadline:
                 event_logger=logger,
             )
 
-            assert result == {"stdout": "{}", "exit_code": 0}
+            assert result == {"stdout": "", "exit_code": 0}
 
             time.sleep(0.05)
             lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
@@ -279,7 +279,7 @@ tier: block
             )
             elapsed = time.monotonic() - wall_start
 
-            assert result == {"stdout": "{}", "exit_code": 0}
+            assert result == {"stdout": "", "exit_code": 0}
             assert elapsed < 0.6
 
             time.sleep(0.05)
@@ -423,7 +423,7 @@ tier: block
         )
 
         assert "updatedInput" not in str(result["stdout"])
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
         assert any("event/matcher mismatch" in r.getMessage() for r in caplog.records)
 
     def test_escalate_target_matcher_mismatch_against_live_event_allows(
@@ -483,7 +483,7 @@ tier: block
         )
 
         assert calls.get("escalate-target", 0) == 0
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
         assert any("event/matcher mismatch" in r.getMessage() for r in caplog.records)
 
 
@@ -650,7 +650,7 @@ class TestRewritePerTarget:
             decide_fn=fn,
         )
 
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
         assert calls == []
         assert any("no string value" in r.getMessage() for r in caplog.records)
 
@@ -677,7 +677,7 @@ class TestRewritePerTarget:
             decide_fn=fn,
         )
 
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
 
 class TestEscalateDispatch:
@@ -788,7 +788,7 @@ tier: block
 
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
         assert run_recorder.calls == ["notify-target", "notify-target"]
 
 
@@ -844,7 +844,7 @@ tier: disabled
         )
 
         assert calls["escalate-target"] == 0
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
     def test_escalate_into_warn_tier_target_downgrades_block_to_warn(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -943,7 +943,7 @@ tier: block
         finally:
             logger.close()
 
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
         time.sleep(0.05)
         lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
         rows = [json.loads(line) for line in lines]
@@ -1044,7 +1044,7 @@ tier: block
         result = handle_hook_request(request, config=_CONFIG, decide_fn=fn)
 
         assert recorder.call_count == 0
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
 
 class TestAllowRendering:
@@ -1064,7 +1064,7 @@ class TestAllowRendering:
     def test_known_harness_no_match_uses_adapter_allow(self, tmp_path: Path) -> None:
         result = handle_hook_request(_request(tmp_path), config=_CONFIG)
 
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
 
 
 class TestRunFailureKeepsBlock:

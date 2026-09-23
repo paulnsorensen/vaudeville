@@ -231,7 +231,7 @@ class TestShadowTierAddContext:
 
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
 
-        assert result == {"stdout": "{}", "exit_code": 0}
+        assert result == {"stdout": "", "exit_code": 0}
         assert "shadow text" not in str(result["stdout"])
 
 

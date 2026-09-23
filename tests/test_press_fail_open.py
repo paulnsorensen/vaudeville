@@ -26,7 +26,7 @@ from _hook_helpers import decide_fn as _decide_fn
 from _hook_helpers import make_request as _request
 from _hook_helpers import write_rule as _write_rule
 
-_ALLOW = {"stdout": "{}", "exit_code": 0}
+_ALLOW = {"stdout": "", "exit_code": 0}
 
 
 def _matching_rule(tmp_path: Path) -> None:

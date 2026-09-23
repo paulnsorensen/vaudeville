@@ -76,6 +76,21 @@ def load_test_cases(
     }
 
 
+def _positive_outcomes(rule: DecideRule) -> set[str]:
+    """Outcomes whose `on:` action is not allow; falls back to `outcomes[0]`.
+
+    The eval harness scores a rule against its blocking outcomes, not
+    outcome list order (R6): an outcome with no `on:` entry, or an `on:`
+    entry mapped to `allow`, fails open and is not a positive.
+    """
+    positives = {
+        outcome
+        for outcome in rule.outcomes
+        if rule.on.get(outcome) is not None and rule.on[outcome].action != "allow"
+    }
+    return positives if positives else {rule.outcomes[0]}
+
+
 def _update_results(
     results: EvalResults,
     rule: DecideRule,
@@ -83,18 +98,30 @@ def _update_results(
     predicted_effective: str | None,
     text: str,
 ) -> None:
-    positive = rule.outcomes[0]
-    if expected == positive and predicted_effective == positive:
+    positives = _positive_outcomes(rule)
+    expected_positive = expected in positives
+    predicted_positive = predicted_effective in positives
+
+    if expected_positive and predicted_positive:
         results.tp += 1
-    elif expected != positive and predicted_effective != positive:
-        results.tn += 1
-    elif expected != positive and predicted_effective == positive:
+    elif expected_positive and not predicted_positive:
+        results.fn += 1
+        results.misclassified.append(
+            {"text": text, "actual": expected, "predicted": str(predicted_effective)}
+        )
+    elif not expected_positive and predicted_positive:
         results.fp += 1
         results.misclassified.append(
             {"text": text, "actual": expected, "predicted": str(predicted_effective)}
         )
+    elif expected == predicted_effective or predicted_effective is None:
+        # A fail-open `None` prediction is not a specific wrong label; it
+        # still counts as a correct non-block outcome.
+        results.tn += 1
     else:
-        results.fn += 1
+        # Both outcomes are non-positive but disagree (for example
+        # `ticket-instead` vs `clean`): a real mislabel, but not a false
+        # negative for the blocking outcome, so it is not counted as tn.
         results.misclassified.append(
             {"text": text, "actual": expected, "predicted": str(predicted_effective)}
         )

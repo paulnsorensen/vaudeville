@@ -208,3 +208,44 @@ class TestRunEvaluationsModelOverride:
         assert case_results == []
         # No predicted positives: precision is 0%, below the 95% gate.
         assert passed is False
+
+
+class TestUpdateResultsPositiveOutcomes:
+    """R6: the positive class is the `on:`-blocking outcome, not outcomes[0]."""
+
+    def test_non_positive_mismatch_is_misclassified_not_tn(self) -> None:
+        from vaudeville.eval import EvalResults, _update_results
+
+        rule_data = dict(_RULE)
+        rule_data["outcomes"] = ["violation", "ticket-instead", "clean"]
+        rule_data["on"] = {"violation": "block"}
+        rule = parse_rule(rule_data)
+        assert isinstance(rule, DecideRule)
+        results = EvalResults(rule=rule.name)
+
+        _update_results(results, rule, "ticket-instead", "clean", "text")
+
+        assert results.tn == 0
+        assert results.tp == 0
+        assert results.fp == 0
+        assert results.fn == 0
+        assert results.misclassified == [
+            {"text": "text", "actual": "ticket-instead", "predicted": "clean"}
+        ]
+
+    def test_reversed_outcome_order_scores_violation_as_positive(self) -> None:
+        from vaudeville.eval import EvalResults, _update_results
+
+        rule_data = dict(_RULE)
+        rule_data["outcomes"] = ["clean", "violation"]
+        rule_data["on"] = {"violation": "block"}
+        rule = parse_rule(rule_data)
+        assert isinstance(rule, DecideRule)
+        results = EvalResults(rule=rule.name)
+
+        _update_results(results, rule, "violation", "violation", "text")
+
+        assert results.tp == 1
+        assert results.tn == 0
+        assert results.fp == 0
+        assert results.fn == 0

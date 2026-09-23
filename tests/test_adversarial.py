@@ -34,6 +34,7 @@ from vaudeville.server import DaemonConfig, VaudevilleDaemon
 from vaudeville.server._handlers import handle_request
 from vaudeville.server.agents import decide
 from vaudeville.server.hook import pipeline as pipeline_module
+from vaudeville.server import user_config
 
 
 def _write_rule(rules_root: Path) -> None:
@@ -72,15 +73,35 @@ def _hook_payload(rules_root: Path, tool_input: dict[str, object]) -> dict[str, 
 
 def _patch_decide(
     monkeypatch: pytest.MonkeyPatch, output: str, delay: float = 0.0
-) -> None:
+) -> list[int]:
+    """Replace `default_decide` with a scripted model; returns its call log."""
+    calls: list[int] = []
+
     def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         del messages, info
+        calls.append(1)
         if delay:
             time.sleep(delay)
         return ModelResponse(parts=[TextPart(output)])
 
     fn = functools.partial(decide, model_override=FunctionModel(respond))
     monkeypatch.setattr(pipeline_module, "default_decide", fn)
+    return calls
+
+
+def _pin_fake_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Point `user_config.CONFIG_PATH` at a config listing the `fake` provider.
+
+    `CONFIG_PATH` binds `os.path.expanduser("~")` at import time, so
+    patching `HOME` after import (tests/conftest.py) never reaches it; a
+    real daemon request (`config=None`) would otherwise load whatever
+    `~/.vaudeville/config` the developer running the suite happens to have.
+    """
+    config_path = tmp_path / "vaudeville-config"
+    config_path.write_text(
+        "default_model: fake:model\nproviders:\n  fake:\n    key_env: FAKE_KEY\n"
+    )
+    monkeypatch.setattr(user_config, "CONFIG_PATH", str(config_path))
 
 
 def _make_daemon(
@@ -395,9 +416,10 @@ class TestShutdownRace:
     ) -> None:
         """A request dispatched before _stop_event is set must complete."""
         monkeypatch.setenv("FAKE_KEY", "x")
+        _pin_fake_config(monkeypatch, tmp_path)
         _write_rule(tmp_path)
         # Slow decide call so the request is in-flight during shutdown
-        _patch_decide(monkeypatch, "safe", delay=0.1)
+        calls = _patch_decide(monkeypatch, '{"outcome": "safe"}', delay=0.1)
 
         with (
             tempfile.NamedTemporaryFile(
@@ -458,6 +480,7 @@ class TestShutdownRace:
         assert not errors, f"In-flight request raised: {errors}"
         assert results, "In-flight request produced no response"
         assert results[0].get("exit_code") == 0, f"Unexpected response: {results[0]}"
+        assert len(calls) == 1, f"Expected 1 decide call, got {len(calls)}"
 
     def test_new_connection_rejected_after_socket_closed(self) -> None:
         """After daemon stops, the socket must be gone (no stale file)."""
@@ -656,8 +679,9 @@ class TestRequestLockContention:
     ) -> None:
         """10 simultaneous requests must all complete without deadlocking."""
         monkeypatch.setenv("FAKE_KEY", "x")
+        _pin_fake_config(monkeypatch, tmp_path)
         _write_rule(tmp_path)
-        _patch_decide(monkeypatch, "safe")
+        calls = _patch_decide(monkeypatch, '{"outcome": "safe"}')
 
         with (
             tempfile.NamedTemporaryFile(
@@ -705,6 +729,7 @@ class TestRequestLockContention:
 
         assert not errors, f"Concurrent requests raised errors: {errors}"
         assert len(responses) == 10, f"Expected 10 responses, got {len(responses)}"
+        assert len(calls) == 10, f"Expected 10 decide calls, got {len(calls)}"
 
     def test_concurrent_requests_run_in_parallel_not_serialized(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -789,8 +814,9 @@ class TestRequestLockContention:
     ) -> None:
         """Two requests whose decide sleeps 1s each finish in well under 2s."""
         monkeypatch.setenv("FAKE_KEY", "x")
+        _pin_fake_config(monkeypatch, tmp_path)
         _write_rule(tmp_path)
-        _patch_decide(monkeypatch, "safe", delay=1.0)
+        calls = _patch_decide(monkeypatch, '{"outcome": "safe"}', delay=1.0)
 
         with (
             tempfile.NamedTemporaryFile(
@@ -835,6 +861,52 @@ class TestRequestLockContention:
 
         assert len(responses) == 2
         assert elapsed < 1.5, f"2 concurrent 1s decides took {elapsed:.3f}s"
+        assert len(calls) == 2, f"Expected 2 decide calls, got {len(calls)}"
+
+
+# ---------------------------------------------------------------------------
+# Real routing: a violation outcome, decided for real over the socket, denies
+# ---------------------------------------------------------------------------
+
+
+class TestDecideRouting:
+    def test_violation_outcome_denies_over_real_socket(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _pin_fake_config(monkeypatch, tmp_path)
+        _write_rule(tmp_path)
+        calls = _patch_decide(monkeypatch, '{"outcome": "violation"}')
+
+        with (
+            tempfile.NamedTemporaryFile(
+                suffix=".sock", dir=tempfile.gettempdir(), delete=False
+            ) as f,
+            tempfile.NamedTemporaryFile(
+                suffix=".pid", dir=tempfile.gettempdir(), delete=False
+            ) as fp,
+            tempfile.NamedTemporaryFile(
+                suffix=".version", dir=tempfile.gettempdir(), delete=False
+            ) as fv,
+        ):
+            socket_path = f.name
+            pid_file = fp.name
+            version_file = fv.name
+        os.unlink(socket_path)
+
+        daemon, thread = _ready_daemon(socket_path, pid_file, version_file)
+
+        payload = (
+            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
+        )
+
+        result = _send_request(socket_path, payload)
+
+        daemon._stop_event.set()
+        thread.join(timeout=5)
+
+        assert len(calls) == 1, f"Expected 1 decide call, got {len(calls)}"
+        assert "deny" in str(result.get("stdout", ""))
 
 
 # ---------------------------------------------------------------------------

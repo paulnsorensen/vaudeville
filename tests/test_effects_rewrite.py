@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from vaudeville.rules import parse_rule
-from vaudeville.server.effects import apply_rewrite, rewrite_or_feedback
+from vaudeville.server.effects import apply_rewrite, get_path, rewrite_or_feedback
 from vaudeville.server.harness import HookEvent
 
 REWRITE_RULE = {
@@ -17,6 +17,16 @@ REWRITE_RULE = {
     "prompt": "Strip any secrets from the content.",
     "target": ["tool_input.content"],
 }
+
+
+class TestGetPath:
+    def test_reads_nested_target_value_and_returns_none_when_missing(self) -> None:
+        tool_input = {"content": "a", "meta": {"title": "b"}}
+
+        assert get_path(tool_input, "tool_input.content") == "a"
+        assert get_path(tool_input, "tool_input.meta.title") == "b"
+        assert get_path(tool_input, "tool_input.meta.missing") is None
+        assert get_path(tool_input, "tool_input.content.deeper") is None
 
 
 class TestApplyRewriteTargetOnly:

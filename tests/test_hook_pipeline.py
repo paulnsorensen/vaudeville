@@ -576,6 +576,110 @@ class TestRewriteLogRedaction:
         assert len(digest) == 12
 
 
+class TestRewritePerTarget:
+    """F16: each rewrite target is rewritten from its own current value."""
+
+    def _write_rules(self, tmp_path: Path, targets: str) -> None:
+        _write_rule(tmp_path, "pipeline-rewrite-gate", REWRITE_GATE_YAML)
+        _write_rule(
+            tmp_path,
+            "rewrite-target",
+            REWRITE_TARGET_YAML.replace("[tool_input.content]", targets),
+        )
+
+    def test_two_targets_with_different_values_each_get_their_own_rewrite(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        self._write_rules(tmp_path, "[tool_input.content, tool_input.description]")
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        monkeypatch.setattr(
+            pipeline_module,
+            "resolve_model",
+            lambda rule, config: ModelResolution(model="fake:model"),
+        )
+        seen: list[str] = []
+
+        def upper(rule: object, model: object, text: str) -> str:
+            seen.append(text)
+            return text.upper()
+
+        monkeypatch.setattr(pipeline_module, "run_rewrite", upper)
+
+        result = handle_hook_request(
+            _request(
+                tmp_path,
+                tool_input={"content": "alpha", "description": "beta"},
+            ),
+            config=_CONFIG,
+            decide_fn=fn,
+        )
+
+        payload = json.loads(str(result["stdout"]))
+        updated = payload["hookSpecificOutput"]["updatedInput"]
+        assert updated == {"content": "ALPHA", "description": "BETA"}
+        assert sorted(seen) == ["alpha", "beta"]
+
+    def test_no_string_value_at_any_target_allows_without_a_model_call(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        self._write_rules(tmp_path, "[tool_input.content]")
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        monkeypatch.setattr(
+            pipeline_module,
+            "resolve_model",
+            lambda rule, config: ModelResolution(model="fake:model"),
+        )
+        calls: list[str] = []
+
+        def recording_rewrite(rule: object, model: object, text: str) -> str:
+            calls.append(text)
+            return "x"
+
+        monkeypatch.setattr(pipeline_module, "run_rewrite", recording_rewrite)
+        caplog.set_level(logging.WARNING)
+
+        # The Bash-style input has decidable text but no `content` value.
+        result = handle_hook_request(
+            _request(tmp_path, tool_input={"command": "echo hi"}),
+            config=_CONFIG,
+            decide_fn=fn,
+        )
+
+        assert result == {"stdout": "{}", "exit_code": 0}
+        assert calls == []
+        assert any("no string value" in r.getMessage() for r in caplog.records)
+
+    def test_discarded_rewrite_output_allows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        self._write_rules(tmp_path, "[tool_input.content, tool_input.description]")
+        fn, _ = _decide_fn('{"outcome": "violation"}')
+        monkeypatch.setattr(
+            pipeline_module,
+            "resolve_model",
+            lambda rule, config: ModelResolution(model="fake:model"),
+        )
+        monkeypatch.setattr(
+            pipeline_module,
+            "run_rewrite",
+            lambda rule, model, text: None if text == "beta" else text.upper(),
+        )
+
+        result = handle_hook_request(
+            _request(tmp_path, tool_input={"content": "alpha", "description": "beta"}),
+            config=_CONFIG,
+            decide_fn=fn,
+        )
+
+        assert result == {"stdout": "{}", "exit_code": 0}
+
+
 class TestEscalateDispatch:
     """F9: post-escalate branches dispatch against the target's own action."""
 

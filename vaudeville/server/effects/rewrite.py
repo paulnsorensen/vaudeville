@@ -37,6 +37,12 @@ def _get_path(data: Mapping[str, Any], path: str) -> Any:
     return node
 
 
+def get_path(tool_input: Mapping[str, Any], dotted_path: str) -> Any:
+    """Return the value at a target `dotted_path`, or None when it is missing."""
+    value = _get_path(tool_input, _relative_path(dotted_path))
+    return None if value is _UNSET else value
+
+
 def _set_path(data: dict[str, Any], path: str, value: object) -> None:
     """Set `path` on `data`, copying each traversed dict so callers' nested
     mappings are never mutated in place.

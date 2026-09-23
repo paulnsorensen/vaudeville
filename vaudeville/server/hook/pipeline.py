@@ -32,6 +32,7 @@ from vaudeville.server.effects import (
     EscalateResult,
     apply_rewrite,
     escalate_result,
+    get_path,
     rewrite_or_feedback,
     run_named_command,
     with_origin_label,
@@ -60,6 +61,9 @@ DEFAULT_REQUEST_DEADLINE_SECONDS = 6.0
 # precedence-merge primary or an add-context concatenation, so nothing
 # downstream can add a second row for the same rule (F24).
 _NO_DEFER = frozenset({"run", "allow", "log"})
+
+# The rewrite source key for an event with no tool input.
+_EVENT_TEXT_KEY = "event.text"
 
 DecideFn = Callable[[DecideRule, UserConfig, str], DecideResult]
 
@@ -494,36 +498,62 @@ def _do_rewrite(
         )
         return "allow", "", None, None
 
+    tool_input = event.tool_input
+    # An event with no tool input rewrites its own text, then downgrades to
+    # feedback (AC-9); otherwise each target rewrites its own value (F16).
+    sources: dict[str, str] = (
+        {_EVENT_TEXT_KEY: event.text}
+        if tool_input is None
+        else {
+            path: value
+            for path in target.target
+            if isinstance(value := get_path(tool_input, path), str)
+        }
+    )
+    if not sources:
+        logger.warning(
+            "rewrite rule %r: no string value at target paths %r; allowing",
+            target.name,
+            target.target,
+        )
+        return "allow", "", None, None
+
     resolution = resolve_model(target, config)
     if resolution.model is None:
         return "allow", "", None, None
     model = resolution.model
 
+    def _rewrite_sources() -> dict[str, str] | None:
+        rewritten: dict[str, str] = {}
+        for path, text in sources.items():
+            output = run_rewrite(target, model, text)
+            if output is None:
+                return None
+            rewritten[path] = output
+        return rewritten
+
     remaining = _remaining_budget(clock, start_time, deadline_seconds)
     rewrite_outcome = escalate_result(
-        lambda: run_rewrite(target, model, event.text),
-        deadline=remaining,
-        rule_name=target.name,
+        _rewrite_sources, deadline=remaining, rule_name=target.name
     )
     if rewrite_outcome.value is None:
         downgrade = (
             "rewrite-error" if rewrite_outcome.error is not None else "rewrite-timeout"
         )
         return "allow", "", None, downgrade
-    new_text = rewrite_outcome.value
+    new_values = rewrite_outcome.value
 
     def _log(record: dict[str, object]) -> None:
         _log_rewrite_effect(rule.name, record)
 
-    downgraded = rewrite_or_feedback(event, new_text, rule_name=rule.name, log=_log)
-    if downgraded is not None:
-        labeled = with_origin_label(rule.name, new_text)
-        return "feedback", labeled, None, None
+    if tool_input is None:
+        new_text = new_values[_EVENT_TEXT_KEY]
+        rewrite_or_feedback(event, new_text, rule_name=rule.name, log=_log)
+        return "feedback", with_origin_label(rule.name, new_text), None, None
 
-    assert event.tool_input is not None
-    new_values = {path: new_text for path in target.target}
+    new_text = "\n".join(new_values.values())
     updated = apply_rewrite(
-        event.tool_input, target.target, new_values, rule_name=rule.name, log=_log
+        tool_input, target.target, new_values, rule_name=rule.name, log=_log
     )
     action_name, reason = apply_tier_ceiling("rewrite", target.tier)
     if action_name != "rewrite":

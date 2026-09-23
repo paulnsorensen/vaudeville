@@ -153,7 +153,11 @@ tier: block
         fn, _ = _decide_fn('{"outcome": "violation"}')
         patch_rewrite(monkeypatch, "safe command")
 
-        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+        result = handle_hook_request(
+            _request(tmp_path, tool_input={"content": "old", "file_path": "a.txt"}),
+            config=_CONFIG,
+            decide_fn=fn,
+        )
 
         assert result["exit_code"] == 0
         assert "systemMessage" in str(result["stdout"])
@@ -235,7 +239,10 @@ tier: warn
         logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
         try:
             result = handle_hook_request(
-                _request(tmp_path), config=_CONFIG, decide_fn=fn, event_logger=logger
+                _request(tmp_path, tool_input={"content": "old", "file_path": "a.txt"}),
+                config=_CONFIG,
+                decide_fn=fn,
+                event_logger=logger,
             )
         finally:
             logger.close()

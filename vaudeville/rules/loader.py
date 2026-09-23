@@ -148,10 +148,9 @@ class ResolvedRule(NamedTuple):
 def resolve_rules_layered(project_root: str | None = None) -> dict[str, ResolvedRule]:
     """Resolve every layer by rule name; later layers override earlier ones.
 
-    Bundled and user rules may override an earlier layer of the same name
-    (AC-1). A project-layer rule sharing a name already owned by the
-    bundled or user layer is refused: it is skipped and logged, so a
-    project cannot silently shadow a trusted rule.
+    A project-layer rule sharing a name already owned by the user layer
+    is refused: it is skipped and logged, so a project cannot silently
+    shadow a trusted rule.
     """
     resolved: dict[str, ResolvedRule] = {}
     owner: dict[str, str] = {}

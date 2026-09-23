@@ -19,6 +19,7 @@ from vaudeville.core import prepare_text, truncate_for_event
 from vaudeville.core.protocol import GENERIC_ALLOW
 from vaudeville.rules import (
     Action,
+    ActionName,
     DecideRule,
     RewriteRule,
     RuleSet,
@@ -286,7 +287,7 @@ def _evaluate_rule(
         return None
 
     action_obj = rule.on.get(result.outcome)
-    action_name: str = action_obj.action if action_obj is not None else "allow"
+    action_name: ActionName = action_obj.action if action_obj is not None else "allow"
     message = _message_for(rule, result, action_name)
 
     updated_input: dict[str, object] | None = None
@@ -377,7 +378,9 @@ def _evaluate_rule(
     return item
 
 
-def _message_for(rule: DecideRule, result: DecideResult, action_name: str) -> str:
+def _message_for(
+    rule: DecideRule, result: DecideResult, action_name: ActionName
+) -> str:
     if action_name in ("warn", "block") and rule.reasons:
         if result.reason and result.reason in rule.reasons:
             return rule.reasons[result.reason]
@@ -395,7 +398,7 @@ def _do_escalate(
     remaining_budget: float,
     decide_memo: dict[tuple[str, str], tuple[EscalateResult[DecideResult], float]],
     clock: Callable[[], float],
-) -> tuple[str, str, DecideRule | None, Action | None, str | None]:
+) -> tuple[ActionName, str, DecideRule | None, Action | None, str | None]:
     """Run the escalate target once and resolve its own `on:` mapping.
 
     Returns `(action_name, message, target_rule, target_action, ceiling_reason)`;
@@ -487,7 +490,7 @@ def _do_rewrite(
     clock: Callable[[], float],
     start_time: float,
     deadline_seconds: float,
-) -> tuple[str, str, dict[str, object] | None, str | None]:
+) -> tuple[ActionName, str, dict[str, object] | None, str | None]:
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
     if not isinstance(target, RewriteRule):
         _warn_unresolved(rule, action_obj, "rewrite")
@@ -664,7 +667,7 @@ def _log_decision(
     logger_fn: EventLogger | None,
     rule: DecideRule,
     result: DecideResult,
-    action_name: str,
+    action_name: ActionName,
     downgrade: str | None,
     latency_ms: float,
     model_name: str | None,

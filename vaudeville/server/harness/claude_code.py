@@ -11,9 +11,11 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 
+from vaudeville.core.protocol import HookResponse
 from vaudeville.server.harness import HookEvent, Outcome, RenderResult
 
-_RenderStep = Callable[[Outcome], tuple[dict[str, object], dict[str, str] | None]]
+_Rendered = tuple[HookResponse, dict[str, str] | None]
+_RenderStep = Callable[[Outcome], _Rendered]
 
 # hookSpecificOutput.permissionDecision (allow/deny/ask) and updatedInput
 # exist only on PreToolUse.
@@ -81,7 +83,7 @@ def _derive_text(event: str, raw: Mapping[str, object]) -> str:
     return ""
 
 
-def _json(payload: dict[str, object]) -> dict[str, object]:
+def _json(payload: dict[str, object]) -> HookResponse:
     return {"stdout": json.dumps(payload), "exit_code": 0}
 
 
@@ -130,7 +132,7 @@ class ClaudeCodeAdapter:
             self._degrade(outcome, name) if method is None else method(outcome)
         )
         downgrades = [downgrade] if downgrade is not None else []
-        stdout = str(payload["stdout"])
+        stdout = payload["stdout"]
         if outcome.context and name != "add-context":
             if outcome.event in _ADDITIONAL_CONTEXT_EVENTS:
                 stdout = _with_additional_context(
@@ -142,13 +144,13 @@ class ClaudeCodeAdapter:
                 )
         return {
             "stdout": stdout,
-            "exit_code": int(payload["exit_code"]),  # type: ignore[call-overload]
+            "exit_code": payload["exit_code"],
             "downgrades": downgrades,
         }
 
     def _degrade(
         self, outcome: Outcome, action_name: str, text: str | None = None
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    ) -> _Rendered:
         downgrade = {"from": action_name, "to": "warn", "event": outcome.event}
         payload = _json(
             {"systemMessage": text if text is not None else outcome.message}
@@ -158,9 +160,7 @@ class ClaudeCodeAdapter:
     def render_allow(self) -> RenderResult:
         return {"stdout": "{}", "exit_code": 0, "downgrades": []}
 
-    def _render_allow(
-        self, outcome: Outcome
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    def _render_allow(self, outcome: Outcome) -> _Rendered:
         del outcome
         return {"stdout": "{}", "exit_code": 0}, None
 
@@ -175,14 +175,10 @@ class ClaudeCodeAdapter:
     # itself must not block.
     _render_run = _render_allow
 
-    def _render_warn(
-        self, outcome: Outcome
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    def _render_warn(self, outcome: Outcome) -> _Rendered:
         return _json({"systemMessage": outcome.message}), None
 
-    def _render_block(
-        self, outcome: Outcome
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    def _render_block(self, outcome: Outcome) -> _Rendered:
         event = outcome.event
         if event in _PERMISSION_DECISION_EVENTS:
             return (
@@ -201,9 +197,7 @@ class ClaudeCodeAdapter:
             return _json({"decision": "block", "reason": outcome.message}), None
         return self._degrade(outcome, "block")
 
-    def _render_ask(
-        self, outcome: Outcome
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    def _render_ask(self, outcome: Outcome) -> _Rendered:
         if outcome.event in _PERMISSION_DECISION_EVENTS:
             return (
                 _json(
@@ -219,9 +213,7 @@ class ClaudeCodeAdapter:
             )
         return self._degrade(outcome, "ask")
 
-    def _render_rewrite(
-        self, outcome: Outcome
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    def _render_rewrite(self, outcome: Outcome) -> _Rendered:
         # `ask` shows the changed input for approval; a rewrite never grants
         # more permission than the unmodified call gets.
         if (
@@ -242,20 +234,16 @@ class ClaudeCodeAdapter:
             )
         return self._degrade(outcome, "rewrite")
 
-    def _render_feedback(
-        self, outcome: Outcome
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    def _render_feedback(self, outcome: Outcome) -> _Rendered:
         return self._render_context_message(outcome, outcome.message, "feedback")
 
-    def _render_add_context(
-        self, outcome: Outcome
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    def _render_add_context(self, outcome: Outcome) -> _Rendered:
         text = outcome.context if outcome.context is not None else outcome.message
         return self._render_context_message(outcome, text, "add-context")
 
     def _render_context_message(
         self, outcome: Outcome, text: str, action_name: str
-    ) -> tuple[dict[str, object], dict[str, str] | None]:
+    ) -> _Rendered:
         if outcome.event in _ADDITIONAL_CONTEXT_EVENTS:
             return (
                 _json(

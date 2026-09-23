@@ -17,6 +17,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 
+from vaudeville.rules.actions import ActionName
 from vaudeville.rules.policy import PRIMARY_PRECEDENCE, SECONDARY_ACTIONS
 
 
@@ -25,7 +26,7 @@ class EvaluatedAction:
     """One rule's resolved, tier-capped action, ready for precedence merge."""
 
     rule_name: str
-    action_name: str
+    action_name: ActionName
     message: str
     context_text: str | None = None
     updated_input: dict[str, object] | None = None

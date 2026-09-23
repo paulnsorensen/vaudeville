@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 
+import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -66,17 +67,13 @@ class TestBundledRulesLoad:
 
 class TestNewFormatClassifyCase:
     def test_new_format_classify_case_calls_decide_and_scores_tp(
-        self, monkeypatch: object
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import pytest
-
-        mp = pytest.MonkeyPatch()
-        mp.setenv("ANTHROPIC_API_KEY", "fake-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
         rule = parse_rule(_RULE)
         assert isinstance(rule, DecideRule)
         model = _function_model('{"outcome": "violation", "confidence": 0.9}')
         results = EvalResults(rule="git-gate")
-        case = rule.test_cases[0] if rule.test_cases else None
         from vaudeville.rules import DecideTestCase
 
         case = DecideTestCase(text="should I commit?", outcome="violation")
@@ -89,7 +86,6 @@ class TestNewFormatClassifyCase:
         assert case_result.expected == "violation"
         assert results.tp == 1
         assert results.total == 1
-        mp.undo()
 
     def test_new_format_classify_case_fail_open_counts_as_negative(self) -> None:
         rule = parse_rule(_RULE)
@@ -108,11 +104,10 @@ class TestNewFormatClassifyCase:
 
 
 class TestConfusionCounts:
-    def test_confusion_counts_tp_fp_tn_fn(self, monkeypatch: object) -> None:
-        import pytest
-
-        mp = pytest.MonkeyPatch()
-        mp.setenv("ANTHROPIC_API_KEY", "fake-key")
+    def test_confusion_counts_tp_fp_tn_fn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
         rule = parse_rule(_RULE)
         assert isinstance(rule, DecideRule)
         from vaudeville.rules import DecideTestCase
@@ -149,7 +144,6 @@ class TestConfusionCounts:
         assert results.tn == 1
         assert results.total == 4
         assert len(case_results) == 4
-        mp.undo()
 
     def test_confusion_counts_unknown_rule_raises(self) -> None:
         try:

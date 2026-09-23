@@ -121,6 +121,39 @@ class TestMain:
                 main()
         assert exc_info.value.code == 0
 
+    def test_bundled_rules_load_for_eval_when_daemon_layers_are_bare(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """R2: `just eval` still loads the bundled examples layer directly,
+        even though the daemon no longer includes it."""
+        import yaml
+
+        examples_dir = tmp_path / "plugin" / "examples" / "rules"
+        examples_dir.mkdir(parents=True)
+        (examples_dir / "git-gate.yaml").write_text(yaml.safe_dump(_RULE_DICT))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin"))
+
+        captured: dict[str, object] = {}
+
+        def _capture_test_cases(rules: object) -> dict[str, object]:
+            captured["rules"] = rules
+            return {}
+
+        with (
+            patch("sys.argv", ["eval"]),
+            patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
+            patch(
+                "vaudeville.eval_cli.load_test_cases", side_effect=_capture_test_cases
+            ),
+        ):
+            mock_layered.return_value.by_name.return_value = {}
+            from vaudeville.eval_cli import main
+
+            with pytest.raises(SystemExit):
+                main()
+
+        assert "git-gate" in captured["rules"]  # type: ignore[operator]
+
     def test_calibrate_prints_notice_and_exits_0(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

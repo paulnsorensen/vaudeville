@@ -24,6 +24,7 @@ from .loader import (
     load_rules,
     load_rules_layered,
     project_rules_dir,
+    resolve_active_rules,
     user_rules_dir,
 )
 from .models import (
@@ -62,6 +63,7 @@ __all__ = [
     "load_rule_file",
     "load_rules",
     "load_rules_layered",
+    "resolve_active_rules",
     "layered_search_path",
     "bundled_rules_dir",
     "user_rules_dir",

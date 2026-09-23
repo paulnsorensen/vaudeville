@@ -9,7 +9,7 @@ from pydantic_ai.models import Model
 
 from .core.paths import find_project_root
 from .eval import CaseResult, load_test_cases
-from .rules import DecideTestCase, load_rules, load_rules_layered
+from .rules import DecideTestCase, bundled_rules_dir, load_rules, load_rules_layered
 from .server.user_config import load_user_config
 
 
@@ -55,7 +55,10 @@ def main(*, model_override: Model | None = None) -> None:
     if getattr(args, "rules_dir", None):
         rules = load_rules(args.rules_dir)
     else:
-        rules = load_rules_layered(project_root=find_project_root()).by_name()
+        bundled_dir = bundled_rules_dir()
+        bundled_rules = load_rules(bundled_dir) if bundled_dir else {}
+        layered_rules = load_rules_layered(project_root=find_project_root()).by_name()
+        rules = {**bundled_rules, **layered_rules}
     test_suites: dict[str, list[DecideTestCase]] = load_test_cases(rules)
 
     if args.calibrate:

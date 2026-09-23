@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,7 +13,7 @@ from vaudeville.rules import DecideRule
 from vaudeville.server.user_config import UserConfig
 
 from .delimit import DATA_INSTRUCTION, delimit_hook_text
-from .model_resolution import resolve_model
+from .model_resolution import MODEL_REQUEST_TIMEOUT_SECONDS, resolve_model
 from .output_types import build_decide_output_type
 
 # Suppress the first-run startup banner pydantic-ai prints to stderr; it
@@ -42,7 +41,10 @@ def build_decide_agent(rule: DecideRule, model: Model | str) -> Agent[None, Any]
         model,
         output_type=output_type,
         system_prompt=system_prompt,
-        model_settings={"temperature": 0.0},
+        model_settings={
+            "temperature": 0.0,
+            "timeout": MODEL_REQUEST_TIMEOUT_SECONDS,
+        },
     )
 
 
@@ -59,9 +61,7 @@ def decide(
     `FunctionModel`/`TestModel`) but only when resolution actually permits
     a call; an unlisted provider or an unset key never reaches it.
     """
-    resolution = resolve_model(rule, config)
-    if resolution.notice:
-        print(resolution.notice, file=sys.stderr)
+    resolution = resolve_model(rule, config, build=model_override is None)
     if resolution.model is None:
         return ALLOW
     model = model_override if model_override is not None else resolution.model

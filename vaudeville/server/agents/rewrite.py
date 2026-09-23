@@ -10,6 +10,7 @@ from pydantic_ai.models import Model
 from vaudeville.rules import RewriteRule
 
 from .delimit import DATA_INSTRUCTION, delimit_hook_text
+from .model_resolution import MODEL_REQUEST_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,10 @@ def build_rewrite_agent(rule: RewriteRule, model: Model | str) -> Agent[None, st
         model,
         output_type=str,
         system_prompt=system_prompt,
-        model_settings={"temperature": 0.0},
+        model_settings={
+            "temperature": 0.0,
+            "timeout": MODEL_REQUEST_TIMEOUT_SECONDS,
+        },
     )
 
 

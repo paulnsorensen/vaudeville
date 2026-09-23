@@ -8,6 +8,8 @@ AC-18: hook text reaches the model as escaped, delimited data.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -16,7 +18,11 @@ from pydantic_ai.models.typesafe import TypeSafeModel
 from vaudeville.rules import DecideRule, parse_rule
 from vaudeville.server.agents.decide import ALLOW, build_decide_agent, decide
 from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
-from vaudeville.server.agents.model_resolution import resolve_model
+from vaudeville.server.agents import model_resolution
+from vaudeville.server.agents.model_resolution import (
+    MODEL_REQUEST_TIMEOUT_SECONDS,
+    resolve_model,
+)
 from vaudeville.server.user_config import ProviderConfig, UserConfig
 
 DECIDE_RULE = {
@@ -122,10 +128,49 @@ class TestResolveModel:
             providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")},
         )
 
-        resolution = resolve_model(rule, config)
+        resolution = resolve_model(rule, config, build=False)
 
         assert resolution.model == "anthropic:claude-haiku-4-5"
         assert resolution.notice is None
+
+    def test_key_read_from_configured_key_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F7: the model uses the key under `key_env`, not the provider default."""
+        monkeypatch.setenv("TYPESAFE_API_KEY", "default-var-key")
+        monkeypatch.setenv("MY_TYPESAFE_KEY", "configured-key")
+        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13"})
+        assert isinstance(rule, DecideRule)
+        config = UserConfig(
+            providers={"typesafe": ProviderConfig(key_env="MY_TYPESAFE_KEY")},
+        )
+
+        resolution = resolve_model(rule, config)
+
+        assert isinstance(resolution.model, TypeSafeModel)
+        assert resolution.model.client._config.api_key == "configured-key"
+
+    def test_build_failure_fails_open_without_echoing_key(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("MY_TYPESAFE_KEY", "secret-key-value")
+
+        def _raise(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("secret-key-value rejected")
+
+        monkeypatch.setattr(model_resolution, "infer_model", _raise)
+        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13"})
+        assert isinstance(rule, DecideRule)
+        config = UserConfig(
+            providers={"typesafe": ProviderConfig(key_env="MY_TYPESAFE_KEY")},
+        )
+
+        with caplog.at_level(logging.WARNING):
+            resolution = resolve_model(rule, config)
+
+        assert resolution.model is None
+        assert "cannot build model" in caplog.text
+        assert "secret-key-value" not in caplog.text
 
     def test_no_model_name_resolves_to_none(self) -> None:
         rule = parse_rule(DECIDE_RULE)
@@ -148,6 +193,19 @@ class TestResolveModel:
         assert resolution.notice is None
 
 
+class TestAgentTimeout:
+    def test_decide_agent_sets_request_timeout(self) -> None:
+        """F8: a stalled provider cannot hold a decide worker past the deadline."""
+        rule = parse_rule(DECIDE_RULE)
+        assert isinstance(rule, DecideRule)
+
+        agent = build_decide_agent(rule, _RecordingModel("{}").model)
+
+        assert isinstance(agent.model_settings, dict)
+        assert agent.model_settings.get("timeout") == MODEL_REQUEST_TIMEOUT_SECONDS
+        assert agent.model_settings.get("temperature") == 0.0
+
+
 class TestDecideFailOpen:
     def test_decide_calls_resolved_model_and_returns_outcome(
         self, monkeypatch: pytest.MonkeyPatch
@@ -168,9 +226,14 @@ class TestDecideFailOpen:
         assert result.outcome == "clean"
         assert result.confidence == 0.5
 
-    def test_missing_key_allows_with_one_stderr_notice(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    def test_missing_key_allows_with_one_notice_per_provider(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
+        """F20: the notice is logged once per provider, not on every call."""
+        monkeypatch.setattr(model_resolution, "_notified_providers", set())
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         rule = parse_rule({**DECIDE_RULE, "model": "anthropic:claude-haiku-4-5"})
         assert isinstance(rule, DecideRule)
@@ -178,12 +241,15 @@ class TestDecideFailOpen:
             providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")}
         )
 
-        result = decide(rule, config, "some transcript text")
+        with caplog.at_level(logging.WARNING):
+            first = decide(rule, config, "some transcript text")
+            second = decide(rule, config, "other transcript text")
 
-        assert result == ALLOW
-        captured = capsys.readouterr()
-        assert captured.err.count("\n") == 1
-        assert "ANTHROPIC_API_KEY" in captured.err
+        assert first == ALLOW
+        assert second == ALLOW
+        notices = [r for r in caplog.records if "ANTHROPIC_API_KEY" in r.getMessage()]
+        assert len(notices) == 1
+        assert capsys.readouterr().err == ""
 
     def test_unlisted_provider_makes_no_call_and_allows(self) -> None:
         rule = parse_rule({**DECIDE_RULE, "model": "openai:gpt-5"})

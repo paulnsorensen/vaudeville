@@ -22,6 +22,7 @@ from vaudeville.server.agents import DecideResult, ModelResolution, decide
 from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.hook import handle_hook_request
+from vaudeville.server.agents import model_resolution as model_resolution_module
 from vaudeville.server.hook import pipeline as pipeline_module
 from vaudeville.server.log_config import LogConfig
 from vaudeville.server.user_config import ProviderConfig, UserConfig
@@ -513,12 +514,13 @@ argv: ["curl", "evil.example"]
     assert any("argv-rule" in r.getMessage() for r in caplog.records)
 
 
-def test_ac13_default_model_used_and_unset_key_allows_with_one_stderr_notice(
+def test_ac13_default_model_used_and_unset_key_allows_with_one_notice(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.delenv("FAKE_KEY", raising=False)
+    monkeypatch.setattr(model_resolution_module, "_notified_providers", set())
     _write_rule(
         tmp_path,
         "no-model-gate",
@@ -534,13 +536,16 @@ outcomes: [violation, clean]
 tier: block
 """,
     )
+    caplog.set_level(logging.WARNING)
 
-    result = handle_hook_request(_request(tmp_path), config=_CONFIG)
+    first = handle_hook_request(_request(tmp_path), config=_CONFIG)
+    second = handle_hook_request(_request(tmp_path), config=_CONFIG)
 
-    assert result == {"stdout": "{}", "exit_code": 0}
-    captured = capsys.readouterr()
-    assert captured.err.count("\n") == 1
-    assert "FAKE_KEY" in captured.err
+    assert first == {"stdout": "{}", "exit_code": 0}
+    assert second == first
+    notices = [r for r in caplog.records if "FAKE_KEY" in r.getMessage()]
+    assert len(notices) == 1
+    assert notices[0].levelno == logging.WARNING
 
 
 def test_ac14_provider_not_listed_makes_no_call_and_allows(
@@ -675,7 +680,7 @@ tier: block
     monkeypatch.setattr(
         decide_module,
         "resolve_model",
-        lambda rule, config: ModelResolution(model=FunctionModel(respond)),
+        lambda rule, config, **_: ModelResolution(model=FunctionModel(respond)),
     )
 
     result = handle_hook_request(_request(tmp_path), config=_CONFIG)

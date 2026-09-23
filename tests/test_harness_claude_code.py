@@ -116,7 +116,8 @@ class TestRenderMatrix:
         adapter = ClaudeCodeAdapter()
         events = ("PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop")
         for event in events:
-            for updated in ({"content": "x"}, None):
+            updates: tuple[dict[str, object] | None, ...] = ({"content": "x"}, None)
+            for updated in updates:
                 result = adapter.render(
                     _outcome("rewrite", event, message="m", updated_input=updated)
                 )

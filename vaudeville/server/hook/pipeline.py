@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 import time
 from collections.abc import Callable, Mapping
 
@@ -472,8 +471,6 @@ def _do_rewrite(
         return "allow", "", None, None
 
     resolution = resolve_model(target, config)
-    if resolution.notice:
-        print(resolution.notice, file=sys.stderr)
     if resolution.model is None:
         return "allow", "", None, None
     model = resolution.model

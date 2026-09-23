@@ -14,6 +14,7 @@ import logging
 import os
 import time
 from collections.abc import Callable, Mapping
+from typing import TypeVar
 
 from vaudeville.core import prepare_text, truncate_for_event
 from vaudeville.core.protocol import GENERIC_ALLOW
@@ -67,6 +68,11 @@ _NO_DEFER = frozenset({"run", "allow", "log"})
 _EVENT_TEXT_KEY = "event.text"
 
 DecideFn = Callable[[DecideRule, UserConfig, str], DecideResult]
+
+# Successful decide results this request, keyed by `(rule.name, event.text)`.
+_DecideMemo = dict[tuple[str, str], tuple[EscalateResult[DecideResult], float]]
+
+_TargetT = TypeVar("_TargetT", DecideRule, RewriteRule)
 
 
 def handle_hook_request(
@@ -144,7 +150,7 @@ def _run_pipeline(
 
     evaluated: list[EvaluatedAction] = []
     event_json = json.dumps(dict(raw))
-    decide_memo: dict[tuple[str, str], tuple[EscalateResult[DecideResult], float]] = {}
+    decide_memo: _DecideMemo = {}
 
     for rule in matching:
         if rule.tier == "disabled":
@@ -230,7 +236,7 @@ def _evaluate_rule(
     prompt_chars: int,
     start_time: float,
     deadline_seconds: float,
-    decide_memo: dict[tuple[str, str], tuple[EscalateResult[DecideResult], float]],
+    decide_memo: _DecideMemo,
 ) -> EvaluatedAction | None:
     model_name = rule.model or config.default_model
 
@@ -247,21 +253,15 @@ def _evaluate_rule(
         )
         return None
 
-    memo_key = (rule.name, event.text)
-    cached = decide_memo.get(memo_key)
-    if cached is not None:
-        decide_outcome, latency_ms = cached
-    else:
-        remaining = _remaining_budget(clock, start_time, deadline_seconds)
-        start = clock()
-        decide_outcome = escalate_result(
-            lambda: decide_fn(rule, config, event.text),
-            deadline=remaining,
-            rule_name=rule.name,
-        )
-        latency_ms = (clock() - start) * 1000
-        if decide_outcome.value is not None:
-            decide_memo[memo_key] = (decide_outcome, latency_ms)
+    decide_outcome, latency_ms = _memoised_decide(
+        rule,
+        event.text,
+        config=config,
+        decide_fn=decide_fn,
+        clock=clock,
+        deadline=lambda: _remaining_budget(clock, start_time, deadline_seconds),
+        decide_memo=decide_memo,
+    )
 
     if decide_outcome.value is None:
         decide_downgrade = (
@@ -396,7 +396,7 @@ def _do_escalate(
     config: UserConfig,
     decide_fn: DecideFn,
     remaining_budget: float,
-    decide_memo: dict[tuple[str, str], tuple[EscalateResult[DecideResult], float]],
+    decide_memo: _DecideMemo,
     clock: Callable[[], float],
 ) -> tuple[ActionName, str, DecideRule | None, Action | None, str | None]:
     """Run the escalate target once and resolve its own `on:` mapping.
@@ -409,53 +409,23 @@ def _do_escalate(
     deadline expiry, or an unmapped outcome). `ceiling_reason` carries the
     target's own tier downgrade (e.g. `tier:warn`) for the caller's record.
 
-    `decide_memo`, keyed by `(rule.name, event.text)`, reuses a decide
-    result already computed this request (by the main loop or an earlier
-    escalate hop) instead of calling `decide_fn` again, so a rule never
+    The target decides through `_memoised_decide`, so a rule never
     decides more than once per request and an escalation never
-    double-charges the request deadline. Only a successful decide
-    (`result.value is not None`) is cached, with its recorded latency; a
-    timeout or error is never cached, so a later turn re-runs the rule
-    on its own full remaining budget instead of reusing a failure.
+    double-charges the request deadline.
     """
-    target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
-    if not isinstance(target, DecideRule):
-        _warn_unresolved(rule, action_obj, "escalate")
-        return "allow", "", None, None, None
-    if target.tier == "disabled":
-        return "allow", "", None, None, None
-    if target.event != event.event or not _matcher_matches(
-        target.matcher, event.tool_name
-    ):
-        logger.warning(
-            "escalate rule %r targets %r: event/matcher mismatch against live "
-            "event %r/%r; allowing",
-            rule.name,
-            target.name,
-            event.event,
-            event.tool_name,
-        )
+    target = _resolve_target(action_obj, by_name, DecideRule, event, rule)
+    if target is None:
         return "allow", "", None, None, None
 
-    memo_key = (target.name, event.text)
-    cached = decide_memo.get(memo_key)
-    if cached is not None:
-        escalated_result, _ = cached
-    else:
-
-        def _run() -> DecideResult:
-            return decide_fn(target, config, event.text)
-
-        start = clock()
-        escalated_result = escalate_result(
-            _run,
-            deadline=min(DEFAULT_ESCALATE_DEADLINE_SECONDS, remaining_budget),
-            rule_name=target.name,
-        )
-        latency_ms = (clock() - start) * 1000
-        if escalated_result.value is not None:
-            decide_memo[memo_key] = (escalated_result, latency_ms)
-
+    escalated_result, _ = _memoised_decide(
+        target,
+        event.text,
+        config=config,
+        decide_fn=decide_fn,
+        clock=clock,
+        deadline=lambda: min(DEFAULT_ESCALATE_DEADLINE_SECONDS, remaining_budget),
+        decide_memo=decide_memo,
+    )
     escalated = escalated_result.value
     if escalated is None or escalated.outcome is None:
         return "allow", "", None, None, None
@@ -469,14 +439,80 @@ def _do_escalate(
     return action_name, message, target, target_action, reason
 
 
-def _warn_unresolved(rule: DecideRule, action_obj: Action | None, kind: str) -> None:
-    logger.warning(
-        "%s rule %r: target %r does not resolve to a %s rule; allowing",
-        kind,
-        rule.name,
-        action_obj.rule if action_obj else None,
-        "decide" if kind == "escalate" else "rewrite",
+def _memoised_decide(
+    rule: DecideRule,
+    text: str,
+    *,
+    config: UserConfig,
+    decide_fn: DecideFn,
+    clock: Callable[[], float],
+    deadline: Callable[[], float],
+    decide_memo: _DecideMemo,
+) -> tuple[EscalateResult[DecideResult], float]:
+    """Return `(decide_outcome, latency_ms)` for `rule`, deciding at most once.
+
+    A result already computed this request (by the main loop or an earlier
+    escalate hop) is reused with its recorded latency. `deadline` is read
+    only on a cache miss. Only a successful decide (`value is not None`) is
+    cached; a timeout or error is never cached, so a later turn re-runs the
+    rule on its own full remaining budget instead of reusing a failure.
+    """
+    memo_key = (rule.name, text)
+    cached = decide_memo.get(memo_key)
+    if cached is not None:
+        return cached
+    remaining = deadline()
+    start = clock()
+    decide_outcome = escalate_result(
+        lambda: decide_fn(rule, config, text),
+        deadline=remaining,
+        rule_name=rule.name,
     )
+    latency_ms = (clock() - start) * 1000
+    if decide_outcome.value is not None:
+        decide_memo[memo_key] = (decide_outcome, latency_ms)
+    return decide_outcome, latency_ms
+
+
+def _resolve_target(
+    action_obj: Action | None,
+    by_name: dict[str, DecideRule | RewriteRule],
+    expected_type: type[_TargetT],
+    event: HookEvent,
+    rule: DecideRule,
+) -> _TargetT | None:
+    """Return the live target rule `action_obj` names, or None to allow.
+
+    None when the name does not resolve to `expected_type`, the target is
+    disabled, or its event or matcher does not match the live event.
+    """
+    kind = "escalate" if expected_type is DecideRule else "rewrite"
+    target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
+    if not isinstance(target, expected_type):
+        logger.warning(
+            "%s rule %r: target %r does not resolve to a %s rule; allowing",
+            kind,
+            rule.name,
+            action_obj.rule if action_obj else None,
+            "decide" if kind == "escalate" else "rewrite",
+        )
+        return None
+    if target.tier == "disabled":
+        return None
+    if target.event != event.event or not _matcher_matches(
+        target.matcher, event.tool_name
+    ):
+        logger.warning(
+            "%s rule %r targets %r: event/matcher mismatch against live "
+            "event %r/%r; allowing",
+            kind,
+            rule.name,
+            target.name,
+            event.event,
+            event.tool_name,
+        )
+        return None
+    return target
 
 
 def _do_rewrite(
@@ -491,23 +527,8 @@ def _do_rewrite(
     start_time: float,
     deadline_seconds: float,
 ) -> tuple[ActionName, str, dict[str, object] | None, str | None]:
-    target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
-    if not isinstance(target, RewriteRule):
-        _warn_unresolved(rule, action_obj, "rewrite")
-        return "allow", "", None, None
-    if target.tier == "disabled":
-        return "allow", "", None, None
-    if target.event != event.event or not _matcher_matches(
-        target.matcher, event.tool_name
-    ):
-        logger.warning(
-            "rewrite rule %r targets %r: event/matcher mismatch against live "
-            "event %r/%r; allowing",
-            rule.name,
-            target.name,
-            event.event,
-            event.tool_name,
-        )
+    target = _resolve_target(action_obj, by_name, RewriteRule, event, rule)
+    if target is None:
         return "allow", "", None, None
 
     tool_input = event.tool_input

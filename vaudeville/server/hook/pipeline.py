@@ -178,8 +178,9 @@ def _run_pipeline(
     if result.primary is None:
         return _to_wire(adapter.render_allow())
 
+    # The rendered action is already resolved; it carries no rule parameter.
     outcome = Outcome(
-        action=Action(action=result.primary.action_name),  # type: ignore[arg-type]
+        action=Action.model_construct(action=result.primary.action_name),
         message=result.primary.message,
         rule=result.primary.rule_name,
         event=event.event,
@@ -395,7 +396,10 @@ def _do_escalate(
     on its own full remaining budget instead of reusing a failure.
     """
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
-    if not isinstance(target, DecideRule) or target.tier == "disabled":
+    if not isinstance(target, DecideRule):
+        _warn_unresolved(rule, action_obj, "escalate")
+        return "allow", "", None, None, None
+    if target.tier == "disabled":
         return "allow", "", None, None, None
     if target.event != event.event or not _matcher_matches(
         target.matcher, event.tool_name
@@ -442,6 +446,16 @@ def _do_escalate(
     return action_name, message, target, target_action, reason
 
 
+def _warn_unresolved(rule: DecideRule, action_obj: Action | None, kind: str) -> None:
+    logger.warning(
+        "%s rule %r: target %r does not resolve to a %s rule; allowing",
+        kind,
+        rule.name,
+        action_obj.rule if action_obj else None,
+        "decide" if kind == "escalate" else "rewrite",
+    )
+
+
 def _do_rewrite(
     rule: DecideRule,
     action_obj: Action | None,
@@ -455,7 +469,10 @@ def _do_rewrite(
     deadline_seconds: float,
 ) -> tuple[str, str, dict[str, object] | None, str | None]:
     target = by_name.get(action_obj.rule) if action_obj and action_obj.rule else None
-    if not isinstance(target, RewriteRule) or target.tier == "disabled":
+    if not isinstance(target, RewriteRule):
+        _warn_unresolved(rule, action_obj, "rewrite")
+        return "allow", "", None, None
+    if target.tier == "disabled":
         return "allow", "", None, None
     if target.event != event.event or not _matcher_matches(
         target.matcher, event.tool_name

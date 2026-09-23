@@ -46,5 +46,20 @@ class Action(BaseModel):
     @classmethod
     def _expand_shorthand(cls, data: object) -> object:
         if isinstance(data, str):
-            return {"action": data}
+            data = {"action": data}
+        if isinstance(data, dict):
+            _require_parameter(data)
         return data
+
+
+def _require_parameter(data: dict[object, object]) -> None:
+    """Reject a configured action that cannot run without its parameter.
+
+    Only raw config input is checked; an already-built `Action` (for example
+    a resolved action a harness renders) passes through unchanged.
+    """
+    action = data.get("action")
+    if action in ("rewrite", "escalate") and not data.get("rule"):
+        raise ValueError(f"action {action!r} requires a `rule` name")
+    if action == "run" and not data.get("command"):
+        raise ValueError("action 'run' requires a `command` name")

@@ -22,6 +22,7 @@ from vaudeville.server.agents import DecideResult, ModelResolution, decide
 from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.hook import handle_hook_request
+from vaudeville.rules import loader as loader_module
 from vaudeville.server.agents import model_resolution as model_resolution_module
 from vaudeville.server.hook import pipeline as pipeline_module
 from vaudeville.server.log_config import LogConfig
@@ -484,6 +485,43 @@ tier: block
     handle_hook_request(_request(tmp_path), config=commands_config, decide_fn=fn2)
 
     assert any("undefined-command" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize("kind", ["escalate", "rewrite"])
+def test_unresolved_reference_allows_with_a_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    kind: str,
+) -> None:
+    """F10: a reference the loader did not catch still logs, never silently allows."""
+    monkeypatch.setenv("FAKE_KEY", "x")
+    monkeypatch.setattr(loader_module, "_drop_dangling_refs", lambda rules: rules)
+    _write_rule(
+        tmp_path,
+        "gate",
+        f"""
+type: decide
+name: gate
+event: PreToolUse
+matcher: Write
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: {{action: {kind}, rule: missing-target}}
+tier: block
+""",
+    )
+    fn, _ = _decide_fn('{"outcome": "violation"}')
+    caplog.set_level(logging.WARNING)
+
+    result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn)
+
+    assert result == {"stdout": "{}", "exit_code": 0}
+    assert any(
+        "missing-target" in r.getMessage() and "does not resolve" in r.getMessage()
+        for r in caplog.records
+    )
 
 
 def test_ac12_project_rule_with_argv_rejected_at_load(

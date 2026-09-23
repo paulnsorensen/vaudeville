@@ -32,7 +32,7 @@ def _outcome(
     context: str | None = None,
 ) -> Outcome:
     return Outcome(
-        action=Action(action=action_name),
+        action=Action.model_construct(action=action_name),
         message=message,
         rule="git-gate",
         event=event,

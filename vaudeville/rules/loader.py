@@ -163,4 +163,48 @@ def load_rules_layered(project_root: str | None = None) -> RuleSet:
             owner[name] = layer_name
             if name in kept:
                 merged[name] = kept[name]
-    return RuleSet(rules=tuple(merged.values()))
+    return RuleSet(rules=tuple(_drop_dangling_refs(merged).values()))
+
+
+_REF_TYPES: dict[str, type[DecideRule] | type[RewriteRule]] = {
+    "escalate": DecideRule,
+    "rewrite": RewriteRule,
+}
+
+
+def _dangling_ref(
+    rule: DecideRule, rules: dict[str, DecideRule | RewriteRule]
+) -> str | None:
+    for action in rule.on.values():
+        expected = _REF_TYPES.get(action.action)
+        if expected is None or action.rule is None:
+            continue
+        if not isinstance(rules.get(action.rule), expected):
+            return f"{action.action} -> {action.rule!r}"
+    return None
+
+
+def _drop_dangling_refs(
+    rules: dict[str, DecideRule | RewriteRule],
+) -> dict[str, DecideRule | RewriteRule]:
+    """Skip decide rules whose escalate/rewrite reference is missing or of the
+    wrong type. Repeat until stable, because a skipped rule can leave another
+    reference dangling."""
+    kept = dict(rules)
+    changed = True
+    while changed:
+        changed = False
+        for name, rule in list(kept.items()):
+            if not isinstance(rule, DecideRule):
+                continue
+            ref = _dangling_ref(rule, kept)
+            if ref is not None:
+                logger.warning(
+                    "[vaudeville] Skipping rule %r: reference %s does not "
+                    "resolve to a rule of the right type",
+                    name,
+                    ref,
+                )
+                del kept[name]
+                changed = True
+    return kept

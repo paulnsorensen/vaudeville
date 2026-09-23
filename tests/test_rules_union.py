@@ -63,6 +63,54 @@ class TestUnionDiscrimination:
             )
 
 
+class TestActionParameters:
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "rewrite",
+            "escalate",
+            "run",
+            {"action": "rewrite"},
+            {"action": "escalate", "command": "x"},
+            {"action": "run", "rule": "x"},
+        ],
+    )
+    def test_action_without_its_parameter_rejected(self, action: object) -> None:
+        """F10: a typo in `rule:`/`command:` must fail loud, not disable a block."""
+        with pytest.raises(ValidationError, match="requires a"):
+            parse_rule(
+                {
+                    "type": "decide",
+                    "name": "x",
+                    "event": "Stop",
+                    "prompt": "p",
+                    "outcomes": ["violation"],
+                    "on": {"violation": action},
+                }
+            )
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            {"action": "rewrite", "rule": "fix"},
+            {"action": "escalate", "rule": "judge"},
+            {"action": "run", "command": "notify"},
+        ],
+    )
+    def test_action_with_its_parameter_accepted(self, action: object) -> None:
+        rule = parse_rule(
+            {
+                "type": "decide",
+                "name": "x",
+                "event": "Stop",
+                "prompt": "p",
+                "outcomes": ["violation"],
+                "on": {"violation": action},
+            }
+        )
+        assert isinstance(rule, DecideRule)
+
+
 class TestTypesafeReasonValidator:
     def test_typesafe_free_text_reason_rejected_with_rule_name(self) -> None:
         with pytest.raises(ValidationError) as exc_info:

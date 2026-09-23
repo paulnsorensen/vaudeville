@@ -200,6 +200,96 @@ class TestProjectLayerTrust:
         assert "git-gate" in ruleset.by_name()
 
 
+class TestReferenceValidation:
+    """F10: an escalate/rewrite reference must resolve to a rule of the right type."""
+
+    def _load(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        rules: list[dict[str, Any]],
+    ) -> RuleSet:
+        home = tmp_path / "home"
+        rules_dir = home / ".vaudeville" / "rules"
+        rules_dir.mkdir(parents=True)
+        for data in rules:
+            _write_rule(rules_dir, f"{data['name']}.yaml", data)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "empty-plugin-root"))
+        return load_rules_layered(None)
+
+    def test_valid_references_kept(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ruleset = self._load(
+            tmp_path,
+            monkeypatch,
+            [
+                dict(
+                    DECIDE_RULE,
+                    name="a",
+                    on={
+                        "violation": {"action": "escalate", "rule": "b"},
+                        "clean": {"action": "rewrite", "rule": "trim"},
+                    },
+                ),
+                dict(DECIDE_RULE, name="b"),
+                REWRITE_RULE,
+            ],
+        )
+        assert set(ruleset.by_name()) == {"a", "b", "trim"}
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            {"action": "escalate", "rule": "missing"},
+            {"action": "escalate", "rule": "trim"},
+            {"action": "rewrite", "rule": "b"},
+        ],
+    )
+    def test_dangling_or_wrong_type_reference_skipped_and_logged(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        action: dict[str, str],
+    ) -> None:
+        with caplog.at_level("WARNING"):
+            ruleset = self._load(
+                tmp_path,
+                monkeypatch,
+                [
+                    dict(DECIDE_RULE, name="a", on={"violation": action}),
+                    dict(DECIDE_RULE, name="b"),
+                    REWRITE_RULE,
+                ],
+            )
+        assert set(ruleset.by_name()) == {"b", "trim"}
+        assert "'a'" in caplog.text
+        assert action["rule"] in caplog.text
+
+    def test_skip_cascades_to_rules_that_reference_a_skipped_rule(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ruleset = self._load(
+            tmp_path,
+            monkeypatch,
+            [
+                dict(
+                    DECIDE_RULE,
+                    name="a",
+                    on={"violation": {"action": "escalate", "rule": "b"}},
+                ),
+                dict(
+                    DECIDE_RULE,
+                    name="b",
+                    on={"violation": {"action": "rewrite", "rule": "missing"}},
+                ),
+            ],
+        )
+        assert ruleset.by_name() == {}
+
+
 class TestObsoleteContextKey:
     def test_rule_with_context_key_skipped_and_logged(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture

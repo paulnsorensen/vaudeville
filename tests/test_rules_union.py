@@ -351,3 +351,38 @@ class TestActionShorthand:
         assert rule.on["a"].rule is None
         assert rule.on["b"].action == "rewrite"
         assert rule.on["b"].rule == "fix-it"
+
+
+class TestOutcomesCoverage:
+    """R5: an `on` key or test-case outcome outside `outcomes` fails loud."""
+
+    def test_bad_on_key_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="git-gate") as exc_info:
+            parse_rule(
+                {
+                    "type": "decide",
+                    "name": "git-gate",
+                    "event": "Stop",
+                    "prompt": "p",
+                    "outcomes": ["violation", "clean"],
+                    "on": {"violaiton": "block"},
+                }
+            )
+        assert "violaiton" in str(exc_info.value)
+
+    def test_bad_test_case_outcome_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="git-gate") as exc_info:
+            parse_rule(
+                {
+                    "type": "decide",
+                    "name": "git-gate",
+                    "event": "Stop",
+                    "prompt": "p",
+                    "outcomes": ["violation", "clean"],
+                    "on": {"violation": "block"},
+                    "test_cases": [{"text": "t", "outcome": "violaiton"}],
+                }
+            )
+        assert "violaiton" in str(exc_info.value)
+
+

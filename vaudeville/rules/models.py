@@ -77,6 +77,22 @@ class DecideRule(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_outcomes_coverage(self) -> "DecideRule":
+        outcomes = set(self.outcomes)
+        for key in self.on:
+            if key not in outcomes:
+                raise ValueError(
+                    f"rule {self.name!r}: on: key {key!r} is not in outcomes {self.outcomes}"
+                )
+        for case in self.test_cases:
+            if case.outcome not in outcomes:
+                raise ValueError(
+                    f"rule {self.name!r}: test case outcome {case.outcome!r} is not in "
+                    f"outcomes {self.outcomes}"
+                )
+        return self
+
 
 _TOOL_INPUT_PREFIX = "tool_input."
 

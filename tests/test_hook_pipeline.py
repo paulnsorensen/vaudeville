@@ -826,3 +826,29 @@ class TestAllowRendering:
         result = handle_hook_request(_request(tmp_path), config=_CONFIG)
 
         assert result == {"stdout": "{}", "exit_code": 0}
+
+
+class TestRunFailureKeepsBlock:
+    """F6: a `run` of a missing binary never turns another rule's block into allow."""
+
+    def test_block_survives_missing_run_binary(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-git-gate", DECIDE_RULE_YAML)
+        _write_rule(
+            tmp_path,
+            "run-ghost",
+            DECIDE_RULE_YAML.replace("pipeline-git-gate", "run-ghost").replace(
+                "violation: block", "violation: {action: run, command: ghost}"
+            ),
+        )
+        config = _CONFIG.model_copy(
+            update={"commands": {"ghost": ["/nonexistent/vaudeville-ghost-bin"]}}
+        )
+        fn, recorder = _decide_fn('{"outcome": "violation"}')
+
+        result = handle_hook_request(_request(tmp_path), config=config, decide_fn=fn)
+
+        assert recorder.call_count == 2
+        assert "deny" in str(result["stdout"])

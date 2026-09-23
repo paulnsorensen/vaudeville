@@ -23,20 +23,25 @@ def run_named_command(
     """Start the named command without a shell, feeding `event_json` on stdin.
 
     Does not wait for the child; a daemon thread kills it if it outlives
-    `timeout`. Returns False and logs when `name` is not in `config.commands`.
+    `timeout`. Returns False and logs when `name` is not in `config.commands`
+    or the process cannot start, so a `run` failure affects only that run.
     """
     argv = config.commands.get(name)
     if argv is None:
         logger.warning("run action names undefined command %r; skipped", name)
         return False
-    process = subprocess.Popen(
-        argv,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        env=_child_env(config),
-    )
+    try:
+        process = subprocess.Popen(
+            argv,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            env=_child_env(config),
+        )
+    except (OSError, ValueError) as exc:
+        logger.warning("run command %r failed to start: %s; skipped", name, exc)
+        return False
 
     def _enforce_timeout() -> None:
         try:

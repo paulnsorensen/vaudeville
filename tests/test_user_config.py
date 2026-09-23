@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pydantic
+import pytest
 from vaudeville.server.user_config import ProviderConfig, UserConfig, load_user_config
 
 
@@ -42,3 +44,9 @@ class TestLoadUserConfig:
         config = load_user_config(config_path)
 
         assert config == UserConfig()
+
+
+class TestCommandArgv:
+    def test_empty_command_argv_is_rejected(self) -> None:
+        with pytest.raises(pydantic.ValidationError):
+            UserConfig.model_validate({"commands": {"empty": []}})

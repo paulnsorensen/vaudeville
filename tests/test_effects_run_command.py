@@ -153,3 +153,26 @@ class TestRunStripsProviderKeyEnv:
         )
         assert leaked == set()
         assert child_env.get("PATH") == os.environ.get("PATH")
+
+
+class TestRunStartFailure:
+    """F6: a command that cannot start is logged and skipped, never raised."""
+
+    def test_missing_binary_returns_false_and_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        config = UserConfig(commands={"ghost": ["/nonexistent/vaudeville-ghost-bin"]})
+
+        with caplog.at_level(logging.WARNING):
+            started = run_named_command("ghost", config, "{}", timeout=1.0)
+
+        assert started is False
+        assert any("ghost" in r.getMessage() for r in caplog.records)
+
+    def test_popen_value_error_returns_false(self) -> None:
+        config = UserConfig(commands={"bad": ["/bin/echo"]})
+
+        with patch("subprocess.Popen", side_effect=ValueError("bad argv")):
+            started = run_named_command("bad", config, "{}", timeout=1.0)
+
+        assert started is False

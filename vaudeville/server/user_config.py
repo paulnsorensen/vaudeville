@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Annotated
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,7 +43,9 @@ class UserConfig(BaseModel):
 
     default_model: str | None = None
     providers: dict[str, ProviderConfig] = Field(default_factory=dict)
-    commands: dict[str, list[str]] = Field(default_factory=dict)
+    commands: dict[str, Annotated[list[str], Field(min_length=1)]] = Field(
+        default_factory=dict
+    )
 
 
 def load_user_config(path: str | Path | None = None) -> UserConfig:

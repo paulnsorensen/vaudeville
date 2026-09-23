@@ -39,16 +39,21 @@ def escalate_result(
 ) -> EscalateResult[T]:
     """Run `decide_fn` once on the shared decide pool, bounded by `deadline` seconds.
 
-    On a deadline expiry the future is left to finish in the pool rather
-    than cancelled; the pool's fixed size bounds worst-case thread growth.
+    A spent budget (`deadline <= 0`) returns a timed-out result without
+    submitting, and a deadline expiry cancels the future, so no model call
+    starts after the caller stops waiting. A call already running finishes
+    in the pool; the pool's fixed size bounds worst-case thread growth.
     An exception raised by `decide_fn` is caught and logged with `rule_name`
     for context rather than propagating. The caller never nests: this runs
     the named decide rule exactly once.
     """
+    if deadline <= 0:
+        return EscalateResult(value=None, timed_out=True, error=None)
     future: Future[T] = _EXECUTOR.submit(decide_fn)
     try:
         value = future.result(timeout=deadline)
     except FutureTimeoutError:
+        future.cancel()
         return EscalateResult(value=None, timed_out=True, error=None)
     except Exception as exc:
         logger.warning(

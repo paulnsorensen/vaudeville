@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import threading
 import time
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 
 import pytest
 
 from vaudeville.server.effects import escalate, escalate_result
+
+escalate_module = importlib.import_module("vaudeville.server.effects.escalate")
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,48 @@ class TestEscalateResult:
         assert outcome.value is None
         assert outcome.timed_out is False
         assert isinstance(outcome.error, RuntimeError)
+
+    @pytest.mark.parametrize("deadline", [0.0, -1.0])
+    def test_spent_budget_times_out_without_calling_decide_fn(
+        self, deadline: float
+    ) -> None:
+        """F8: no model call starts once the caller's budget is gone."""
+        calls: list[int] = []
+
+        def decide_fn() -> FakeResult:
+            calls.append(1)
+            return FakeResult(outcome="block", reason="late")
+
+        outcome = escalate_result(decide_fn, deadline=deadline)
+
+        assert outcome.value is None
+        assert outcome.timed_out is True
+        assert calls == []
+
+    def test_deadline_expiry_cancels_the_future(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F8: a queued call that missed its deadline must not run later."""
+        cancelled: list[bool] = []
+
+        class _StalledFuture:
+            def result(self, timeout: float) -> FakeResult:
+                raise FutureTimeoutError
+
+            def cancel(self) -> bool:
+                cancelled.append(True)
+                return True
+
+        class _Executor:
+            def submit(self, fn: object) -> _StalledFuture:
+                return _StalledFuture()
+
+        monkeypatch.setattr(escalate_module, "_EXECUTOR", _Executor())
+
+        outcome = escalate_result(lambda: FakeResult("block", "x"), deadline=0.05)
+
+        assert outcome.timed_out is True
+        assert cancelled == [True]
 
 
 class TestEscalatePool:

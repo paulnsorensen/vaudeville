@@ -900,6 +900,23 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-evals"
+version = "2.47.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "logfire-api" },
+    { name = "pydantic" },
+    { name = "pydantic-ai-slim" },
+    { name = "pyyaml" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b5/87/ad35469a582965b9df4f6a9054164ad5effc8d1dea5a205af65b38f3f27a/pydantic_evals-2.47.0.tar.gz", hash = "sha256:a18a93e96b94e7800cbb14941db4730290f87fdfa4f33d2ba6b51a79d641adcf", size = 90651, upload-time = "2026-09-22T04:13:58.227Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/81/34504d9426f420cc3ea05eb5d3f387a17f14d5ea678b6ced18d6f4be9da4/pydantic_evals-2.47.0-py3-none-any.whl", hash = "sha256:d3d1cf8a2ce684c2ef78d5116d69b6e21d4b91512876328fcd31e725c13d014f", size = 105883, upload-time = "2026-09-22T04:13:51.54Z" },
+]
+
+[[package]]
 name = "pydantic-graph"
 version = "2.47.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1183,6 +1200,7 @@ dependencies = [
     { name = "loguru" },
     { name = "pydantic" },
     { name = "pydantic-ai-slim", extra = ["anthropic", "typesafe"] },
+    { name = "pydantic-evals" },
     { name = "pyyaml" },
     { name = "rich" },
 ]
@@ -1205,6 +1223,7 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "pydantic", specifier = ">=2.13.5" },
     { name = "pydantic-ai-slim", extras = ["typesafe", "anthropic"], specifier = ">=2.47.0" },
+    { name = "pydantic-evals", specifier = "==2.47.0" },
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "rich", specifier = ">=13.0" },
 ]

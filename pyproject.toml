@@ -32,6 +32,7 @@ dependencies = [
     "rich>=13.0",
     "pydantic>=2.13.5",
     "pydantic-ai-slim[typesafe,anthropic]>=2.47.0",
+    "pydantic-evals==2.47.0",
 ]
 
 [project.scripts]

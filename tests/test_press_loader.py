@@ -6,14 +6,13 @@ import logging
 from pathlib import Path
 
 import pytest
+from _hook_helpers import CONFIG as _CONFIG
+from _hook_helpers import make_request as _request
+from _hook_helpers import write_rule as _write_rule
 
 from vaudeville.rules import DecideRule, RewriteRule, load_rules_layered
 from vaudeville.server.agents import DecideResult
 from vaudeville.server.hook import handle_hook_request
-
-from _hook_helpers import CONFIG as _CONFIG
-from _hook_helpers import make_request as _request
-from _hook_helpers import write_rule as _write_rule
 
 
 class TestLayerCollisionWithDifferentType:
@@ -68,10 +67,7 @@ target: [tool_input.content]
         assert len(rules) == 1
         assert isinstance(rules["shared"], DecideRule)
         assert not isinstance(rules["shared"], RewriteRule)
-        assert any(
-            "shared" in r.getMessage() and "user" in r.getMessage()
-            for r in caplog.records
-        )
+        assert any("shared" in r.getMessage() and "user" in r.getMessage() for r in caplog.records)
 
     def test_layer_collision_with_different_type_does_not_crash_the_pipeline(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -146,9 +142,7 @@ tier: block
 """,
         )
 
-        def decide_returns_violation(
-            rule: object, config: object, text: str
-        ) -> DecideResult:
+        def decide_returns_violation(rule: object, config: object, text: str) -> DecideResult:
             del rule, config, text
             return DecideResult(outcome="violation")
 

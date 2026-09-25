@@ -85,14 +85,14 @@ class TestCmdRewire:
                 scope="global",
             )
 
-            with patch(
-                "vaudeville.__main__._strict_project_root", return_value="/proj"
-            ):
-                with patch(
+            with (
+                patch("vaudeville.__main__._strict_project_root", return_value="/proj"),
+                patch(
                     "vaudeville.__main__._find_commands_dir",
                     return_value="/proj/commands",
-                ):
-                    cmd_tune(args)
+                ),
+            ):
+                cmd_tune(args)
 
         mock_orch.assert_called_once()
         call_kwargs = mock_orch.call_args[1]
@@ -117,14 +117,14 @@ class TestCmdRewire:
                 scope="global",
             )
 
-            with patch(
-                "vaudeville.__main__._strict_project_root", return_value="/proj"
-            ):
-                with patch(
+            with (
+                patch("vaudeville.__main__._strict_project_root", return_value="/proj"),
+                patch(
                     "vaudeville.__main__._find_commands_dir",
                     return_value="/proj/commands",
-                ):
-                    cmd_generate(args)
+                ),
+            ):
+                cmd_generate(args)
 
         mock_orch.assert_called_once()
         call_kwargs = mock_orch.call_args[1]

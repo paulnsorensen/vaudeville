@@ -28,7 +28,7 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 def rule_filenames(rules_dir: str) -> list[str]:
     try:
-        names = os.listdir(rules_dir)
+        names = [p.name for p in Path(rules_dir).iterdir()]
     except OSError:
         return []
     return sorted(name for name in names if name.endswith((".yaml", ".yml")))
@@ -36,12 +36,10 @@ def rule_filenames(rules_dir: str) -> list[str]:
 
 def load_rule_file(path: str | Path) -> DecideRule | RewriteRule | None:
     """Load and validate a single YAML rule file. Returns None for drafts."""
-    with open(path) as f:
+    with Path(path).open() as f:
         data: Any = yaml.safe_load(f)
     if not isinstance(data, dict):
-        raise ValueError(
-            f"Rule file must be a YAML mapping, got {type(data).__name__}: {path}"
-        )
+        raise ValueError(f"Rule file must be a YAML mapping, got {type(data).__name__}: {path}")
     if data.get("draft"):
         return None
     if "context" in data:
@@ -56,7 +54,7 @@ def load_rule_file(path: str | Path) -> DecideRule | RewriteRule | None:
 def _attempted_rule_name(path: str) -> str | None:
     """Peek at the raw YAML `name:` of a rule file, before validation."""
     try:
-        with open(path) as f:
+        with Path(path).open() as f:
             data: Any = yaml.safe_load(f)
     except Exception:
         return None
@@ -83,7 +81,7 @@ def load_rules_with_attempted(
     rules: dict[str, DecideRule | RewriteRule] = {}
     attempted: dict[str, str] = {}
     for filename in rule_filenames(rules_dir):
-        path = os.path.join(rules_dir, filename)
+        path = str(Path(rules_dir) / filename)
         attempted_name = _attempted_rule_name(path)
         try:
             rule = load_rule_file(path)
@@ -102,22 +100,22 @@ def load_rules_with_attempted(
 def bundled_rules_dir() -> str | None:
     """Locate the plugin-bundled examples/rules directory, if present."""
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", str(_PACKAGE_ROOT))
-    candidate = os.path.join(plugin_root, "examples", "rules")
-    return candidate if os.path.isdir(candidate) else None
+    candidate = str(Path(plugin_root) / "examples" / "rules")
+    return candidate if Path(candidate).is_dir() else None
 
 
 def user_rules_dir() -> str | None:
     """Locate the user-global ~/.vaudeville/rules directory, if present."""
-    candidate = os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
-    return candidate if os.path.isdir(candidate) else None
+    candidate = str(Path.home() / ".vaudeville" / "rules")
+    return candidate if Path(candidate).is_dir() else None
 
 
 def project_rules_dir(project_root: str | None) -> str | None:
     """Locate the project's .vaudeville/rules directory, if present."""
     if not project_root:
         return None
-    candidate = os.path.join(project_root, ".vaudeville", "rules")
-    return candidate if os.path.isdir(candidate) else None
+    candidate = str(Path(project_root) / ".vaudeville" / "rules")
+    return candidate if Path(candidate).is_dir() else None
 
 
 def rule_layers(project_root: str | None = None) -> list[tuple[str, str]]:
@@ -180,9 +178,7 @@ def resolve_rules_layered(project_root: str | None = None) -> dict[str, Resolved
                     filename,
                 )
                 continue
-            resolved[name] = ResolvedRule(
-                rule, layer_name, os.path.join(rules_dir, filename)
-            )
+            resolved[name] = ResolvedRule(rule, layer_name, str(Path(rules_dir) / filename))
     return resolved
 
 
@@ -191,12 +187,8 @@ def resolve_active_rules(project_root: str | None = None) -> dict[str, ResolvedR
     escalate/rewrite outcome. Both the daemon load and the admin
     editable view share this step, so they agree."""
     resolved = resolve_rules_layered(project_root)
-    fixed_rules = _drop_dangling_refs(
-        {name: entry.rule for name, entry in resolved.items()}
-    )
-    return {
-        name: entry._replace(rule=fixed_rules[name]) for name, entry in resolved.items()
-    }
+    fixed_rules = _drop_dangling_refs({name: entry.rule for name, entry in resolved.items()})
+    return {name: entry._replace(rule=fixed_rules[name]) for name, entry in resolved.items()}
 
 
 def load_rules_layered(project_root: str | None = None) -> RuleSet:
@@ -226,9 +218,7 @@ _REF_TYPES: dict[str, type[DecideRule] | type[RewriteRule]] = {
 }
 
 
-def _dangling_outcomes(
-    rule: DecideRule, rules: dict[str, DecideRule | RewriteRule]
-) -> list[str]:
+def _dangling_outcomes(rule: DecideRule, rules: dict[str, DecideRule | RewriteRule]) -> list[str]:
     """Outcome names whose action references a rule that does not resolve
     to the expected type."""
     dangling: list[str] = []

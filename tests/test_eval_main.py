@@ -6,7 +6,6 @@ import pathlib
 from unittest.mock import patch
 
 import pytest
-
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -142,9 +141,7 @@ class TestMain:
         with (
             patch("sys.argv", ["eval"]),
             patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
-            patch(
-                "vaudeville.eval_cli.load_test_cases", side_effect=_capture_test_cases
-            ),
+            patch("vaudeville.eval_cli.load_test_cases", side_effect=_capture_test_cases),
         ):
             mock_layered.return_value.by_name.return_value = {}
             from vaudeville.eval_cli import main
@@ -154,9 +151,7 @@ class TestMain:
 
         assert "git-gate" in captured["rules"]  # type: ignore[operator]
 
-    def test_calibrate_prints_notice_and_exits_0(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_calibrate_prints_notice_and_exits_0(self, capsys: pytest.CaptureFixture[str]) -> None:
         with (
             patch("sys.argv", ["eval", "--calibrate", "git-gate"]),
             patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
@@ -217,9 +212,7 @@ class TestEmitJsonl:
         assert out.strip().count("\n") == 0
         assert '"case_id": 0' in out
 
-    def test_emits_nothing_for_empty_list(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_emits_nothing_for_empty_list(self, capsys: pytest.CaptureFixture[str]) -> None:
         from vaudeville.eval_cli import _emit_jsonl
 
         _emit_jsonl([])
@@ -248,9 +241,7 @@ class TestMainEndToEnd:
 
         def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
             del messages, info
-            return ModelResponse(
-                parts=[TextPart('{"outcome": "violation", "confidence": 0.9}')]
-            )
+            return ModelResponse(parts=[TextPart('{"outcome": "violation", "confidence": 0.9}')])
 
         model = FunctionModel(respond)
 

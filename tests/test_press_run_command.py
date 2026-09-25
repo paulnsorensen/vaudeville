@@ -7,22 +7,20 @@ that argv may start a process.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
-
-from vaudeville.server.effects.run_command import run_named_command
-from vaudeville.server.hook import handle_hook_request
-from vaudeville.server.user_config import UserConfig, load_user_config
-
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
 from _hook_helpers import make_request as _request
 from _hook_helpers import write_rule as _write_rule
+
+from vaudeville.server.effects.run_command import run_named_command
+from vaudeville.server.hook import handle_hook_request
+from vaudeville.server.user_config import UserConfig, load_user_config
 
 
 class _PopenRecorder:
@@ -31,7 +29,7 @@ class _PopenRecorder:
     def __init__(self) -> None:
         self.calls: list[Any] = []
 
-    def __call__(self, argv: Any, **kwargs: Any) -> "_FakeProcess":
+    def __call__(self, argv: Any, **kwargs: Any) -> _FakeProcess:
         self.calls.append(argv)
         return _FakeProcess()
 
@@ -147,9 +145,7 @@ class TestNamedCommandArgvIsUserConfigOnly:
         assert ok is True
         assert len(recorder.calls) == 1
         assert recorder.calls[0] == configured_argv
-        assert (
-            recorder.calls[0] is configured_argv or recorder.calls[0] == configured_argv
-        )
+        assert recorder.calls[0] is configured_argv or recorder.calls[0] == configured_argv
 
     def test_run_action_with_unknown_command_name_never_starts_a_process(
         self, monkeypatch: pytest.MonkeyPatch
@@ -173,9 +169,7 @@ class TestUserConfigArgvAsStringNotList:
         recorder = _PopenRecorder()
         monkeypatch.setattr(subprocess, "Popen", recorder)
         config_path = tmp_path / "config"
-        config_path.write_text(
-            yaml.safe_dump({"commands": {"notify": "/usr/local/bin/notify"}})
-        )
+        config_path.write_text(yaml.safe_dump({"commands": {"notify": "/usr/local/bin/notify"}}))
 
         with pytest.raises(Exception):
             load_user_config(config_path)
@@ -256,7 +250,7 @@ class TestConfigFileUnreadable:
         vaudeville_dir.mkdir(parents=True)
         config_path = vaudeville_dir / "config"
         config_path.write_text("default_model: fake:model\n")
-        os.chmod(config_path, 0o000)
+        Path(config_path).chmod(0o000)
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "no-plugin-root"))
         _write_rule(
@@ -280,14 +274,12 @@ tier: block
         try:
             result = handle_hook_request(_request(tmp_path), config=None, decide_fn=fn)
         finally:
-            os.chmod(config_path, 0o644)
+            Path(config_path).chmod(0o644)
 
         assert result["exit_code"] == 0
         assert recorder.calls == []
 
-    def test_directory_in_place_of_config_file_yields_empty_config(
-        self, tmp_path: Path
-    ) -> None:
+    def test_directory_in_place_of_config_file_yields_empty_config(self, tmp_path: Path) -> None:
         config_path = tmp_path / "config"
         config_path.mkdir()
 

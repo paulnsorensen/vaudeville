@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-
 from typing import TYPE_CHECKING
 
 from pydantic_ai.models import Model
@@ -29,9 +28,7 @@ def print_results(results: EvalResults) -> bool:
         return "" if ok else " << BELOW THRESHOLD"
 
     print(f"\n=== {results.rule} [{status}] ===")
-    print(
-        f"Accuracy:  {results.accuracy * 100:.1f}% ({results.tp + results.tn}/{results.total})"
-    )
+    print(f"Accuracy:  {results.accuracy * 100:.1f}% ({results.tp + results.tn}/{results.total})")
     print(f"Precision: {prec_pct:.1f}% (>= 95%){_marker(prec_ok)}")
     print(f"Recall:    {rec_pct:.1f}% (>= 80%){_marker(rec_ok)}")
     print(f"F1:        {results.f1 * 100:.1f}%")
@@ -47,9 +44,7 @@ def print_results(results: EvalResults) -> bool:
     if results.misclassified:
         print("\nMisclassifications:")
         for m in results.misclassified:
-            print(
-                f"  actual={m['actual']} predicted={m['predicted']}: {m['text'][:80]}"
-            )
+            print(f"  actual={m['actual']} predicted={m['predicted']}: {m['text'][:80]}")
 
     return passed
 

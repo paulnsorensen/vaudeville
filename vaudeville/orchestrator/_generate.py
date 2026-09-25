@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -80,7 +79,7 @@ def orchestrate_generate(
     rules_dir_path = Path(rules_dir)
     before = _snapshot_rules(rules_dir_path)
 
-    generate_dir = os.path.join(commands_dir, "generate")
+    generate_dir = str(Path(commands_dir) / "generate")
     gen_args = [
         "-n",
         "1",

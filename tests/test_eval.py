@@ -114,9 +114,7 @@ class TestCrossValidateRule:
             DecideTestCase(text="clean text", outcome="clean"),
         ]
 
-        aggregate = cross_validate_rule(
-            rule.name, cases, {rule.name: rule}, UserConfig()
-        )
+        aggregate = cross_validate_rule(rule.name, cases, {rule.name: rule}, UserConfig())
 
         assert aggregate.total == 2
         assert aggregate.tp == 0
@@ -135,9 +133,7 @@ class TestCrossValidateRuleModelOverride:
         `classify_case`; the resolved provider model is never called."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
         rule = _rule()
-        config = UserConfig(
-            providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")}
-        )
+        config = UserConfig(providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")})
         recorder = _RecordingModel('{"outcome": "violation", "confidence": 0.9}')
         cases = [
             DecideTestCase(text="violation text", outcome="violation"),
@@ -188,9 +184,7 @@ class TestRunEvaluationsModelOverride:
     ) -> None:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
         rule = _rule()
-        config = UserConfig(
-            providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")}
-        )
+        config = UserConfig(providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")})
         recorder = _RecordingModel('{"outcome": "clean", "confidence": 0.9}')
         cases = [DecideTestCase(text="t", outcome="clean")]
         args = argparse.Namespace(cross_validate=True)

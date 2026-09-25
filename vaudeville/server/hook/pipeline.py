@@ -143,8 +143,7 @@ def _run_pipeline(
     matching = [
         rule
         for rule in ruleset.for_event(event.event)
-        if isinstance(rule, DecideRule)
-        and _matcher_matches(rule.matcher, event.tool_name)
+        if isinstance(rule, DecideRule) and _matcher_matches(rule.matcher, event.tool_name)
     ]
 
     evaluated: list[EvaluatedAction] = []
@@ -263,9 +262,7 @@ def _evaluate_rule(
     )
 
     if decide_outcome.value is None:
-        decide_downgrade = (
-            "decide-error" if decide_outcome.error is not None else "decide-timeout"
-        )
+        decide_downgrade = "decide-error" if decide_outcome.error is not None else "decide-timeout"
         _log_decision(
             logger_fn,
             rule,
@@ -280,9 +277,7 @@ def _evaluate_rule(
     result = decide_outcome.value
 
     if result.outcome is None:
-        _log_decision(
-            logger_fn, rule, result, "allow", None, latency_ms, model_name, prompt_chars
-        )
+        _log_decision(logger_fn, rule, result, "allow", None, latency_ms, model_name, prompt_chars)
         return None
 
     action_obj = rule.on.get(result.outcome)
@@ -377,9 +372,7 @@ def _evaluate_rule(
     return item
 
 
-def _message_for(
-    rule: DecideRule, result: DecideResult, action_name: ActionName
-) -> str:
+def _message_for(rule: DecideRule, result: DecideResult, action_name: ActionName) -> str:
     if action_name in ("warn", "block") and rule.reasons:
         if result.reason and result.reason in rule.reasons:
             return rule.reasons[result.reason]
@@ -498,12 +491,9 @@ def _resolve_target(
         return None
     if target.tier == "disabled":
         return None
-    if target.event != event.event or not _matcher_matches(
-        target.matcher, event.tool_name
-    ):
+    if target.event != event.event or not _matcher_matches(target.matcher, event.tool_name):
         logger.warning(
-            "%s rule %r targets %r: event/matcher mismatch against live "
-            "event %r/%r; allowing",
+            "%s rule %r targets %r: event/matcher mismatch against live event %r/%r; allowing",
             kind,
             rule.name,
             target.name,
@@ -560,13 +550,9 @@ def _do_rewrite(
         return rewritten
 
     remaining = _remaining_budget(clock, start_time, deadline_seconds)
-    rewrite_outcome = escalate_result(
-        _rewrite_sources, deadline=remaining, rule_name=target.name
-    )
+    rewrite_outcome = escalate_result(_rewrite_sources, deadline=remaining, rule_name=target.name)
     if rewrite_outcome.value is None:
-        downgrade = (
-            "rewrite-error" if rewrite_outcome.error is not None else "rewrite-timeout"
-        )
+        downgrade = "rewrite-error" if rewrite_outcome.error is not None else "rewrite-timeout"
         return "allow", "", None, downgrade
     new_values = rewrite_outcome.value
 
@@ -579,9 +565,7 @@ def _do_rewrite(
         return "feedback", with_origin_label(rule.name, new_text), None, None
 
     new_text = "\n".join(new_values.values())
-    updated = apply_rewrite(
-        tool_input, target.target, new_values, rule_name=rule.name, log=_log
-    )
+    updated = apply_rewrite(tool_input, target.target, new_values, rule_name=rule.name, log=_log)
     action_name, reason = apply_tier_ceiling("rewrite", target.tier)
     if action_name != "rewrite":
         return action_name, new_text, None, reason

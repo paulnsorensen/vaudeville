@@ -16,24 +16,23 @@ import time
 from pathlib import Path
 
 import pytest
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
-from pydantic_ai.models.function import AgentInfo, FunctionModel
-
-from vaudeville.server.agents import DecideResult, ModelResolution, decide
-from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
-from vaudeville.server.event_log import EventLogger
-from vaudeville.server.hook import handle_hook_request
-from vaudeville.rules import loader as loader_module
-from vaudeville.server.agents import model_resolution as model_resolution_module
-from vaudeville.server.hook import pipeline as pipeline_module
-from vaudeville.server.log_config import LogConfig
-from vaudeville.server.user_config import ProviderConfig, UserConfig
-
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
 from _hook_helpers import make_request as _request
 from _hook_helpers import patch_rewrite
 from _hook_helpers import write_rule as _write_rule
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+from vaudeville.rules import loader as loader_module
+from vaudeville.server.agents import DecideResult, ModelResolution, decide
+from vaudeville.server.agents import model_resolution as model_resolution_module
+from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
+from vaudeville.server.event_log import EventLogger
+from vaudeville.server.hook import handle_hook_request
+from vaudeville.server.hook import pipeline as pipeline_module
+from vaudeville.server.log_config import LogConfig
+from vaudeville.server.user_config import ProviderConfig, UserConfig
 
 
 def test_ac1_valid_rules_decide_invalid_rules_skipped_and_logged(
@@ -100,12 +99,8 @@ surprise_field: nope
 
     assert recorder.call_count == 1
     assert "deny" in str(result["stdout"])
-    failed_unknown_type = [
-        r for r in caplog.records if "unknown-type.yaml" in r.getMessage()
-    ]
-    failed_unknown_field = [
-        r for r in caplog.records if "unknown-field.yaml" in r.getMessage()
-    ]
+    failed_unknown_type = [r for r in caplog.records if "unknown-type.yaml" in r.getMessage()]
+    failed_unknown_field = [r for r in caplog.records if "unknown-field.yaml" in r.getMessage()]
     assert failed_unknown_type
     assert failed_unknown_field
     assert not any("valid-rewrite.yaml" in r.getMessage() for r in caplog.records)
@@ -202,9 +197,7 @@ tier: block
     patch_rewrite(monkeypatch, "sanitized text")
     caplog.set_level(logging.INFO)
 
-    request = _request(
-        tmp_path, tool_input={"content": "old text", "file_path": "notes.txt"}
-    )
+    request = _request(tmp_path, tool_input={"content": "old text", "file_path": "notes.txt"})
     result = handle_hook_request(request, config=_CONFIG, decide_fn=fn)
 
     payload = dict(json.loads(str(result["stdout"])))
@@ -460,9 +453,7 @@ tier: block
     )
     fn, _ = _decide_fn('{"outcome": "violation"}')
 
-    result = handle_hook_request(
-        _request(tmp_path), config=commands_config, decide_fn=fn
-    )
+    result = handle_hook_request(_request(tmp_path), config=commands_config, decide_fn=fn)
     for _ in range(50):
         if marker.exists():
             break
@@ -795,9 +786,7 @@ tier: block
 """,
     )
     fn, _ = _decide_fn('{"outcome": "violation"}')
-    result_before = handle_hook_request(
-        _request(project_a), config=_CONFIG, decide_fn=fn
-    )
+    result_before = handle_hook_request(_request(project_a), config=_CONFIG, decide_fn=fn)
     assert "deny" in str(result_before["stdout"])
 
     _write_rule(
@@ -817,9 +806,7 @@ tier: block
 """,
     )
     fn2, _ = _decide_fn('{"outcome": "violation"}')
-    result_after = handle_hook_request(
-        _request(project_a), config=_CONFIG, decide_fn=fn2
-    )
+    result_after = handle_hook_request(_request(project_a), config=_CONFIG, decide_fn=fn2)
     assert "systemMessage" in str(result_after["stdout"])
     assert "permissionDecision" not in str(result_after["stdout"])
 
@@ -1062,9 +1049,7 @@ tier: block
         },
     }
     try:
-        result = handle_hook_request(
-            request, config=_CONFIG, decide_fn=fn, event_logger=logger
-        )
+        result = handle_hook_request(request, config=_CONFIG, decide_fn=fn, event_logger=logger)
     finally:
         logger.close()
 
@@ -1113,9 +1098,7 @@ tier: block
         },
     }
     try:
-        result = handle_hook_request(
-            request, config=_CONFIG, decide_fn=fn, event_logger=logger
-        )
+        result = handle_hook_request(request, config=_CONFIG, decide_fn=fn, event_logger=logger)
     finally:
         logger.close()
 
@@ -1159,9 +1142,7 @@ def _run_logged(
     logs_dir = tmp_path / "logs"
     logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
     try:
-        result = handle_hook_request(
-            request, config=_CONFIG, decide_fn=fn, event_logger=logger
-        )
+        result = handle_hook_request(request, config=_CONFIG, decide_fn=fn, event_logger=logger)
     finally:
         logger.close()
     time.sleep(0.05)

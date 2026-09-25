@@ -61,10 +61,85 @@ python_files = ["test_*.py"]
 [tool.coverage.run]
 source = ["vaudeville"]
 omit = [
-    "vaudeville/server/mlx_backend.py",
-    "vaudeville/server/gguf_backend.py",
-    "vaudeville/setup.py",
     "vaudeville/server/__main__.py",
+]
+
+[tool.ruff]
+line-length = 99
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "UP",
+    "ANN", "ARG", "BLE", "PTH", "SIM", "B",
+    "RUF100", "PLR0913", "PLR0915",
+]
+
+[tool.ruff.lint.pylint]
+max-args = 4
+max-statements = 40
+
+[tool.ruff.lint.per-file-ignores]
+# Tests exercise dynamic fixtures, subprocess doubles, and platform paths rather than
+# production annotation and portability policy.
+"tests/**" = ["ANN", "ARG", "BLE", "B008", "B017", "PTH", "SIM"]
+"tests/test_analytics.py" = ["PLR0913"]
+"tests/test_harness_claude_code.py" = ["PLR0913"]
+"tests/test_stats.py" = ["PLR0913"]
+"tests/test_watch.py" = ["PLR0913"]
+
+# Bundled example scripts under skills/ ship as standalone Claude Code skill
+# assets, not vaudeville/ package modules; they keep looser annotation and
+# portability policy like tests/**.
+"skills/**" = ["ANN", "BLE", "PTH", "B904", "E501"]
+
+# These production exceptions are the measured baseline for FU-5. Each rule
+# remains selected globally; remove an entry when its owning module is simplified.
+"hooks/runner.py" = ["BLE001"]
+"vaudeville/__main__.py" = ["ANN401"]
+"vaudeville/analytics/__init__.py" = ["ANN401"]
+"vaudeville/cli_rules.py" = ["ANN401", "BLE001"]
+"vaudeville/core/client.py" = ["BLE001"]
+"vaudeville/core/truncation.py" = ["BLE001"]
+"vaudeville/eval.py" = ["PLR0913"]
+"vaudeville/eval_report.py" = ["PLR0913"]
+"vaudeville/orchestrator/_abandon.py" = ["PLR0913"]
+"vaudeville/orchestrator/_generate.py" = ["PLR0913"]
+"vaudeville/orchestrator/_phase.py" = ["PLR0913"]
+"vaudeville/orchestrator/_tune.py" = ["PLR0913"]
+"vaudeville/rules/admin.py" = ["BLE001"]
+"vaudeville/rules/loader.py" = ["BLE001"]
+"vaudeville/server/__init__.py" = ["ANN401"]
+"vaudeville/server/__main__.py" = ["BLE001"]
+"vaudeville/server/_handlers.py" = ["BLE001"]
+"vaudeville/server/agents/model_resolution.py" = ["BLE001"]
+"vaudeville/server/daemon.py" = ["BLE001"]
+"vaudeville/server/effects/escalate.py" = ["BLE001"]
+"vaudeville/server/effects/rewrite.py" = ["ANN401", "PLR0913"]
+"vaudeville/server/hook/pipeline.py" = ["ARG001", "PLR0913", "PLR0915"]
+
+[tool.vulture]
+# vaudeville/ only, deliberately: code reachable solely from tests is dead code
+# in a shipped package, not live code. Adding tests/ here would hide exactly that.
+paths = ["vaudeville"]
+min_confidence = 60
+# Pydantic calls these by name at runtime; vulture cannot see decorator-registered
+# validators or a ClassVar the metaclass reads off the class body.
+ignore_decorators = ["@field_validator", "@model_validator"]
+ignore_names = [
+    "model_config",                    # pydantic ClassVar read by BaseModel's metaclass
+    "cls",                              # first arg of every @field_validator/@model_validator classmethod
+    "completer",                        # argcomplete reads Action.completer by attribute name
+    "__getattr__",                      # PEP 562 module hook called by the interpreter
+    "__dir__",                          # PEP 562 module hook called by the interpreter
+    "hook",                             # VaudevilleClient.hook is called from hooks/runner.py, outside paths
+    "exit_code",                        # HookResponse/RenderResult TypedDict field read via dict key
+    "harness",                          # HookEvent field read via attribute in adapter tests
+    "timed_out",                        # EscalateResult dataclass field read via attribute in tests
+    "draft",                            # DecideRule/RewriteRule field; loader.py reads raw YAML "draft"
+                                         # before parse_rule so extra="forbid" still accepts the key
+    "clear_cache",                      # rules/cache.py test-only escape hatch, used by tests/test_rules_cache.py
+    "cache_size",                       # rules/cache.py test-only introspection, used by tests/test_rules_cache.py
+    "query_session_patterns",           # public API invoked by skills/session-analytics/SKILL.md, not imported statically
 ]
 
 [dependency-groups]
@@ -75,4 +150,5 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.11.0",
     "types-pyyaml>=6.0.12.20250915",
+    "vulture>=2.16",
 ]

@@ -7,7 +7,8 @@ import json
 import os
 import pathlib
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -27,9 +28,7 @@ _ANALYZERS_PATH = os.path.join(_SCRIPTS_DIR, "analyzers.py")
 _ANALYZE_PATH = os.path.join(_SCRIPTS_DIR, "analyze.py")
 
 if "analyzers" not in sys.modules:
-    analyzers_spec = importlib.util.spec_from_file_location(
-        "analyzers", _ANALYZERS_PATH
-    )
+    analyzers_spec = importlib.util.spec_from_file_location("analyzers", _ANALYZERS_PATH)
     assert analyzers_spec is not None and analyzers_spec.loader is not None
     _analyzers_mod = importlib.util.module_from_spec(analyzers_spec)
     sys.modules["analyzers"] = _analyzers_mod
@@ -67,9 +66,7 @@ class TestQuery:
         self, capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
     ) -> None:
         db = str(tmp_path / "test.duckdb")
-        mock_result = type(
-            "R", (), {"returncode": 1, "stdout": "", "stderr": "SQL error"}
-        )()
+        mock_result = type("R", (), {"returncode": 1, "stdout": "", "stderr": "SQL error"})()
         with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 analyze.query("BAD SQL")
@@ -84,9 +81,7 @@ class TestQuery:
                 result = analyze.query("SELECT 1")
         assert result == []
 
-    def test_duckdb_empty_json_sentinel_returns_empty(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_duckdb_empty_json_sentinel_returns_empty(self, tmp_path: pathlib.Path) -> None:
         db = str(tmp_path / "test.duckdb")
         mock_result = type("R", (), {"returncode": 0, "stdout": "[{]", "stderr": ""})()
         with patch.object(analyzers, "DB_PATH", db):
@@ -98,9 +93,7 @@ class TestQuery:
         self, capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path
     ) -> None:
         db = str(tmp_path / "test.duckdb")
-        mock_result = type(
-            "R", (), {"returncode": 0, "stdout": "not-json", "stderr": ""}
-        )()
+        mock_result = type("R", (), {"returncode": 0, "stdout": "not-json", "stderr": ""})()
         with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 result = analyze.query("SELECT 1")
@@ -110,9 +103,7 @@ class TestQuery:
     def test_valid_json_returned(self, tmp_path: pathlib.Path) -> None:
         db = str(tmp_path / "test.duckdb")
         data = [{"col": "val"}]
-        mock_result = type(
-            "R", (), {"returncode": 0, "stdout": json.dumps(data), "stderr": ""}
-        )()
+        mock_result = type("R", (), {"returncode": 0, "stdout": json.dumps(data), "stderr": ""})()
         with patch.object(analyzers, "DB_PATH", db):
             with patch("subprocess.run", return_value=mock_result):
                 result = analyze.query("SELECT 1")
@@ -157,9 +148,7 @@ class TestCheckHighErrorTools:
             assert analyze.check_high_error_tools(14, 3) is None
 
     def test_returns_suggestion_with_tool_names(self) -> None:
-        rows = [
-            {"tool_name": "mcp__github__create_pr", "error_pct": "100.0", "total": "5"}
-        ]
+        rows = [{"tool_name": "mcp__github__create_pr", "error_pct": "100.0", "total": "5"}]
         with patch.object(analyzers, "query", return_value=rows):
             result = analyze.check_high_error_tools(14, 3)
         assert result is not None
@@ -190,7 +179,7 @@ class TestCheckMissingQualityHooks:
     ) -> Callable[[str], list[dict[str, Any]]]:
         call_count = [0]
 
-        def _q(sql: str) -> list[dict[str, Any]]:  # noqa: ARG001
+        def _q(sql: str) -> list[dict[str, Any]]:
             call_count[0] += 1
             if call_count[0] == 1:
                 return [{"cnt": str(hook_count)}]

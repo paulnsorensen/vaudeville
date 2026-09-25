@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import functools
+from pathlib import Path
 from typing import Any
 
 import pytest
-from pathlib import Path
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -57,9 +57,7 @@ def make_request(
         "payload": {
             "hook_event_name": "PreToolUse",
             "tool_name": tool_name,
-            "tool_input": tool_input
-            if tool_input is not None
-            else {"command": "echo hi"},
+            "tool_input": tool_input if tool_input is not None else {"command": "echo hi"},
             "cwd": str(tmp_path),
         },
     }
@@ -71,9 +69,7 @@ class RunRecorder:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def __call__(
-        self, name: str, config: UserConfig, event_json: str, *, timeout: float
-    ) -> bool:
+    def __call__(self, name: str, config: UserConfig, event_json: str, *, timeout: float) -> bool:
         del config, event_json, timeout
         self.calls.append(name)
         return True
@@ -87,6 +83,4 @@ def patch_run_command(monkeypatch: pytest.MonkeyPatch) -> RunRecorder:
 
 def patch_rewrite(monkeypatch: pytest.MonkeyPatch, output: str) -> None:
     """Skip the real rewrite model call; `run_rewrite` returns `output`."""
-    monkeypatch.setattr(
-        pipeline_module, "run_rewrite", lambda rule, config, text: output
-    )
+    monkeypatch.setattr(pipeline_module, "run_rewrite", lambda rule, config, text: output)

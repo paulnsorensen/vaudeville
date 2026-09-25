@@ -9,9 +9,7 @@ from vaudeville.rules.policy import SILENT_TIER_ALLOWED, WARN_DOWNGRADES
 SILENT_TIERS: frozenset[Tier] = frozenset({"shadow", "log"})
 
 
-def apply_tier_ceiling(
-    action_name: ActionName, tier: Tier
-) -> tuple[ActionName, str | None]:
+def apply_tier_ceiling(action_name: ActionName, tier: Tier) -> tuple[ActionName, str | None]:
     """Return (effective_action_name, downgrade_reason_or_None).
 
     `disabled` is handled by the caller (the rule is skipped before a

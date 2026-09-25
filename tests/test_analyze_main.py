@@ -25,9 +25,7 @@ _ANALYZERS_PATH = os.path.join(_SCRIPTS_DIR, "analyzers.py")
 _ANALYZE_PATH = os.path.join(_SCRIPTS_DIR, "analyze.py")
 
 if "analyzers" not in sys.modules:
-    analyzers_spec = importlib.util.spec_from_file_location(
-        "analyzers", _ANALYZERS_PATH
-    )
+    analyzers_spec = importlib.util.spec_from_file_location("analyzers", _ANALYZERS_PATH)
     assert analyzers_spec is not None and analyzers_spec.loader is not None
     _analyzers_mod = importlib.util.module_from_spec(analyzers_spec)
     sys.modules["analyzers"] = _analyzers_mod
@@ -53,7 +51,7 @@ class TestMain:
         self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
+        pathlib.Path(fake_db).open("w").close()
         with (
             patch.object(analyze, "DB_PATH", fake_db),
             patch.object(analyzers, "query", return_value=[]),
@@ -68,7 +66,7 @@ class TestMain:
         self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
+        pathlib.Path(fake_db).open("w").close()
         with (
             patch.object(analyze, "DB_PATH", fake_db),
             patch.object(analyzers, "query", return_value=[]),
@@ -81,7 +79,7 @@ class TestMain:
         self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
+        pathlib.Path(fake_db).open("w").close()
         rows = [{"bash_cmd": "rm -rf /tmp/x", "uses": "5"}]
         with (
             patch.object(analyze, "DB_PATH", fake_db),
@@ -96,7 +94,7 @@ class TestMain:
         self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
+        pathlib.Path(fake_db).open("w").close()
         rows = [{"bash_cmd": "rm -rf /tmp/x", "uses": "5"}]
         with (
             patch.object(analyze, "DB_PATH", fake_db),
@@ -111,7 +109,7 @@ class TestMain:
         self, tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         fake_db = str(tmp_path / "sessions.duckdb")
-        open(fake_db, "w").close()
+        pathlib.Path(fake_db).open("w").close()
 
         def _boom(_sql: str) -> list[object]:
             raise RuntimeError("db exploded")

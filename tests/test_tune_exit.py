@@ -25,9 +25,7 @@ class TestTuneExitPromise:
         # Round 1: design
         runner.add_response(
             mk_plan,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         # Round 1: tune — emits the promise
         runner.add_response(
@@ -81,9 +79,7 @@ class TestTuneExitPromise:
         # Round 1: design
         runner.add_response(
             mk_plan,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         # Round 1: tune — emits promise
         runner.add_response(
@@ -113,16 +109,12 @@ class TestTuneExitPromise:
         # Round 2: design (triggered by JUDGE_RAISE)
         runner.add_response(
             mk_plan2,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design2", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design2", stderr=""),
         )
         # Round 2: tune
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Tune2", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Tune2", stderr=""),
         )
         # Round 2: judge — DONE
         runner.add_response(
@@ -165,9 +157,7 @@ class TestTuneExitEmptyPlan:
         # Round 1: design → writes EMPTY_PLAN
         runner.add_response(
             mk_empty_plan,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         # Tune is skipped (EMPTY_PLAN), judge runs
         runner.add_response(
@@ -212,9 +202,7 @@ class TestTuneExitBackwardCompat:
 
         runner.add_response(
             mk_plan,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         runner.add_response(
             None,

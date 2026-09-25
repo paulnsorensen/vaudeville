@@ -10,8 +10,8 @@ import pytest
 import yaml
 
 from vaudeville.rules import (
-    DecideRule,
     VALID_TIERS,
+    DecideRule,
     get_draft_rule_names,
     list_rules_with_source,
     load_rules_layered,
@@ -194,9 +194,7 @@ class TestListAndDrafts:
 
         assert list_rules_with_source() == []
 
-    def test_get_draft_rule_names_missing_dir_returns_empty(
-        self, tmp_path: Path
-    ) -> None:
+    def test_get_draft_rule_names_missing_dir_returns_empty(self, tmp_path: Path) -> None:
         assert get_draft_rule_names(str(tmp_path / "missing")) == set()
 
     def test_get_draft_rule_names_skips_non_yaml_files(self, tmp_path: Path) -> None:
@@ -243,9 +241,7 @@ class TestAdminMatchesDaemonDanglingRefFix:
         monkeypatch.setenv("HOME", str(home))
 
         daemon_rules = load_rules_layered(None).by_name()
-        admin_rule = next(
-            r for r, _source in list_rules_with_source(None) if r.name == "guard"
-        )
+        admin_rule = next(r for r, _source in list_rules_with_source(None) if r.name == "guard")
 
         guard = daemon_rules["guard"]
         assert isinstance(guard, DecideRule)

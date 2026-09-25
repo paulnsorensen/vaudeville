@@ -31,9 +31,7 @@ def verdict_text(verdict: str, action: str | None = None) -> Text:
     outcomes are rule-defined names, not always literally "violation".
     Without *action*, falls back to the literal "violation" string.
     """
-    is_violation = (
-        action in _VIOLATION_ACTIONS if action is not None else verdict == "violation"
-    )
+    is_violation = action in _VIOLATION_ACTIONS if action is not None else verdict == "violation"
     if is_violation:
         return Text(verdict, style="bold red")
     return Text(verdict, style="bold green")

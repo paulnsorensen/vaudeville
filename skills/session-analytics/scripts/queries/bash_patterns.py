@@ -5,6 +5,7 @@ Usage: python3 bash_patterns.py [--days 14] [--limit 15] [--dangerous] [--json]
 """
 
 import sys
+
 from _db import output, parse_days, parse_limit, query
 
 

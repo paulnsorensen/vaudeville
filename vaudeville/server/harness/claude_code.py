@@ -128,33 +128,23 @@ class ClaudeCodeAdapter:
             "run": self._render_run,
         }
         method = renderers.get(name)
-        payload, downgrade = (
-            self._degrade(outcome, name) if method is None else method(outcome)
-        )
+        payload, downgrade = self._degrade(outcome, name) if method is None else method(outcome)
         downgrades = [downgrade] if downgrade is not None else []
         stdout = payload["stdout"]
         if outcome.context and name != "add-context":
             if outcome.event in _ADDITIONAL_CONTEXT_EVENTS:
-                stdout = _with_additional_context(
-                    stdout, outcome.event, outcome.context
-                )
+                stdout = _with_additional_context(stdout, outcome.event, outcome.context)
             else:
-                downgrades.append(
-                    {"from": "add-context", "to": "dropped", "event": outcome.event}
-                )
+                downgrades.append({"from": "add-context", "to": "dropped", "event": outcome.event})
         return {
             "stdout": stdout,
             "exit_code": payload["exit_code"],
             "downgrades": downgrades,
         }
 
-    def _degrade(
-        self, outcome: Outcome, action_name: str, text: str | None = None
-    ) -> _Rendered:
+    def _degrade(self, outcome: Outcome, action_name: str, text: str | None = None) -> _Rendered:
         downgrade = {"from": action_name, "to": "warn", "event": outcome.event}
-        payload = _json(
-            {"systemMessage": text if text is not None else outcome.message}
-        )
+        payload = _json({"systemMessage": text if text is not None else outcome.message})
         return payload, downgrade
 
     def render_allow(self) -> RenderResult:
@@ -216,10 +206,7 @@ class ClaudeCodeAdapter:
     def _render_rewrite(self, outcome: Outcome) -> _Rendered:
         # `ask` shows the changed input for approval; a rewrite never grants
         # more permission than the unmodified call gets.
-        if (
-            outcome.event in _PERMISSION_DECISION_EVENTS
-            and outcome.updated_input is not None
-        ):
+        if outcome.event in _PERMISSION_DECISION_EVENTS and outcome.updated_input is not None:
             return (
                 _json(
                     {
@@ -241,9 +228,7 @@ class ClaudeCodeAdapter:
         text = outcome.context if outcome.context is not None else outcome.message
         return self._render_context_message(outcome, text, "add-context")
 
-    def _render_context_message(
-        self, outcome: Outcome, text: str, action_name: str
-    ) -> _Rendered:
+    def _render_context_message(self, outcome: Outcome, text: str, action_name: str) -> _Rendered:
         if outcome.event in _ADDITIONAL_CONTEXT_EVENTS:
             return (
                 _json(

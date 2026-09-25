@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from pydantic_ai.models import Model
+
 from .rules import DecideRule, DecideTestCase, RewriteRule
 from .server.agents.decide import decide
 from .server.user_config import UserConfig
-
-from pydantic_ai.models import Model
 
 __all__ = [
     "CaseResult",
@@ -172,9 +172,7 @@ def evaluate_rule(
     results = EvalResults(rule=rule_name)
     case_results: list[CaseResult] = []
     for i, case in enumerate(cases):
-        cr = classify_case(
-            case, rule, config, results, case_id=i, model_override=model_override
-        )
+        cr = classify_case(case, rule, config, results, case_id=i, model_override=model_override)
         case_results.append(cr)
     return results, case_results
 

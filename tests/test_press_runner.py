@@ -61,7 +61,7 @@ class _FakeDaemon:
         self._reply = reply
         self.done = threading.Event()
 
-    def __enter__(self) -> "_FakeDaemon":
+    def __enter__(self) -> _FakeDaemon:
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
         time.sleep(0.05)
@@ -93,9 +93,7 @@ def sock_path(short_sock_path: str) -> Iterator[str]:
 
 
 class TestMalformedStdin:
-    def test_utf8_bom_prefixed_stdin_fails_open(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_utf8_bom_prefixed_stdin_fails_open(self, capsys: pytest.CaptureFixture[str]) -> None:
         bom_text = "﻿" + HOOK_INPUT
         code, out = _run_main_and_capture(
             ["runner.py", "--harness", "claude-code"], bom_text, capsys
@@ -107,9 +105,7 @@ class TestMalformedStdin:
         self, sock_path: str, capsys: pytest.CaptureFixture[str]
     ) -> None:
         huge = "x" * (1_200_000)
-        payload = json.dumps(
-            {"hook_event_name": "Stop", "cwd": "/p", "big_field": huge}
-        )
+        payload = json.dumps({"hook_event_name": "Stop", "cwd": "/p", "big_field": huge})
         reply = {"stdout": "{}", "exit_code": 0}
         with (
             _FakeDaemon(sock_path, reply),
@@ -216,17 +212,13 @@ class TestHarnessArgument:
     def test_unknown_extra_argument_falls_open_instead_of_exit_2(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        code, out = _run_main_and_capture(
-            ["runner.py", "--event", "Stop"], HOOK_INPUT, capsys
-        )
+        code, out = _run_main_and_capture(["runner.py", "--event", "Stop"], HOOK_INPUT, capsys)
         assert code == 0
         assert out == ""
 
     def test_bare_harness_flag_without_value_falls_open(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        code, out = _run_main_and_capture(
-            ["runner.py", "--harness"], HOOK_INPUT, capsys
-        )
+        code, out = _run_main_and_capture(["runner.py", "--harness"], HOOK_INPUT, capsys)
         assert code == 0
         assert out == ""

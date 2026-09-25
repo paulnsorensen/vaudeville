@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import tempfile
 import time
 
 from vaudeville.core.client import VaudevilleClient
 from vaudeville.core.truncation import back_truncate
-
 
 # --- Fail-open path ---
 
@@ -35,7 +35,7 @@ class TestFailOpen:
             # File exists but not a real socket — should fail with connection error
             assert result is None
         finally:
-            os.unlink(fake_socket)
+            pathlib.Path(fake_socket).unlink()
 
     def test_client_returns_none_for_missing_socket(self) -> None:
         with tempfile.TemporaryDirectory() as td:

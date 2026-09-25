@@ -21,9 +21,7 @@ MIN_TEXT_LENGTH = 50  # runner.py skips shorter inputs
 def example_rules() -> dict[str, DecideRule]:
     rules = load_rules(EXAMPLES_RULES_DIR)
     assert rules, f"No rules found in {EXAMPLES_RULES_DIR}"
-    decide_rules = {
-        name: rule for name, rule in rules.items() if isinstance(rule, DecideRule)
-    }
+    decide_rules = {name: rule for name, rule in rules.items() if isinstance(rule, DecideRule)}
     assert decide_rules, f"No decide rules found in {EXAMPLES_RULES_DIR}"
     return decide_rules
 
@@ -40,9 +38,7 @@ def example_test_suites(
 class TestExampleRulesLoad:
     """Verify all example rules parse correctly via load_rules."""
 
-    def test_all_rules_have_required_fields(
-        self, example_rules: dict[str, DecideRule]
-    ) -> None:
+    def test_all_rules_have_required_fields(self, example_rules: dict[str, DecideRule]) -> None:
         for name, rule in example_rules.items():
             assert rule.name == name, f"{name}: name mismatch"
             assert rule.prompt, f"{name}: empty prompt"

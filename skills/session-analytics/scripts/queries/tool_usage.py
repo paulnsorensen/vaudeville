@@ -5,6 +5,7 @@ Usage: python3 tool_usage.py [--days 14] [--limit 15] [--json]
 """
 
 import sys
+
 from _db import output, parse_days, parse_limit, query
 
 

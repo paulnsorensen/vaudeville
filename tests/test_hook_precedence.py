@@ -5,13 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
-from vaudeville.server.hook import handle_hook_request
-
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
 from _hook_helpers import make_request as _request
 from _hook_helpers import write_rule as _write_rule
+
+from vaudeville.server.hook import handle_hook_request
 
 
 def _decide_rule(name: str, action_yaml: str) -> str:
@@ -30,9 +29,7 @@ tier: block
 
 
 class TestPrecedence:
-    def test_block_over_warn(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_block_over_warn(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(tmp_path, "a-warn-rule", _decide_rule("a-warn-rule", "warn"))
         _write_rule(tmp_path, "b-block-rule", _decide_rule("b-block-rule", "block"))
@@ -44,9 +41,7 @@ class TestPrecedence:
         assert "deny" in str(result["stdout"])
         assert "systemMessage" not in str(result["stdout"])
 
-    def test_ask_over_rewrite(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_ask_over_rewrite(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(tmp_path, "a-ask-rule", _decide_rule("a-ask-rule", "ask"))
         _write_rule(
@@ -120,9 +115,7 @@ tier: block
         dropped = [
             r
             for r in records
-            if r["rule"] == "a-warn-rule"
-            and r["downgrade"]
-            and "precedence" in r["downgrade"]
+            if r["rule"] == "a-warn-rule" and r["downgrade"] and "precedence" in r["downgrade"]
         ]
         assert len(dropped) == 1
         assert "b-block-rule" in dropped[0]["downgrade"]
@@ -171,23 +164,17 @@ tier: block
         assert len(violation_records) == 1
         assert violation_records[0]["rule"] == "b-block-rule"
 
-    def test_context_accumulates(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_context_accumulates(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(
             tmp_path,
             "a-context-rule",
-            _decide_rule(
-                "a-context-rule", '{action: add-context, text: "context one"}'
-            ),
+            _decide_rule("a-context-rule", '{action: add-context, text: "context one"}'),
         )
         _write_rule(
             tmp_path,
             "b-context-rule",
-            _decide_rule(
-                "b-context-rule", '{action: add-context, text: "context two"}'
-            ),
+            _decide_rule("b-context-rule", '{action: add-context, text: "context two"}'),
         )
         fn, _ = _decide_fn('{"outcome": "violation"}')
 

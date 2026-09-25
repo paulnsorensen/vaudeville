@@ -7,7 +7,7 @@ the last 20 rule firings using Rich.
 from __future__ import annotations
 
 import json
-import os
+import pathlib
 import time
 from typing import IO, Any
 
@@ -17,15 +17,21 @@ from rich.text import Text
 
 from vaudeville.tui import (
     confidence_text as _confidence_text,
+)
+from vaudeville.tui import (
     latency_text as _latency_text,
+)
+from vaudeville.tui import (
     styled_table,
+)
+from vaudeville.tui import (
     tier_text as _tier_text,
+)
+from vaudeville.tui import (
     verdict_text as _verdict_text,
 )
 
-_EVENTS_LOG = os.path.join(
-    os.path.expanduser("~"), ".vaudeville", "logs", "events.jsonl"
-)
+_EVENTS_LOG = str(pathlib.Path.home() / ".vaudeville" / "logs" / "events.jsonl")
 
 _MAX_ROWS = 20
 _POLL_INTERVAL = 0.2
@@ -66,12 +72,7 @@ def _to_float(value: object) -> float:
 
 def _sanitize_display(value: object) -> Text:
     """Return *value* as single-line Text, with newlines flattened to spaces."""
-    text = (
-        ("" if value is None else str(value))
-        .replace("\n", " ")
-        .replace("\r", " ")
-        .strip()
-    )
+    text = ("" if value is None else str(value)).replace("\n", " ").replace("\r", " ").strip()
     return Text(text)
 
 
@@ -79,9 +80,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int, int]) -> 
     total_seen, violations, dropped = totals
     table = styled_table(
         title="Vaudeville \u2014 Live Rule Firings",
-        caption=(
-            f"Session: {total_seen} events, {violations} violations, {dropped} dropped"
-        ),
+        caption=(f"Session: {total_seen} events, {violations} violations, {dropped} dropped"),
     )
     table.add_column("Time", style="dim", min_width=_TIME_MIN_WIDTH, no_wrap=True)
     table.add_column("Rule", min_width=_RULE_MIN_WIDTH, overflow="fold")
@@ -102,9 +101,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int, int]) -> 
     table.add_column("Action", min_width=_ACTION_MIN_WIDTH, no_wrap=True)
     table.add_column("Downgrade", min_width=_DOWNGRADE_MIN_WIDTH, no_wrap=True)
     table.add_column("Reason", min_width=_REASON_MIN_WIDTH, ratio=1, overflow="fold")
-    table.add_column(
-        "LLM Output", min_width=_SNIPPET_MIN_WIDTH, ratio=1, overflow="fold"
-    )
+    table.add_column("LLM Output", min_width=_SNIPPET_MIN_WIDTH, ratio=1, overflow="fold")
 
     for evt in events[-_MAX_ROWS:]:
         table.add_row(
@@ -153,12 +150,9 @@ def _read_new_events(
 
 
 def _ensure_log_exists(log_path: str) -> None:
-    if not os.path.exists(log_path):
-        parent = os.path.dirname(log_path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(log_path, "a"):
-            pass
+    if not pathlib.Path(log_path).exists():
+        pathlib.Path(log_path).parent.mkdir(exist_ok=True, parents=True)
+        pathlib.Path(log_path).touch()
 
 
 def watch(log_path: str = _EVENTS_LOG) -> None:
@@ -167,7 +161,7 @@ def watch(log_path: str = _EVENTS_LOG) -> None:
     events: list[dict[str, Any]] = []
     totals = (0, 0, 0)
 
-    with open(log_path) as f:
+    with pathlib.Path(log_path).open() as f:
         f.seek(0, 2)  # seek to end
 
         with Live(_build_table(events, totals), refresh_per_second=5) as live:

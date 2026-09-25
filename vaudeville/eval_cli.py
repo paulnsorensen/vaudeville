@@ -77,8 +77,7 @@ def main(*, model_override: Model | None = None) -> None:
     no_model_configured = config.default_model is None and not config.providers
     if no_model_configured:
         print(
-            "vaudeville: no model configured (~/.vaudeville/config); "
-            "all decisions will fail open",
+            "vaudeville: no model configured (~/.vaudeville/config); all decisions will fail open",
             file=sys.stderr,
         )
 

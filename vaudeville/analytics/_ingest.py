@@ -37,7 +37,7 @@ def build_database(db_path: Path, jsonl_glob: str) -> None:
     finally:
         con.close()
 
-    os.replace(tmp_path, db_path)
+    Path(tmp_path).replace(db_path)
 
 
 def _create_raw_entries(con: duckdb.DuckDBPyConnection, jsonl_glob: str) -> None:

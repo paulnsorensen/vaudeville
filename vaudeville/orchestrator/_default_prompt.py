@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import subprocess
 
 _IMPACT_FILTER = (
@@ -50,8 +51,8 @@ _CURATED_BUNDLE = (
 
 
 def _run_session_analytics(project_root: str) -> str:
-    script = os.path.join(project_root, "commands", "generate", "session-analytics.sh")
-    if not os.path.isfile(script):
+    script = str(pathlib.Path(project_root) / "commands" / "generate" / "session-analytics.sh")
+    if not pathlib.Path(script).is_file():
         return ""
     try:
         result = subprocess.run(

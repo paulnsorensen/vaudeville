@@ -96,9 +96,7 @@ class TestRenderMatrix:
     def test_feedback(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(
-            _outcome(
-                "feedback", "PreToolUse", message="[git-gate] use --force-with-lease"
-            )
+            _outcome("feedback", "PreToolUse", message="[git-gate] use --force-with-lease")
         )
         payload = _stdout_json(result)
         assert payload == {
@@ -161,9 +159,7 @@ class TestRenderMatrix:
 
     def test_add_context(self) -> None:
         adapter = ClaudeCodeAdapter()
-        result = adapter.render(
-            _outcome("add-context", "PreToolUse", context="branch: main")
-        )
+        result = adapter.render(_outcome("add-context", "PreToolUse", context="branch: main"))
         payload = _stdout_json(result)
         assert payload == {
             "hookSpecificOutput": {
@@ -191,9 +187,7 @@ class TestDegrade:
 
     def test_add_context_on_notification_degrades(self) -> None:
         adapter = ClaudeCodeAdapter()
-        result = adapter.render(
-            _outcome("add-context", "Notification", context="branch: main")
-        )
+        result = adapter.render(_outcome("add-context", "Notification", context="branch: main"))
         payload = _stdout_json(result)
         assert payload == {"systemMessage": "branch: main"}
         assert result["downgrades"] == [
@@ -205,29 +199,21 @@ class TestDegrade:
         result = adapter.render(_outcome("block", "Notification", message="nope"))
         payload = _stdout_json(result)
         assert payload == {"systemMessage": "nope"}
-        assert result["downgrades"] == [
-            {"from": "block", "to": "warn", "event": "Notification"}
-        ]
+        assert result["downgrades"] == [{"from": "block", "to": "warn", "event": "Notification"}]
 
     def test_rewrite_degrades_without_tool_input_event(self) -> None:
         adapter = ClaudeCodeAdapter()
         result = adapter.render(_outcome("rewrite", "Stop"))
         payload = _stdout_json(result)
         assert payload == {"systemMessage": "blocked by rule"}
-        assert result["downgrades"] == [
-            {"from": "rewrite", "to": "warn", "event": "Stop"}
-        ]
+        assert result["downgrades"] == [{"from": "rewrite", "to": "warn", "event": "Stop"}]
 
     def test_interleaved_render_does_not_leak_downgrades(self) -> None:
         """`render` is stateless: interleaved calls don't share downgrades (H2)."""
         adapter = ClaudeCodeAdapter()
         result_a = adapter.render(_outcome("ask", "Stop", message="confirm?"))
-        result_b = adapter.render(
-            _outcome("add-context", "Notification", context="branch: main")
-        )
-        assert result_a["downgrades"] == [
-            {"from": "ask", "to": "warn", "event": "Stop"}
-        ]
+        result_b = adapter.render(_outcome("add-context", "Notification", context="branch: main"))
+        assert result_a["downgrades"] == [{"from": "ask", "to": "warn", "event": "Stop"}]
         assert result_b["downgrades"] == [
             {"from": "add-context", "to": "warn", "event": "Notification"}
         ]
@@ -264,9 +250,7 @@ class TestContextBesidePrimary:
 
     def test_event_without_context_channel_reports_dropped_context(self) -> None:
         adapter = ClaudeCodeAdapter()
-        result = adapter.render(
-            _outcome("warn", "Notification", message="careful", context="ctx")
-        )
+        result = adapter.render(_outcome("warn", "Notification", message="careful", context="ctx"))
         assert _stdout_json(result) == {"systemMessage": "careful"}
         assert result["downgrades"] == [
             {"from": "add-context", "to": "dropped", "event": "Notification"}

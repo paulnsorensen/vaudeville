@@ -27,15 +27,11 @@ class TestOrchestrateTuneTUIWiring:
 
         runner.add_response(
             mk_plan,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Tune", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Tune", stderr=""),
         )
         runner.add_response(
             None,
@@ -75,9 +71,7 @@ class TestOrchestrateTuneTUIWiring:
 
         runner.add_response(
             mk_plan,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         runner.add_response(
             None,

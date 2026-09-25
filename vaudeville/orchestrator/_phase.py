@@ -12,10 +12,10 @@ import os
 import re
 import subprocess
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Literal, cast
+from typing import Literal, cast
 
 
 @dataclass(frozen=True)
@@ -83,13 +83,11 @@ def parse_judge_signal(output: str) -> JudgeVerdict:
                 raise JudgeParseError(f"malformed JUDGE_RAISE: {stripped!r}")
             try:
                 p, r, f1 = float(m.group(1)), float(m.group(2)), float(m.group(3))
-            except ValueError:
-                raise JudgeParseError(f"malformed JUDGE_RAISE floats: {stripped!r}")
+            except ValueError as exc:
+                raise JudgeParseError(f"malformed JUDGE_RAISE floats: {stripped!r}") from exc
             if not all(0.0 <= v <= 1.0 for v in (p, r, f1)):
                 raise JudgeParseError(f"thresholds out of [0,1]: {stripped!r}")
-            return JudgeVerdict(
-                kind="JUDGE_RAISE", raised=Thresholds(p, r, f1), raw_line=stripped
-            )
+            return JudgeVerdict(kind="JUDGE_RAISE", raised=Thresholds(p, r, f1), raw_line=stripped)
         if stripped not in _VALID_KINDS:
             raise JudgeParseError(f"unknown JUDGE_* signal: {stripped!r}")
         return JudgeVerdict(kind=cast(JudgeKind, stripped), raw_line=stripped)
@@ -173,9 +171,7 @@ def _make_runner(
         def _streaming(
             ralph_dir: str, extra_args: list[str], project_root: str
         ) -> subprocess.CompletedProcess[str]:
-            return default_ralph_runner(
-                ralph_dir, extra_args, project_root, on_line=on_line
-            )
+            return default_ralph_runner(ralph_dir, extra_args, project_root, on_line=on_line)
 
         return _streaming
 
@@ -201,9 +197,7 @@ def _build_threshold_args(thresholds: Thresholds) -> list[str]:
     ]
 
 
-def _build_phase_args(
-    rule_name: str, thresholds: Thresholds, rules_dir: str
-) -> list[str]:
+def _build_phase_args(rule_name: str, thresholds: Thresholds, rules_dir: str) -> list[str]:
     return [
         "--rule_name",
         rule_name,
@@ -234,9 +228,7 @@ def _is_empty_plan(plan_file: Path) -> bool:
     """Return True if the plan file contains the EMPTY_PLAN sentinel line."""
     if not plan_file.exists():
         return False
-    return any(
-        line.strip() == EMPTY_PLAN for line in plan_file.read_text().splitlines()
-    )
+    return any(line.strip() == EMPTY_PLAN for line in plan_file.read_text().splitlines())
 
 
 @contextlib.contextmanager

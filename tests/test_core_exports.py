@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 
 import pytest
@@ -38,7 +39,7 @@ def test_no_deleted_symbol_anywhere_in_package() -> None:
                 if not name.endswith(".py"):
                     continue
                 file_path = os.path.join(root, name)
-                with open(file_path, encoding="utf-8") as f:
+                with pathlib.Path(file_path).open(encoding="utf-8") as f:
                     text = f.read()
                 for lineno, line in enumerate(text.splitlines(), start=1):
                     if _DELETED_SYMBOLS.search(line):

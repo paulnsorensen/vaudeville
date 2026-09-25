@@ -7,9 +7,7 @@ from pathlib import Path
 
 
 class TestBuildDefaultInstructions:
-    def test_returns_analytics_directive_when_script_has_output(
-        self, tmp_path: Path
-    ) -> None:
+    def test_returns_analytics_directive_when_script_has_output(self, tmp_path: Path) -> None:
         """When session-analytics.sh emits output, use ANALYTICS_DIRECTIVE."""
         from vaudeville.orchestrator._default_prompt import build_default_instructions
 
@@ -54,9 +52,7 @@ class TestBuildDefaultInstructions:
 
         assert result == _CURATED_BUNDLE
 
-    def test_run_session_analytics_returns_empty_on_exception(
-        self, tmp_path: Path
-    ) -> None:
+    def test_run_session_analytics_returns_empty_on_exception(self, tmp_path: Path) -> None:
         """subprocess.run raising OSError → empty string (fail-open)."""
         from unittest.mock import patch
 

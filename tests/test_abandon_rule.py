@@ -92,9 +92,7 @@ class TestAbandonRule:
         assert entry["reason"] == "stagnant"
         assert entry["metrics"] == metrics
 
-    def test_abandon_no_trailing_newline_produces_valid_yaml(
-        self, tmp_path: Path
-    ) -> None:
+    def test_abandon_no_trailing_newline_produces_valid_yaml(self, tmp_path: Path) -> None:
         """Rule file without trailing newline gets a newline inserted before appended tier."""
         from vaudeville.orchestrator import abandon_rule
 
@@ -125,9 +123,7 @@ class TestAbandonRule:
         log_dir = tmp_path / ".vaudeville" / "logs"
         assert log_dir.exists()
 
-    def test_abandon_missing_rule_file_raises_filenotfound(
-        self, tmp_path: Path
-    ) -> None:
+    def test_abandon_missing_rule_file_raises_filenotfound(self, tmp_path: Path) -> None:
         """Abandon raises FileNotFoundError if rule file not found in rules_dir."""
         from vaudeville.orchestrator import abandon_rule
 
@@ -149,9 +145,7 @@ class TestCaptureEvalLog:
 
         stdout = "precision=0.91 recall=0.85 f1=0.88\nconfusion: TP=10\n"
         fake = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout)
-        with patch(
-            "vaudeville.orchestrator._abandon.subprocess.run", return_value=fake
-        ):
+        with patch("vaudeville.orchestrator._abandon.subprocess.run", return_value=fake):
             captured = capture_eval_log("git-gate", str(tmp_path))
 
         log_path = tmp_path / ".vaudeville" / "logs" / "eval-git-gate.log"
@@ -171,9 +165,7 @@ class TestCaptureEvalLog:
         (log_dir / "eval-r.log").write_text("STALE")
 
         fake = subprocess.CompletedProcess(args=[], returncode=0, stdout="FRESH")
-        with patch(
-            "vaudeville.orchestrator._abandon.subprocess.run", return_value=fake
-        ):
+        with patch("vaudeville.orchestrator._abandon.subprocess.run", return_value=fake):
             capture_eval_log("r", str(tmp_path))
 
         assert (log_dir / "eval-r.log").read_text() == "FRESH"
@@ -200,9 +192,7 @@ class TestCaptureEvalLog:
         from vaudeville.orchestrator._abandon import capture_eval_log
 
         fake = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok")
-        with patch(
-            "vaudeville.orchestrator._abandon.subprocess.run", return_value=fake
-        ):
+        with patch("vaudeville.orchestrator._abandon.subprocess.run", return_value=fake):
             capture_eval_log("r", str(tmp_path))
 
         assert (tmp_path / ".vaudeville" / "logs").is_dir()

@@ -12,19 +12,18 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
-
-from vaudeville.core.protocol import GENERIC_ALLOW
-from vaudeville.rules import DecideRule
-from vaudeville.server.harness import get_adapter as _get_adapter
-from vaudeville.server.hook import handle_hook_request
-from vaudeville.server.hook import pipeline as pipeline_module
-from vaudeville.server.agents import DecideResult
-from vaudeville.server.user_config import UserConfig
-
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
 from _hook_helpers import make_request as _request
 from _hook_helpers import write_rule as _write_rule
+
+from vaudeville.core.protocol import GENERIC_ALLOW
+from vaudeville.rules import DecideRule
+from vaudeville.server.agents import DecideResult
+from vaudeville.server.harness import get_adapter as _get_adapter
+from vaudeville.server.hook import handle_hook_request
+from vaudeville.server.hook import pipeline as pipeline_module
+from vaudeville.server.user_config import UserConfig
 
 _ALLOW = {"stdout": "", "exit_code": 0}
 

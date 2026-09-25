@@ -8,7 +8,6 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-
 from rich.console import Console
 
 from vaudeville.__main__ import _print_stats_human, cmd_stats, cmd_watch, main
@@ -70,17 +69,17 @@ class TestCmdStats:
         assert parsed["total"] == 5
         assert "no-yolo" in parsed["rules"]
 
-    def test_human_output_contains_rule_table(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_human_output_contains_rule_table(self, capsys: pytest.CaptureFixture[str]) -> None:
         args = Namespace(json=False, log_path="/fake/events.jsonl")
         console = Console(force_terminal=False, width=200)
-        with patch(
-            "vaudeville.server.aggregate_events",
-            return_value=_sample_result(),
+        with (
+            patch(
+                "vaudeville.server.aggregate_events",
+                return_value=_sample_result(),
+            ),
+            patch("vaudeville.__main__._console", console),
         ):
-            with patch("vaudeville.__main__._console", console):
-                cmd_stats(args)
+            cmd_stats(args)
         captured = capsys.readouterr()
         assert "no-yolo" in captured.out
         assert "no-todo" in captured.out

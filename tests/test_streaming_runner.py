@@ -7,9 +7,7 @@ from unittest.mock import MagicMock, patch
 
 
 class TestDefaultRalphRunnerStreaming:
-    def _make_mock_proc(
-        self, stdout: str, stderr: str = "", returncode: int = 0
-    ) -> MagicMock:
+    def _make_mock_proc(self, stdout: str, stderr: str = "", returncode: int = 0) -> MagicMock:
         mock = MagicMock()
         mock.stdout = io.StringIO(stdout)
         mock.stderr = io.StringIO(stderr)
@@ -24,9 +22,7 @@ class TestDefaultRalphRunnerStreaming:
         lines: list[str] = []
         mock_proc = self._make_mock_proc("line1\nline2\nline3\n")
 
-        with patch(
-            "vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc
-        ):
+        with patch("vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc):
             default_ralph_runner("/dir", [], "/proj", on_line=lines.append)
 
         assert lines == ["line1", "line2", "line3"]
@@ -37,9 +33,7 @@ class TestDefaultRalphRunnerStreaming:
 
         mock_proc = self._make_mock_proc("alpha\nbeta\n")
 
-        with patch(
-            "vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc
-        ):
+        with patch("vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc):
             result = default_ralph_runner("/dir", [], "/proj", on_line=lambda _: None)
 
         assert "alpha" in result.stdout
@@ -51,9 +45,7 @@ class TestDefaultRalphRunnerStreaming:
 
         mock_proc = self._make_mock_proc("", returncode=3)
 
-        with patch(
-            "vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc
-        ):
+        with patch("vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc):
             result = default_ralph_runner("/dir", [], "/proj", on_line=lambda _: None)
 
         assert result.returncode == 3
@@ -78,9 +70,7 @@ class TestDefaultRalphRunnerStreaming:
 
         mock_proc = self._make_mock_proc("out line\n", stderr="err line\n")
 
-        with patch(
-            "vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc
-        ):
+        with patch("vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc):
             result = default_ralph_runner("/dir", [], "/proj", on_line=lambda _: None)
 
         assert "out line" in result.stdout
@@ -94,9 +84,7 @@ class TestDefaultRalphRunnerStreaming:
         lines: list[str] = []
         mock_proc = self._make_mock_proc("stdout line\n", stderr="stderr line\n")
 
-        with patch(
-            "vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc
-        ):
+        with patch("vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc):
             default_ralph_runner("/dir", [], "/proj", on_line=lines.append)
 
         assert "stdout line" in lines
@@ -112,9 +100,7 @@ class TestDefaultRalphRunnerStreaming:
         mock_proc.returncode = 0
         mock_proc.wait.return_value = None
 
-        with patch(
-            "vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc
-        ):
+        with patch("vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc):
             result = default_ralph_runner("/dir", [], "/proj", on_line=lambda _: None)
 
         assert result.returncode == 0
@@ -143,9 +129,7 @@ class TestMakeRunner:
 
         wrapped = _make_runner(default_ralph_runner, lines.append)
 
-        with patch(
-            "vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc
-        ):
+        with patch("vaudeville.orchestrator._phase.subprocess.Popen", return_value=mock_proc):
             wrapped("/dir", [], "/proj")
 
         assert "streamed line" in lines
@@ -153,6 +137,7 @@ class TestMakeRunner:
     def test_custom_runner_with_on_line_uses_posthoc(self) -> None:
         """_make_runner wrapping a custom runner calls on_line post-hoc per line."""
         import subprocess
+
         from vaudeville.orchestrator._phase import _make_runner
 
         def fake_runner(

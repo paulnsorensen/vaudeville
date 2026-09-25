@@ -73,7 +73,7 @@ class TestIngest:
         self, ingest_mod: Any, tmp_logs: Path, events_data: list[dict[str, Any]]
     ) -> None:
         events_file = tmp_logs / "events.jsonl"
-        with open(events_file, "w") as f:
+        with Path(events_file).open("w") as f:
             for row in events_data:
                 f.write(json.dumps(row) + "\n")
 
@@ -105,7 +105,7 @@ class TestIngest:
         self, ingest_mod: Any, tmp_logs: Path, events_data: list[dict[str, Any]]
     ) -> None:
         events_file = tmp_logs / "events.jsonl"
-        with open(events_file, "w") as f:
+        with Path(events_file).open("w") as f:
             for row in events_data:
                 f.write(json.dumps(row) + "\n")
             for row in events_data:
@@ -242,18 +242,14 @@ class TestReport:
     def test_classify_shadow_to_warn(self, report_mod: Any) -> None:
         with patch.object(report_mod, "get_current_tier", return_value="shadow"):
             rec, _ = report_mod.classify(
-                self._make_rule(
-                    total_evals=60, violation_rate=0.15, agreement_rate=0.75
-                )
+                self._make_rule(total_evals=60, violation_rate=0.15, agreement_rate=0.75)
             )
         assert rec == "promote-to-warn"
 
     def test_classify_shadow_low_agreement(self, report_mod: Any) -> None:
         with patch.object(report_mod, "get_current_tier", return_value="shadow"):
             rec, _ = report_mod.classify(
-                self._make_rule(
-                    total_evals=60, violation_rate=0.15, agreement_rate=0.50
-                )
+                self._make_rule(total_evals=60, violation_rate=0.15, agreement_rate=0.50)
             )
         assert rec == "hold-at-shadow"
 
@@ -264,9 +260,7 @@ class TestReport:
 
     def test_classify_warn_demote_high_violation_rate(self, report_mod: Any) -> None:
         with patch.object(report_mod, "get_current_tier", return_value="warn"):
-            rec, _ = report_mod.classify(
-                self._make_rule(violation_rate=0.70, agreement_rate=0.80)
-            )
+            rec, _ = report_mod.classify(self._make_rule(violation_rate=0.70, agreement_rate=0.80))
         assert rec == "demote"
 
     def test_classify_warn_to_block(self, report_mod: Any) -> None:
@@ -295,9 +289,7 @@ class TestReport:
     def test_classify_violation_rate_too_high_for_shadow(self, report_mod: Any) -> None:
         with patch.object(report_mod, "get_current_tier", return_value="shadow"):
             rec, _ = report_mod.classify(
-                self._make_rule(
-                    total_evals=60, violation_rate=0.50, agreement_rate=0.80
-                )
+                self._make_rule(total_evals=60, violation_rate=0.50, agreement_rate=0.80)
             )
         assert rec == "hold-at-shadow"
 
@@ -320,9 +312,7 @@ class TestReport:
             tier = report_mod.get_current_tier("test-rule")
         assert tier == "warn"
 
-    def test_get_current_tier_missing_file(
-        self, report_mod: Any, tmp_path: Path
-    ) -> None:
+    def test_get_current_tier_missing_file(self, report_mod: Any, tmp_path: Path) -> None:
         with patch.object(report_mod, "RULES_DEV_DIR", tmp_path):
             tier = report_mod.get_current_tier("nonexistent")
         assert tier == "unknown"

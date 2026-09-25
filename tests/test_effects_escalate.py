@@ -63,12 +63,8 @@ class TestEscalateHandlesException:
         def raising_decide_fn() -> FakeResult:
             raise RuntimeError("boom")
 
-        with caplog.at_level(
-            logging.WARNING, logger="vaudeville.server.effects.escalate"
-        ):
-            result = escalate(
-                raising_decide_fn, deadline=1.0, rule_name="escalate-rule"
-            )
+        with caplog.at_level(logging.WARNING, logger="vaudeville.server.effects.escalate"):
+            result = escalate(raising_decide_fn, deadline=1.0, rule_name="escalate-rule")
 
         assert result is None
         assert any("escalate-rule" in record.getMessage() for record in caplog.records)
@@ -76,9 +72,7 @@ class TestEscalateHandlesException:
 
 class TestEscalateResult:
     def test_success_carries_the_value_with_no_timeout_or_error(self) -> None:
-        outcome = escalate_result(
-            lambda: FakeResult(outcome="clean", reason=""), deadline=1.0
-        )
+        outcome = escalate_result(lambda: FakeResult(outcome="clean", reason=""), deadline=1.0)
 
         assert outcome.value == FakeResult(outcome="clean", reason="")
         assert outcome.timed_out is False
@@ -105,21 +99,15 @@ class TestEscalateResult:
         def raising_decide_fn() -> FakeResult:
             raise RuntimeError("boom")
 
-        with caplog.at_level(
-            logging.WARNING, logger="vaudeville.server.effects.escalate"
-        ):
-            outcome = escalate_result(
-                raising_decide_fn, deadline=1.0, rule_name="escalate-rule"
-            )
+        with caplog.at_level(logging.WARNING, logger="vaudeville.server.effects.escalate"):
+            outcome = escalate_result(raising_decide_fn, deadline=1.0, rule_name="escalate-rule")
 
         assert outcome.value is None
         assert outcome.timed_out is False
         assert isinstance(outcome.error, RuntimeError)
 
     @pytest.mark.parametrize("deadline", [0.0, -1.0])
-    def test_spent_budget_times_out_without_calling_decide_fn(
-        self, deadline: float
-    ) -> None:
+    def test_spent_budget_times_out_without_calling_decide_fn(self, deadline: float) -> None:
         """F8: no model call starts once the caller's budget is gone."""
         calls: list[int] = []
 
@@ -133,9 +121,7 @@ class TestEscalateResult:
         assert outcome.timed_out is True
         assert calls == []
 
-    def test_deadline_expiry_cancels_the_future(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_deadline_expiry_cancels_the_future(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """F8: a queued call that missed its deadline must not run later."""
         cancelled: list[bool] = []
 

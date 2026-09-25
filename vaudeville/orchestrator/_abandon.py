@@ -20,9 +20,7 @@ def _locate_rule_file(rule_name: str, rules_dir: str) -> Path:
     raise FileNotFoundError(f"rule {rule_name!r} not found in {rules_dir}")
 
 
-def abandon_rule(
-    rule_name: str, reason: str, metrics: dict[str, object], rules_dir: str
-) -> None:
+def abandon_rule(rule_name: str, reason: str, metrics: dict[str, object], rules_dir: str) -> None:
     """Disable rule tier, append ABANDONED comment, and log to abandoned.jsonl."""
     rule_file = _locate_rule_file(rule_name, rules_dir)
     content = rule_file.read_text()
@@ -30,9 +28,7 @@ def abandon_rule(
     sanitized = reason.replace("\n", " ").replace("\r", " ")
     ts = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
 
-    new_content, count = re.subn(
-        r"^tier:\s*\S+", "tier: disabled", content, flags=re.MULTILINE
-    )
+    new_content, count = re.subn(r"^tier:\s*\S+", "tier: disabled", content, flags=re.MULTILINE)
     if count == 0:
         separator = "" if not content or content.endswith("\n") else "\n"
         new_content = content + separator + "tier: disabled\n"
@@ -42,10 +38,8 @@ def abandon_rule(
 
     log_dir = Path(rules_dir).parent / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_entry = json.dumps(
-        {"ts": ts, "rule": rule_name, "reason": sanitized, "metrics": metrics}
-    )
-    with open(log_dir / "abandoned.jsonl", "a") as f:
+    log_entry = json.dumps({"ts": ts, "rule": rule_name, "reason": sanitized, "metrics": metrics})
+    with Path(log_dir / "abandoned.jsonl").open("a") as f:
         f.write(log_entry + "\n")
 
 
@@ -53,11 +47,7 @@ def _extract_abandon_reason(judge_stdout: str) -> str:
     """Return prose appearing above the final JUDGE_* signal in stdout."""
     lines = judge_stdout.splitlines()
     last_judge_idx = next(
-        (
-            i
-            for i in range(len(lines) - 1, -1, -1)
-            if lines[i].strip().startswith("JUDGE_")
-        ),
+        (i for i in range(len(lines) - 1, -1, -1) if lines[i].strip().startswith("JUDGE_")),
         None,
     )
     if last_judge_idx is None:

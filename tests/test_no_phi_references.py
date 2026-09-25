@@ -4,6 +4,7 @@ Phi-era backend/setup files are gone."""
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,9 +32,9 @@ _DELETED_FILES = [
 
 def _iter_files(target: str) -> list[str]:
     path = os.path.join(PROJECT_ROOT, target)
-    if os.path.isfile(path):
+    if pathlib.Path(path).is_file():
         return [path]
-    if not os.path.isdir(path):
+    if not pathlib.Path(path).is_dir():
         return []
     files = []
     for root, _dirs, names in os.walk(path):
@@ -47,7 +48,7 @@ def test_no_phi_references() -> None:
     for target in _SCAN_TARGETS:
         for file_path in _iter_files(target):
             try:
-                with open(file_path, encoding="utf-8") as f:
+                with pathlib.Path(file_path).open(encoding="utf-8") as f:
                     text = f.read()
             except (UnicodeDecodeError, OSError):
                 continue
@@ -59,4 +60,4 @@ def test_no_phi_references() -> None:
 
 def test_deleted_files_do_not_exist() -> None:
     for rel_path in _DELETED_FILES:
-        assert not os.path.exists(os.path.join(PROJECT_ROOT, rel_path)), rel_path
+        assert not pathlib.Path(os.path.join(PROJECT_ROOT, rel_path)).exists(), rel_path

@@ -7,22 +7,22 @@ users from intercepting the Unix socket or tampering with state files.
 from __future__ import annotations
 
 import os
+import pathlib
 import subprocess
 
 RUNTIME_DIR = f"/tmp/vaudeville-{os.getuid()}"
 # VAUDEVILLE_SOCKET may be set by SessionStart via CLAUDE_ENV_FILE to avoid
 # re-deriving the path in each hook. Treat empty string as unset.
-SOCKET_PATH = os.environ.get("VAUDEVILLE_SOCKET") or os.path.join(
-    RUNTIME_DIR, "vaudeville.sock"
+SOCKET_PATH = os.environ.get("VAUDEVILLE_SOCKET") or str(
+    pathlib.Path(RUNTIME_DIR) / "vaudeville.sock"
 )
-PID_FILE = os.path.join(RUNTIME_DIR, "vaudeville.pid")
-LOG_FILE = os.path.join(RUNTIME_DIR, "vaudeville.log")
-VERSION_FILE = os.path.join(RUNTIME_DIR, "vaudeville.version")
+PID_FILE = str(pathlib.Path(RUNTIME_DIR) / "vaudeville.pid")
+VERSION_FILE = str(pathlib.Path(RUNTIME_DIR) / "vaudeville.version")
 
 
 def ensure_runtime_dir() -> None:
     """Create runtime directory with restrictive permissions if absent."""
-    os.makedirs(RUNTIME_DIR, mode=0o700, exist_ok=True)
+    pathlib.Path(RUNTIME_DIR).mkdir(mode=0o700, exist_ok=True, parents=True)
 
 
 def find_project_root() -> str | None:

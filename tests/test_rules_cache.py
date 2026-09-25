@@ -111,9 +111,7 @@ class TestCacheInvalidation:
         second = load_layered(str(project))
         assert first is second
 
-    def test_edited_file_evicts_stale_entry_instead_of_accumulating(
-        self, tmp_path: Path
-    ) -> None:
+    def test_edited_file_evicts_stale_entry_instead_of_accumulating(self, tmp_path: Path) -> None:
         project = tmp_path / "project"
         rules_dir = project / ".vaudeville" / "rules"
         _write_rule(rules_dir, "gate.yaml", dict(DECIDE_RULE, tier="shadow"))
@@ -133,14 +131,14 @@ class TestCacheInvalidation:
         project = tmp_path / "project"
         rules_dir = project / ".vaudeville" / "rules"
         _write_rule(rules_dir, "gate.yaml", DECIDE_RULE)
-        real_listdir = os.listdir
+        real_iterdir = Path.iterdir
 
-        def _raising_listdir(path: str) -> list[str]:
-            if path == str(rules_dir):
+        def _raising_iterdir(self: Path) -> Any:
+            if self == rules_dir:
                 raise OSError("permission denied")
-            return real_listdir(path)
+            return real_iterdir(self)
 
-        monkeypatch.setattr(os, "listdir", _raising_listdir)
+        monkeypatch.setattr(Path, "iterdir", _raising_iterdir)
 
         result = load_layered(str(project))
         assert result.by_name() == {}
@@ -164,9 +162,7 @@ class TestCacheInvalidation:
         real_stat = os.stat
         gate_path = str(rules_dir / "gate.yaml")
 
-        def _raising_stat(
-            path: object, *args: object, **kwargs: object
-        ) -> os.stat_result:
+        def _raising_stat(path: object, *args: object, **kwargs: object) -> os.stat_result:
             if path == gate_path:
                 raise OSError("vanished")
             return real_stat(path, *args, **kwargs)  # type: ignore[arg-type]

@@ -36,6 +36,9 @@ jobs:
       - name: Type check
         run: uv run mypy vaudeville/
 
+      - name: Dead code (vulture)
+        run: uv run vulture
+
   test:
     strategy:
       fail-fast: false

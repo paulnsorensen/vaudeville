@@ -7,7 +7,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from conftest import FakeRalphRunner
 
 
@@ -48,9 +47,7 @@ class TestOrchestrateTune:
 
         runner.add_response(
             design_side_effect,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="", stderr=""),
         )
         runner.add_response(
             None,
@@ -104,16 +101,12 @@ class TestOrchestrateTune:
 
         runner.add_response(
             r1_design,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="", stderr=""),
         )
         # tune
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="", stderr=""),
         )
         # judge → CONTINUE_TUNE_MORE (so round 2 skips design)
         runner.add_response(
@@ -128,9 +121,7 @@ class TestOrchestrateTune:
         # round 2 tune
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="", stderr=""),
         )
         # round 2 judge → DONE
         runner.add_response(
@@ -209,9 +200,7 @@ class TestOrchestrateTune:
 
         assert rc == 0
 
-    def test_orchestrate_tune_multi_round_continue_to_done(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestrate_tune_multi_round_continue_to_done(self, tmp_path: Path) -> None:
         """Multi-round: CONTINUE_TUNE_MORE skips design in round 2 → tune+judge → DONE."""
         from vaudeville.orchestrator import (
             Thresholds,
@@ -234,9 +223,7 @@ class TestOrchestrateTune:
 
         runner.add_response(
             r1_design,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
 
         # Round 1: tune
@@ -326,17 +313,13 @@ class TestOrchestrateTune:
 
         runner.add_response(
             r1_design,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
 
         # Round 1: tune
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Tune", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Tune", stderr=""),
         )
 
         # Round 1: judge → RAISE
@@ -365,9 +348,7 @@ class TestOrchestrateTune:
         # Round 2: tune
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Tune 2", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Tune 2", stderr=""),
         )
 
         # Round 2: judge → DONE
@@ -418,17 +399,13 @@ class TestOrchestrateTune:
 
         runner.add_response(
             r1_design,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
 
         # Round 1: tune
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Tune", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Tune", stderr=""),
         )
 
         # Round 1: judge → ABANDON
@@ -489,15 +466,11 @@ class TestOrchestrateTune:
 
         runner.add_response(
             design_side_effect,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Tune", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Tune", stderr=""),
         )
         runner.add_response(
             None,
@@ -512,9 +485,7 @@ class TestOrchestrateTune:
         # Round 2: TUNE_MORE → design skipped, tune + judge → CONTINUE_TUNE_MORE
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Tune 2", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Tune 2", stderr=""),
         )
         runner.add_response(
             None,
@@ -581,9 +552,7 @@ class TestOrchestrateTune:
 
         assert "design" in str(exc_info.value).lower()
 
-    def test_orchestrate_tune_passes_rules_dir_to_ralph_args(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestrate_tune_passes_rules_dir_to_ralph_args(self, tmp_path: Path) -> None:
         """--rules_dir is included in phase args passed to ralph."""
         from vaudeville.orchestrator import Thresholds, orchestrate_tune
 
@@ -598,9 +567,7 @@ class TestOrchestrateTune:
 
         runner.add_response(
             mk_empty_plan,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         runner.add_response(
             None,
@@ -642,9 +609,7 @@ class TestOrchestrateTune:
         runner = FakeRalphRunner()
         runner.add_response(
             mk_plan_and_capture,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
         runner.add_response(
             None,

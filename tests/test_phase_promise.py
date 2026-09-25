@@ -38,7 +38,10 @@ class TestTunerPromisedDone:
         """Multiple promise tags in one output → True (first match)."""
         from vaudeville.orchestrator._phase import tuner_promised_done
 
-        output = "Iter 1 done.\n<promise>THRESHOLDS_MET</promise>\nIter 2 done.\n<promise>THRESHOLDS_MET</promise>"
+        output = (
+            "Iter 1 done.\n<promise>THRESHOLDS_MET</promise>\n"
+            "Iter 2 done.\n<promise>THRESHOLDS_MET</promise>"
+        )
         assert tuner_promised_done(output) is True
 
     def test_empty_output(self) -> None:

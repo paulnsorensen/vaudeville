@@ -7,17 +7,18 @@ rotation and TTL-based retention.
 
 from __future__ import annotations
 
+import contextlib
 import json
-import os
+import pathlib
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger as _loguru
 
 from .log_config import LogConfig, load_log_config
 
-_LOGS_DIR = os.path.join(os.path.expanduser("~"), ".vaudeville", "logs")
+_LOGS_DIR = str(pathlib.Path.home() / ".vaudeville" / "logs")
 # Keep event rows lightweight for fast tail/read operations in watch mode.
 _MAX_SNIPPET_LOG_CHARS = 500
 
@@ -43,7 +44,10 @@ class ClassificationEvent:
 
 
 class EventLogger:
-    """Appends JSONL classification events. Pass logs_dir to override default path (useful for tests)."""
+    """Appends JSONL classification events.
+
+    Pass logs_dir to override the default path (useful for tests).
+    """
 
     def __init__(
         self,
@@ -54,14 +58,13 @@ class EventLogger:
             config = load_log_config()
         self._config = config
         self._logs_dir = logs_dir
-        os.makedirs(logs_dir, exist_ok=True)
+        pathlib.Path(logs_dir).mkdir(exist_ok=True, parents=True)
 
         # Remove the default stderr sink so loguru JSON doesn't interleave
         # with the daemon's stdlib logging output.
-        try:
+        # already removed by a prior EventLogger in this process
+        with contextlib.suppress(ValueError):
             _loguru.remove(0)
-        except ValueError:
-            pass  # already removed by a prior EventLogger in this process
 
         self._logger = _loguru.bind()
         self._events_id: int | None = None
@@ -72,8 +75,8 @@ class EventLogger:
         rotation = f"{self._config.max_size_mb} MB"
         retention = timedelta(days=self._config.retention_days)
 
-        events_path = os.path.join(self._logs_dir, "events.jsonl")
-        violations_path = os.path.join(self._logs_dir, "violations.jsonl")
+        events_path = str(pathlib.Path(self._logs_dir) / "events.jsonl")
+        violations_path = str(pathlib.Path(self._logs_dir) / "violations.jsonl")
 
         # Use {message} as format — we pass pre-serialized JSON as
         # the message, so loguru writes exactly one JSONL line per event.
@@ -95,7 +98,7 @@ class EventLogger:
         )
 
     def log_event(self, event: ClassificationEvent) -> None:
-        ts = datetime.now(tz=timezone.utc).isoformat()
+        ts = datetime.now(tz=UTC).isoformat()
         common: dict[str, Any] = {
             "ts": ts,
             "rule": event.rule,
@@ -118,9 +121,7 @@ class EventLogger:
 
         if event.action in _BLOCKING_ACTIONS and event.kind is None:
             violation = {**common}
-            self._logger.bind(_sink="violations").info(
-                json.dumps(violation, default=str)
-            )
+            self._logger.bind(_sink="violations").info(json.dumps(violation, default=str))
 
     def close(self) -> None:
         """Remove sinks added by this logger."""

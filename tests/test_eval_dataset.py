@@ -7,7 +7,13 @@ Parity: TP/FP/TN/FN/precision/recall/F1 from `evaluate_rule` running through
 from __future__ import annotations
 
 import pytest
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    UserPromptPart,
+)
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_evals import Dataset
 
@@ -31,12 +37,25 @@ def _config() -> UserConfig:
     return UserConfig(providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")})
 
 
-def _function_model(outputs: list[str]) -> FunctionModel:
-    it = iter(outputs)
+def _function_model(responses: dict[str, str]) -> FunctionModel:
+    """Build a FunctionModel that replies by matching case text in the prompt.
+
+    Keys on the case text inside the delimited user prompt, not call order,
+    so responses stay correct regardless of scheduling.
+    """
 
     def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
-        del messages, info
-        return ModelResponse(parts=[TextPart(next(it))])
+        del info
+        request = messages[-1]
+        assert isinstance(request, ModelRequest)
+        part = request.parts[-1]
+        assert isinstance(part, UserPromptPart)
+        prompt = part.content
+        assert isinstance(prompt, str)
+        for text, output in responses.items():
+            if text in prompt:
+                return ModelResponse(parts=[TextPart(output)])
+        raise AssertionError(f"no response configured for prompt: {prompt!r}")
 
     return FunctionModel(respond)
 
@@ -74,12 +93,12 @@ def test_parity_with_prior_harness_confusion_counts(monkeypatch: pytest.MonkeyPa
         DecideTestCase(text="clean text two", outcome="clean"),
     ]
     model = _function_model(
-        [
-            '{"outcome": "violation"}',  # tp
-            '{"outcome": "clean"}',  # fn
-            '{"outcome": "violation"}',  # fp
-            '{"outcome": "clean"}',  # tn
-        ]
+        {
+            "violation text one": '{"outcome": "violation"}',  # tp
+            "violation text two": '{"outcome": "clean"}',  # fn
+            "clean text one": '{"outcome": "violation"}',  # fp
+            "clean text two": '{"outcome": "clean"}',  # tn
+        }
     )
     rules: dict[str, DecideRule | RewriteRule] = {rule.name: rule}
 
@@ -119,13 +138,15 @@ def test_parity_with_prior_harness_nonpositive_mismatch_not_tn(
     )
     assert isinstance(rule, DecideRule)
     cases = [DecideTestCase(text="text", outcome="clean")]
-    model = _function_model(['{"outcome": "ticket-instead"}'])
+    model = _function_model({"text": '{"outcome": "ticket-instead"}'})
     rules: dict[str, DecideRule | RewriteRule] = {rule.name: rule}
 
     results, case_results = evaluate_rule(rule.name, cases, rules, _config(), model_override=model)
 
     assert (results.tp, results.fp, results.tn, results.fn) == (0, 0, 0, 0)
-    assert results.misclassified
+    assert results.misclassified == [
+        {"text": "text", "actual": "clean", "predicted": "ticket-instead"}
+    ]
     assert case_results[0].predicted == "ticket-instead"
 
 
@@ -147,6 +168,7 @@ def test_task_output_carries_confidence(monkeypatch: pytest.MonkeyPatch) -> None
     report = run_dataset(dataset, rule, _config())
 
     assert report.cases[0].output.confidence == 0.7
+    assert report.cases[0].metrics == {"confidence": 0.7}
 
 
 def test_task_output_none_confidence_stays_none(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -165,3 +187,59 @@ def test_task_output_none_confidence_stays_none(monkeypatch: pytest.MonkeyPatch)
     report = run_dataset(dataset, rule, _config())
 
     assert report.cases[0].output.confidence is None
+    assert "confidence" not in report.cases[0].metrics
+
+
+def test_precision_recall_uses_outcome_match_not_always_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+    rule = parse_rule(_RULE)
+    assert isinstance(rule, DecideRule)
+    rule = rule.model_copy(
+        update={
+            "test_cases": [
+                DecideTestCase(text="violation text one", outcome="violation"),
+                DecideTestCase(text="violation text two", outcome="violation"),
+                DecideTestCase(text="clean text one", outcome="clean"),
+                DecideTestCase(text="clean text two", outcome="clean"),
+            ]
+        }
+    )
+    model = _function_model(
+        {
+            "violation text one": '{"outcome": "violation", "confidence": 0.9}',  # match
+            "violation text two": '{"outcome": "clean", "confidence": 0.8}',  # mismatch
+            "clean text one": '{"outcome": "violation", "confidence": 0.3}',  # mismatch
+            "clean text two": '{"outcome": "clean", "confidence": 0.6}',  # match
+        }
+    )
+    dataset = build_dataset(rule)
+
+    report = run_dataset(dataset, rule, _config(), model_override=model)
+
+    pr_auc = next(a for a in report.analyses if a.type == "scalar" and "AUC" in a.title)
+    assert pr_auc.value < 1.0
+
+
+def test_run_dataset_raises_on_task_failure_with_original_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+    rule = parse_rule(_RULE)
+    assert isinstance(rule, DecideRule)
+    rule = rule.model_copy(
+        update={"test_cases": [DecideTestCase(text="one", outcome="violation")]}
+    )
+    dataset = build_dataset(rule)
+
+    def fake_decide(
+        rule: DecideRule, config: UserConfig, text: str, *, model_override: object = None
+    ) -> DecideResult:
+        del rule, config, text, model_override
+        raise ConnectionError("upstream 503")
+
+    monkeypatch.setattr("vaudeville.eval.decide", fake_decide)
+
+    with pytest.raises(RuntimeError, match="upstream 503"):
+        run_dataset(dataset, rule, _config())

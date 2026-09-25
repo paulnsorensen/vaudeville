@@ -141,6 +141,8 @@ ignore_names = [
     "clear_cache",                      # rules/cache.py test-only escape hatch, used by tests/test_rules_cache.py
     "cache_size",                       # rules/cache.py test-only introspection, used by tests/test_rules_cache.py
     "query_session_patterns",           # public API invoked by skills/session-analytics/SKILL.md, not imported statically
+    "evaluate",                         # Evaluator/ReportEvaluator base method, called by pydantic_evals via the class, not a direct call site
+    "get_default_evaluation_name",      # Evaluator base method, called by pydantic_evals via the class, not a direct call site
 ]
 
 [dependency-groups]

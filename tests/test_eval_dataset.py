@@ -46,11 +46,15 @@ def _function_model(responses: dict[str, str]) -> FunctionModel:
 
     def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         del info
-        request = messages[-1]
-        assert isinstance(request, ModelRequest)
-        part = request.parts[-1]
-        assert isinstance(part, UserPromptPart)
-        prompt = part.content
+        prompt_parts = [
+            part
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, UserPromptPart)
+        ]
+        assert prompt_parts, f"no UserPromptPart in messages: {messages!r}"
+        prompt = prompt_parts[-1].content
         assert isinstance(prompt, str)
         for text, output in responses.items():
             if text in prompt:
@@ -193,7 +197,20 @@ def test_task_output_none_confidence_stays_none(monkeypatch: pytest.MonkeyPatch)
 def test_precision_recall_uses_outcome_match_not_always_positive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+    responses = {
+        "violation text one": DecideResult(outcome="violation", confidence=0.9),  # match
+        "violation text two": DecideResult(outcome="clean", confidence=0.8),  # mismatch
+        "clean text one": DecideResult(outcome="violation", confidence=0.3),  # mismatch
+        "clean text two": DecideResult(outcome="clean", confidence=0.6),  # match
+    }
+
+    def fake_decide(
+        rule: DecideRule, config: UserConfig, text: str, *, model_override: object = None
+    ) -> DecideResult:
+        del rule, config, model_override
+        return responses[text]
+
+    monkeypatch.setattr("vaudeville.eval.decide", fake_decide)
     rule = parse_rule(_RULE)
     assert isinstance(rule, DecideRule)
     rule = rule.model_copy(
@@ -206,17 +223,9 @@ def test_precision_recall_uses_outcome_match_not_always_positive(
             ]
         }
     )
-    model = _function_model(
-        {
-            "violation text one": '{"outcome": "violation", "confidence": 0.9}',  # match
-            "violation text two": '{"outcome": "clean", "confidence": 0.8}',  # mismatch
-            "clean text one": '{"outcome": "violation", "confidence": 0.3}',  # mismatch
-            "clean text two": '{"outcome": "clean", "confidence": 0.6}',  # match
-        }
-    )
     dataset = build_dataset(rule)
 
-    report = run_dataset(dataset, rule, _config(), model_override=model)
+    report = run_dataset(dataset, rule, _config())
 
     pr_auc = next(a for a in report.analyses if a.type == "scalar" and "AUC" in a.title)
     assert pr_auc.value < 1.0
@@ -241,5 +250,6 @@ def test_run_dataset_raises_on_task_failure_with_original_message(
 
     monkeypatch.setattr("vaudeville.eval.decide", fake_decide)
 
-    with pytest.raises(RuntimeError, match="upstream 503"):
+    with pytest.raises(RuntimeError, match="upstream 503") as exc_info:
         run_dataset(dataset, rule, _config())
+    assert "ConnectionError" in str(exc_info.value)

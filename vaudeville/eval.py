@@ -276,7 +276,9 @@ def run_dataset(
     report = dataset.evaluate_sync(_task, progress=False, max_concurrency=1)
     if report.failures:
         failure = report.failures[0]
-        raise RuntimeError(f"eval case {failure.name} failed: {failure.error_message}")
+        raise RuntimeError(
+            f"eval case {failure.name} failed: {failure.error_message}\n{failure.error_stacktrace}"
+        )
     return report
 
 

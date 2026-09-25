@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 from unittest.mock import patch
 
@@ -29,9 +30,9 @@ def _rule() -> DecideRule:
     return rule
 
 
-class TestBuildParser:
-    def test_json_and_cross_validate_conflict(self) -> None:
-        with patch("sys.argv", ["eval", "--json", "--cross-validate"]):
+class TestCrossValidateRejected:
+    def test_cross_validate_rejected(self) -> None:
+        with patch("sys.argv", ["eval", "--cross-validate"]):
             from vaudeville.eval_cli import main
 
             with pytest.raises(SystemExit) as exc_info:
@@ -151,9 +152,9 @@ class TestMain:
 
         assert "git-gate" in captured["rules"]  # type: ignore[operator]
 
-    def test_calibrate_prints_notice_and_exits_0(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_calibrate_without_rule_is_a_usage_error(self) -> None:
         with (
-            patch("sys.argv", ["eval", "--calibrate", "git-gate"]),
+            patch("sys.argv", ["eval", "--calibrate"]),
             patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
             patch("vaudeville.eval_cli.load_test_cases", return_value={}),
         ):
@@ -162,11 +163,99 @@ class TestMain:
 
             with pytest.raises(SystemExit) as exc_info:
                 main()
+        assert exc_info.value.code == 2
+
+    def test_calibrate_flag_prints_report_for_rule(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """AC-10 through the flag form: `--calibrate --rule R`."""
+        from vaudeville.server.agents.decide import DecideResult
+
+        rule = _rule()
+        cases = [
+            DecideTestCase(text="violation case", outcome="violation"),
+            DecideTestCase(text="clean case", outcome="clean"),
+        ]
+
+        def fake_decide(
+            rule: DecideRule, config: UserConfig, text: str, *, model_override: object = None
+        ) -> DecideResult:
+            del rule, config, model_override
+            outcome = "violation" if "violation" in text else "clean"
+            return DecideResult(outcome=outcome, confidence=0.8)
+
+        with (
+            patch("sys.argv", ["eval", "--calibrate", "--rule", "git-gate"]),
+            patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
+            patch("vaudeville.eval_cli.load_test_cases", return_value={"git-gate": cases}),
+            patch("vaudeville.eval_cli.load_user_config", return_value=UserConfig()),
+            patch("vaudeville.eval.decide", side_effect=fake_decide),
+        ):
+            mock_layered.return_value.by_name.return_value = {"git-gate": rule}
+            from vaudeville.eval_cli import main
+
+            with pytest.raises(SystemExit) as exc_info:
+                main()
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        assert "deferred to FU-1b" in out
+        assert "Calibration: git-gate" in out
+        assert "low-sample" in out
 
-    def test_json_flag_emits_jsonl(self, capsys: pytest.CaptureFixture[str]) -> None:
+
+class TestJsonRunSummary:
+    def test_json_run_summary_has_expected_shape(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from vaudeville.server.agents.decide import DecideResult
+
+        rule = _rule()
+        cases = [
+            DecideTestCase(text="violation case", outcome="violation"),
+            DecideTestCase(text="clean case", outcome="clean"),
+        ]
+
+        def fake_decide(
+            rule: DecideRule, config: UserConfig, text: str, *, model_override: object = None
+        ) -> DecideResult:
+            del rule, config, model_override
+            outcome = "violation" if "violation" in text else "clean"
+            return DecideResult(outcome=outcome, confidence=0.8)
+
+        with (
+            patch("sys.argv", ["eval", "--json", "--rule", "git-gate"]),
+            patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
+            patch("vaudeville.eval_cli.load_test_cases", return_value={"git-gate": cases}),
+            patch("vaudeville.eval_cli.load_user_config", return_value=UserConfig()),
+            patch("vaudeville.eval.decide", side_effect=fake_decide),
+        ):
+            mock_layered.return_value.by_name.return_value = {"git-gate": rule}
+            from vaudeville.eval_cli import main
+
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        lines = [line for line in out.splitlines() if line.strip()]
+        assert len(lines) == 1
+        record = json.loads(lines[0])
+        assert record["passed"] is True
+        rule_summary = record["rules"][0]
+        for key in (
+            "rule",
+            "n",
+            "tp",
+            "fp",
+            "tn",
+            "fn",
+            "precision",
+            "recall",
+            "f1",
+            "passed",
+            "calibration",
+        ):
+            assert key in rule_summary
+
+    def test_json_run_summary_prints_one_object_with_no_model_configured(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         rule = _rule()
         with (
             patch("sys.argv", ["eval", "--json"]),
@@ -180,43 +269,15 @@ class TestMain:
             mock_layered.return_value.by_name.return_value = {"git-gate": rule}
             from vaudeville.eval_cli import main
 
-            with pytest.raises(SystemExit):
+            with pytest.raises(SystemExit) as exc_info:
                 main()
+        assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        import json
-
-        lines = [line for line in out.splitlines() if line.startswith("{")]
+        lines = [line for line in out.splitlines() if line.strip()]
         assert len(lines) == 1
         record = json.loads(lines[0])
-        assert record["rule"] == "git-gate"
-        assert record["expected"] == "clean"
-
-
-class TestEmitJsonl:
-    def test_emits_one_line_per_case(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from vaudeville.eval import CaseResult
-        from vaudeville.eval_cli import _emit_jsonl
-
-        case_results = [
-            CaseResult(
-                rule="git-gate",
-                case_id=0,
-                text="t",
-                expected="clean",
-                predicted="clean",
-                confidence=0.9,
-            )
-        ]
-        _emit_jsonl(case_results)
-        out = capsys.readouterr().out
-        assert out.strip().count("\n") == 0
-        assert '"case_id": 0' in out
-
-    def test_emits_nothing_for_empty_list(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from vaudeville.eval_cli import _emit_jsonl
-
-        _emit_jsonl([])
-        assert capsys.readouterr().out == ""
+        assert "passed" in record
+        assert record["rules"][0]["calibration"]["status"] == "n/a"
 
 
 class TestMainEndToEnd:
@@ -241,7 +302,7 @@ class TestMainEndToEnd:
 
         def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
             del messages, info
-            return ModelResponse(parts=[TextPart('{"outcome": "violation", "confidence": 0.9}')])
+            return ModelResponse(parts=[TextPart('{"outcome": "violation"}')])
 
         model = FunctionModel(respond)
 

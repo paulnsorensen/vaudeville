@@ -2,31 +2,10 @@
 
 from __future__ import annotations
 
-import argparse
-
-import pytest
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
-from pydantic_ai.models.function import AgentInfo, FunctionModel
-
 from vaudeville.eval import EvalResults
-from vaudeville.eval_report import cross_validate_rule, print_results, run_evaluations
+from vaudeville.eval_report import print_results, run_evaluations
 from vaudeville.rules import DecideRule, DecideTestCase, parse_rule
-from vaudeville.server.user_config import ProviderConfig, UserConfig
-
-
-class _RecordingModel:
-    """A FunctionModel that records how often it was called; no network call."""
-
-    def __init__(self, output: str) -> None:
-        self.call_count = 0
-
-        def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
-            del messages, info
-            self.call_count += 1
-            return ModelResponse(parts=[TextPart(output)])
-
-        self.model = FunctionModel(respond)
-
+from vaudeville.server.user_config import UserConfig
 
 _RULE = {
     "type": "decide",
@@ -96,69 +75,9 @@ class TestPrintResults:
         assert "bad text" in out
 
 
-class TestCrossValidateRule:
-    def test_raises_for_unknown_rule(self) -> None:
-        try:
-            cross_validate_rule("nonexistent", [], {}, UserConfig())
-        except ValueError as exc:
-            assert "nonexistent" in str(exc)
-        else:
-            raise AssertionError("expected ValueError")
-
-    def test_produces_correct_totals(self, capsys: object) -> None:
-        # No config.providers entry for the rule's model: every fold fails
-        # open (predicted is None) without making a network call.
-        rule = _rule()
-        cases = [
-            DecideTestCase(text="violation text", outcome="violation"),
-            DecideTestCase(text="clean text", outcome="clean"),
-        ]
-
-        aggregate = cross_validate_rule(rule.name, cases, {rule.name: rule}, UserConfig())
-
-        assert aggregate.total == 2
-        assert aggregate.tp == 0
-        assert aggregate.fn == 1  # violation case predicted None
-        assert aggregate.tn == 1  # clean case predicted None
-        out = capsys.readouterr().out  # type: ignore[attr-defined]
-        assert "Fold 1/2" in out
-        assert "Fold 2/2" in out
-
-
-class TestCrossValidateRuleModelOverride:
-    def test_cross_validate_uses_model_override_and_makes_no_provider_call(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """F24: `--cross-validate` threads `model_override` through to
-        `classify_case`; the resolved provider model is never called."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
-        rule = _rule()
-        config = UserConfig(providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")})
-        recorder = _RecordingModel('{"outcome": "violation", "confidence": 0.9}')
-        cases = [
-            DecideTestCase(text="violation text", outcome="violation"),
-            DecideTestCase(text="clean text", outcome="clean"),
-        ]
-
-        aggregate = cross_validate_rule(
-            rule.name,
-            cases,
-            {rule.name: rule},
-            config,
-            model_override=recorder.model,
-        )
-
-        assert recorder.call_count == 2
-        assert aggregate.tp == 1
-        assert aggregate.fp == 1
-
-
 class TestRunEvaluations:
     def test_skips_rule_with_no_definition(self) -> None:
-        args = argparse.Namespace(cross_validate=False)
-        passed, all_results, case_results = run_evaluations(
-            args, {}, {"missing-rule": []}, UserConfig()
-        )
+        passed, all_results, case_results = run_evaluations({}, {"missing-rule": []}, UserConfig())
         assert passed is True
         assert all_results == {}
         assert case_results == []
@@ -166,41 +85,14 @@ class TestRunEvaluations:
     def test_evaluates_and_aggregates(self) -> None:
         rule = _rule()
         cases = [DecideTestCase(text="t", outcome="clean")]
-        args = argparse.Namespace(cross_validate=False)
 
         passed, all_results, case_results = run_evaluations(
-            args, {rule.name: rule}, {rule.name: cases}, UserConfig()
+            {rule.name: rule}, {rule.name: cases}, UserConfig()
         )
 
         assert rule.name in all_results
         assert all_results[rule.name].fn == 0
         assert len(case_results) == 1
-        assert passed is False
-
-
-class TestRunEvaluationsModelOverride:
-    def test_cross_validate_branch_threads_model_override(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
-        rule = _rule()
-        config = UserConfig(providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")})
-        recorder = _RecordingModel('{"outcome": "clean", "confidence": 0.9}')
-        cases = [DecideTestCase(text="t", outcome="clean")]
-        args = argparse.Namespace(cross_validate=True)
-
-        passed, all_results, case_results = run_evaluations(
-            args,
-            {rule.name: rule},
-            {rule.name: cases},
-            config,
-            model_override=recorder.model,
-        )
-
-        assert recorder.call_count == 1
-        assert all_results[rule.name].tn == 1
-        assert case_results == []
-        # No predicted positives: precision is 0%, below the 95% gate.
         assert passed is False
 
 

@@ -24,7 +24,7 @@ from vaudeville.cli_rules import (
     cmd_completion,
     dispatch_rule_command,
 )
-from vaudeville.core.rules import (
+from vaudeville.rules import (
     locate_rule_file,
     locate_all_rule_files,
     set_tier,
@@ -38,27 +38,22 @@ def _write_rule(
     name: str,
     tier: str = "shadow",
     event: str = "Stop",
-    examples: list[dict[str, str]] | None = None,
 ) -> Path:
     rules_dir.mkdir(parents=True, exist_ok=True)
     path = rules_dir / f"{name}.yaml"
     data: dict[str, object] = {
+        "type": "decide",
         "name": name,
         "event": event,
         "tier": tier,
-        "threshold": 0.5,
-        "action": "warn",
-        "message": "{reason}",
-        "prompt": "Is this a violation? {{ examples }}\n{text}",
-        "context": [{"field": "last_assistant_message"}],
-        "labels": ["violation", "clean"],
+        "prompt": "Is this a violation?\n{text}",
+        "outcomes": ["violation", "clean"],
+        "on": {"violation": "warn"},
         "test_cases": [
-            {"text": "bad text", "label": "violation"},
-            {"text": "good text", "label": "clean"},
+            {"text": "bad text", "outcome": "violation"},
+            {"text": "good text", "outcome": "clean"},
         ],
     }
-    if examples:
-        data["examples"] = examples
     path.write_text(yaml.dump(data))
     return path
 
@@ -85,14 +80,33 @@ class TestLocateRuleFile:
         path = locate_rule_file("test-rule")
         assert path.name == "test-rule.yaml"
 
-    def test_finds_in_project_first(
+    def test_user_rule_outranks_same_named_project_rule(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """The daemon refuses a project rule that shadows a user rule, so
+        the admin helpers must locate the user file."""
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "test-rule", tier="shadow")
         _write_rule(_proj_rules(tmp_path), "test-rule", tier="warn")
         path = locate_rule_file("test-rule", str(tmp_path / "proj"))
-        assert "proj" in str(path)
+        assert path == _home_rules(tmp_path) / "test-rule.yaml"
+
+    def test_finds_project_only_rule(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        _write_rule(_proj_rules(tmp_path), "test-rule", tier="warn")
+        path = locate_rule_file("test-rule", str(tmp_path / "proj"))
+        assert path == _proj_rules(tmp_path) / "test-rule.yaml"
+
+    def test_finds_active_rule_whose_filename_differs_from_its_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        written = _write_rule(_home_rules(tmp_path), "test-rule")
+        renamed = written.with_name("renamed.yaml")
+        written.rename(renamed)
+        assert locate_all_rule_files("test-rule") == [renamed]
 
     def test_falls_back_to_home(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -186,16 +200,18 @@ class TestListRulesWithSource:
         names = {r.name for r, _ in pairs}
         assert "rule-a" in names and "rule-b" in names
 
-    def test_project_overrides_global(
+    def test_user_rule_outranks_same_named_project_rule(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "test-rule", tier="shadow")
         _write_rule(_proj_rules(tmp_path), "test-rule", tier="warn")
         pairs = list_rules_with_source(str(tmp_path / "proj"))
-        rule, source = next((r, s) for r, s in pairs if r.name == "test-rule")
-        assert rule.tier == "warn"
-        assert "proj" in source
+        matches = [(r, s) for r, s in pairs if r.name == "test-rule"]
+        assert len(matches) == 1
+        rule, source = matches[0]
+        assert rule.tier == "shadow"
+        assert source == str(_home_rules(tmp_path))
 
     def test_empty_when_no_rules(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -268,6 +284,32 @@ class TestCmdList:
             cmd_list(self._args(json=True))
         data = json.loads(capsys.readouterr().out)
         assert data[0]["name"] == "rule-a"
+
+    def test_user_rule_is_listed_and_edited_over_same_named_project_rule(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """F23: `rules list` and `set_tier` act on the file the daemon runs."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        user_file = _write_rule(_home_rules(tmp_path), "shared", tier="shadow")
+        project_file = _write_rule(_proj_rules(tmp_path), "shared", tier="block")
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_list(self._args(json=True))
+        data = json.loads(capsys.readouterr().out)
+        assert [(d["name"], d["tier"], d["source"]) for d in data] == [
+            ("shared", "shadow", str(_home_rules(tmp_path)))
+        ]
+
+        edited = set_tier("shared", "warn", str(tmp_path / "proj"))
+
+        assert edited == user_file
+        assert "tier: warn" in user_file.read_text()
+        assert "tier: block" in project_file.read_text()
 
     def test_filter_by_tier(
         self,
@@ -420,12 +462,12 @@ class TestCmdShow:
         rules_dir.mkdir(parents=True, exist_ok=True)
         path = rules_dir / "footer-rule.yaml"
         data = {
+            "type": "decide",
             "name": "footer-rule",
             "event": "Stop",
             "tier": "warn",
-            "threshold": 0.5,
-            "action": "warn",
-            "message": "{reason}",
+            "outcomes": ["violation", "clean"],
+            "on": {"violation": "warn"},
             "prompt": (
                 "Header line\n\n"
                 "Now classify:\n"
@@ -433,7 +475,6 @@ class TestCmdShow:
                 "VERDICT: violation or clean\n"
                 "REASON: one sentence\n"
             ),
-            "labels": ["violation", "clean"],
         }
         path.write_text(yaml.dump(data))
         with patch(
@@ -445,6 +486,73 @@ class TestCmdShow:
         assert "Header line" in out
         assert "Now classify" not in out
         assert "VERDICT: violation or clean" not in out
+
+    def test_human_output_shows_reasons(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules_dir = _home_rules(tmp_path)
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        path = rules_dir / "reasoned-rule.yaml"
+        data = {
+            "type": "decide",
+            "name": "reasoned-rule",
+            "event": "Stop",
+            "tier": "warn",
+            "prompt": "Is this a violation?\n{text}",
+            "outcomes": ["violation", "clean"],
+            "on": {"violation": "warn"},
+            "reasons": {
+                "violation": "the response breaks a rule",
+                "clean": "the response follows the rule",
+            },
+        }
+        path.write_text(yaml.dump(data))
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_show(Namespace(name="reasoned-rule", json=False))
+        out = capsys.readouterr().out
+        assert "violation: the response breaks a rule" in out
+        assert "clean: the response follows the rule" in out
+
+    def test_show_rewrite_rule_human_and_json(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules_dir = _home_rules(tmp_path)
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        path = rules_dir / "rewrite-rule.yaml"
+        data = {
+            "type": "rewrite",
+            "name": "rewrite-rule",
+            "event": "PreToolUse",
+            "tier": "block",
+            "prompt": "Rewrite the content to remove secrets.\n{text}",
+            "target": ["tool_input.content"],
+        }
+        path.write_text(yaml.dump(data))
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_show(Namespace(name="rewrite-rule", json=False))
+        out = capsys.readouterr().out
+        assert "tool_input.content" in out
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_show(Namespace(name="rewrite-rule", json=True))
+        data_out = json.loads(capsys.readouterr().out)
+        assert data_out["target"] == ["tool_input.content"]
 
 
 # ---------------------------------------------------------------------------
@@ -1071,34 +1179,6 @@ class TestCoverageEdgeCases:
         ):
             with pytest.raises(SystemExit):
                 cmd_demote(Namespace(name="missing"))
-
-    def test_show_with_examples(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        monkeypatch.setenv("HOME", str(tmp_path))
-        _write_rule(
-            _home_rules(tmp_path),
-            "ex-rule",
-            examples=[
-                {
-                    "id": "1",
-                    "input": "bad output",
-                    "label": "violation",
-                    "reason": "sycophantic",
-                }
-            ],
-        )
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
-        ):
-            cmd_show(Namespace(name="ex-rule", json=False))
-        out = capsys.readouterr().out
-        assert "examples (from prompt)" not in out
-        assert "bad output" not in out
 
     def test_show_draft_exits(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

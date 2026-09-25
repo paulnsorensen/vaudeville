@@ -20,8 +20,21 @@ def styled_table(title: str, caption: str | None = None) -> Table:
     )
 
 
-def verdict_text(verdict: str) -> Text:
-    if verdict == "violation":
+# Actions that gate the session; mirrors event_log._BLOCKING_ACTIONS (F23).
+_VIOLATION_ACTIONS = frozenset({"block", "ask"})
+
+
+def verdict_text(verdict: str, action: str | None = None) -> Text:
+    """Style *verdict* for display.
+
+    When *action* is given, redness follows the recorded action (F19):
+    outcomes are rule-defined names, not always literally "violation".
+    Without *action*, falls back to the literal "violation" string.
+    """
+    is_violation = (
+        action in _VIOLATION_ACTIONS if action is not None else verdict == "violation"
+    )
+    if is_violation:
         return Text(verdict, style="bold red")
     return Text(verdict, style="bold green")
 

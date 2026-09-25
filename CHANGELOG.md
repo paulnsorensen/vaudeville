@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- Rules are now typed `decide`/`rewrite` YAML (`type`, `outcomes`, `on`, `reasons`, `target`) validated by pydantic, replacing the untyped `labels`/`message`/`threshold` format
+- Classification runs through pydantic-ai against a configurable hosted model provider (set in `~/.vaudeville/config`), replacing local Phi-4-mini inference
+- `/vaudeville:setup` now runs a single `uv sync` and writes `~/.vaudeville/config` instead of selecting an MLX/GGUF backend
+
+### Removed
+- MLX backend, GGUF backend, and the `vaudeville setup` model-download step
+- The old `labels`/`message`/`threshold` rule fields
+
+### Upgrade Note
+Old-format rules (`labels`/`message`/`threshold`, no `type:`) fail the typed
+schema and are skipped silently at load, with only a daemon-log warning. Run
+`vaudeville validate` to find rules skipped this way, then rewrite them as
+`type: decide` (or `type: rewrite`) per the README "Authoring Rules" section.
+
 ## [0.1.0] - 2026-04-11
 
 ### Added

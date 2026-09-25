@@ -6,7 +6,7 @@
     "url": "https://github.com/paulnsorensen"
   },
   "metadata": {
-    "description": "SLM-powered semantic hook enforcement for Claude Code",
+    "description": "pydantic-ai-powered semantic hook enforcement for Claude Code",
     "license": "MIT",
     "repository": "https://github.com/paulnsorensen/vaudeville",
     "homepage": "https://github.com/paulnsorensen/vaudeville"
@@ -19,7 +19,7 @@
         "repo": "paulnsorensen/vaudeville",
         "ref": "main"
       },
-      "description": "SLM-powered semantic hook enforcement — classifies AI output against YAML rules using local Phi-4-mini inference",
+      "description": "pydantic-ai-powered semantic hook enforcement — classifies AI output against YAML rules using a configurable hosted LLM provider",
       "category": "development",
       "tags": ["hooks", "enforcement", "slm", "quality-gates"],
       "author": {

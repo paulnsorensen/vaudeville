@@ -19,19 +19,24 @@ import pytest
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SESSION_START = os.path.join(PROJECT_ROOT, "hooks", "session-start.sh")
 
+
+def test_spawn_command_has_no_dev_group() -> None:
+    """The daemon spawn line must not request the dev dependency group.
+
+    Runtime deps live in [project].dependencies; --group dev pulled in
+    test-only tooling the daemon process never needs.
+    """
+    script_text = pathlib.Path(SESSION_START).read_text()
+    spawn_line = next(line for line in script_text.splitlines() if "uv run" in line)
+    assert "--group dev" not in spawn_line
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 _ARCH = os.uname().machine
 _OS = os.uname().sysname
-
-
-def _model_cache_relpath() -> str:
-    """Return the model-cache subdirectory (relative to HOME) for this platform."""
-    if _OS == "Darwin" and _ARCH == "arm64":
-        return ".cache/huggingface/hub/models--mlx-community--Phi-4-mini-instruct-4bit"
-    return ".cache/huggingface/hub/models--microsoft--Phi-4-mini-instruct-gguf"
 
 
 def _skip_if_unsupported() -> None:
@@ -56,8 +61,6 @@ def session_env(tmp_path: pathlib.Path) -> SessionEnv:
     """Build a minimal sandboxed environment for session-start.sh.
 
     * VAUDEVILLE_RUNTIME_DIR — points to a fresh temp runtime dir.
-    * HOME — a temp home containing a fake (empty) model-cache directory so
-      the model-cache check passes without real weights.
     * PATH — prepends a fake ``uv`` that exits 0 immediately, so no real
       daemon is ever spawned.
     * CLAUDE_ENV_FILE — removed so export_socket_path is a no-op.
@@ -67,8 +70,6 @@ def session_env(tmp_path: pathlib.Path) -> SessionEnv:
 
     fake_home = tmp_path / "home"
     fake_home.mkdir()
-    model_cache = fake_home / _model_cache_relpath()
-    model_cache.mkdir(parents=True)
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()

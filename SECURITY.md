@@ -21,11 +21,11 @@ Use [GitHub's private vulnerability reporting](https://github.com/paulnsorensen/
 
 In scope:
 - Arbitrary code execution via rule YAML parsing
-- Prompt injection in the SLM inference pipeline
+- Prompt injection in the hosted-provider classification pipeline
 - Path traversal or unsafe file handling in the daemon or hook runner
 - Privilege escalation via the Unix socket interface
 
 Out of scope:
-- Vulnerabilities in upstream Phi-4-mini model weights
+- Vulnerabilities in an upstream model provider's own infrastructure
 - Issues requiring physical access to the local machine
 - Denial-of-service against the local daemon

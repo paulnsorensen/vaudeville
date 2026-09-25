@@ -1,6 +1,6 @@
 # Vaudeville
 
-SLM-powered hook enforcement plugin for Claude Code. Uses Phi-4-mini (3.8B, int4) to classify AI responses against quality rules.
+pydantic-ai-powered hook enforcement plugin for Claude Code. A daemon evaluates YAML rules against hook events using configurable LLM providers.
 
 ## Build & Test
 
@@ -27,20 +27,22 @@ just eval         # run eval harness against bundled rules
 - **New code must have 90%+ line coverage.** No exceptions. If you add a function, test it.
 - **Boy Scout Rule**: when touching code adjacent to your change (same file or closely coupled module), add tests for uncovered lines you encounter. Leave coverage better than you found it.
 - Overall project floor is 70% (enforced by `just coverage`). Ratchet this up as coverage improves. The 90% rule applies per-change, not retroactively to legacy code.
-- Hardware-dependent modules (MLX/GGUF backends, setup.py, `__main__.py`) are excluded from coverage metrics.
+- `setup.py` and `__main__.py` are excluded from coverage metrics.
 
 ## Architecture
 
 Vertical slices under `vaudeville/`:
 - `core/` — protocol, client, rules (stdlib + pure-Python deps only, no native/platform-specific imports — safe for hook scripts)
-- `server/` — daemon, inference backends (MLX, GGUF)
+- `server/agents/` — pydantic-ai decide and rewrite agents, model resolution
+- `server/harness/` — harness-specific hook payload adapters (Claude Code and others)
+- `server/effects/` — side effects the pipeline can trigger (rewrite, run-command)
+- `server/hook/` — the hook pipeline: tier ceiling, precedence, `handle_hook_request`
 - `eval.py` — eval harness for rule accuracy testing
 
-Hook entry point: `hooks/runner.py` (thin, stdlib-only, fail-open)
+Hook entry point: `hooks/runner.py` (thin, stdlib-only, fail-open). Config lives at `~/.vaudeville/config` (default model, providers, commands).
 
 ## Key Patterns
 
-- **Fail-open everywhere**: daemon down → allow, inference error → allow, unknown rule → allow
-- **Event-aware truncation**: input text is condensed to fit within token budget, preserving structure boundaries (tool calls, assistant turns)
-- **Prompt injection defense**: VERDICT:/REASON: markers are neutralized with zero-width spaces before interpolation
-- **Deterministic inference**: both backends use temp=0.0
+- **Fail-open everywhere**: daemon down → allow, model error → allow, unknown rule → allow
+- **Data delimiting**: untrusted tool input is delimited before interpolation into prompts (`server/agents/delimit.py`) to resist prompt injection
+- **Deterministic inference**: model calls use temp=0.0

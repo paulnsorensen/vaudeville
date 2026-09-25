@@ -11,7 +11,7 @@ import os
 import socket
 
 from .paths import SOCKET_PATH
-from .protocol import ClassifyRequest, ClassifyResponse
+from .protocol import HookResponse, is_hook_response
 
 CONNECT_TIMEOUT = 1.0  # Localhost socket connect is sub-ms; 1s is generous
 READ_TIMEOUT = 8.0  # p95=2346ms observed; 8s fits inside all CC hook budgets
@@ -24,47 +24,23 @@ class VaudevilleClient:
     def __init__(self) -> None:
         self._socket_path = SOCKET_PATH
 
-    def classify(
-        self,
-        prompt: str,
-        rule: str = "",
-        prefix_len: int = 0,
-        tier: str = "block",
-        input_text: str = "",
-    ) -> ClassifyResponse | None:
-        """Send a classify request and return the verdict.
+    def hook(self, request: dict[str, object]) -> HookResponse | None:
+        """Send a hook request and return the response.
 
-        Returns None if the daemon is unavailable (fail-open semantics).
+        Returns None if the daemon is unavailable or the response is
+        malformed (fail-open semantics).
         """
-        request = ClassifyRequest(
-            prompt=prompt,
-            rule=rule,
-            prefix_len=prefix_len,
-            tier=tier,
-            input_text=input_text,
-        )
         try:
             return self._send(request)
         except Exception as exc:
-            logger.warning("[vaudeville] classify failed: %s", exc)
+            logger.warning("[vaudeville] hook failed: %s", exc)
             return None
 
-    def condense(self, text: str) -> str:
-        """Send a condense request and return the condensed text.
-
-        Returns the original text if the daemon is unavailable (fail-open).
-        """
-        try:
-            return self._send_condense(text)
-        except Exception as exc:
-            logger.warning("[vaudeville] condense failed: %s", exc)
-            return text
-
-    def _send_condense(self, text: str) -> str:
+    def _send(self, request: dict[str, object]) -> HookResponse | None:
         if not os.path.exists(self._socket_path):
             raise FileNotFoundError(self._socket_path)
 
-        payload = json.dumps({"op": "condense", "text": text}).encode() + b"\n"
+        payload = json.dumps(request).encode() + b"\n"
 
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(CONNECT_TIMEOUT)
@@ -83,33 +59,6 @@ class VaudevilleClient:
                     break
 
         response = json.loads(bytes(data).decode().strip())
-        return str(response.get("text", text))
-
-    def _send(self, request: ClassifyRequest) -> ClassifyResponse:
-        if not os.path.exists(self._socket_path):
-            raise FileNotFoundError(self._socket_path)
-
-        payload = json.dumps(request.to_json_dict()).encode() + b"\n"
-
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(CONNECT_TIMEOUT)
-            sock.connect(self._socket_path)
-            sock.settimeout(READ_TIMEOUT)
-            sock.sendall(payload)
-
-            data = bytearray()
-            while True:
-                scan_from = len(data)
-                chunk = sock.recv(RECV_CHUNK)
-                if not chunk:
-                    break
-                data.extend(chunk)
-                if data.find(b"\n", scan_from) >= 0:
-                    break
-
-        response = json.loads(bytes(data).decode().strip())
-        return ClassifyResponse(
-            verdict=response.get("verdict", "clean"),
-            reason=response.get("reason", ""),
-            confidence=float(response.get("confidence", 1.0)),
-        )
+        if not is_hook_response(response):
+            return None
+        return response

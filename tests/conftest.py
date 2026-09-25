@@ -3,46 +3,20 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Callable
 
 import pytest
-
-from vaudeville.core.protocol import ClassifyResult
 
 # Ensure vaudeville package is importable from project root
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
-
-
-class MockBackend:
-    """Deterministic backend for tests — returns canned VERDICT/REASON output."""
-
-    def __init__(
-        self,
-        verdict: str = "clean",
-        reason: str = "test reason",
-        logprobs: dict[str, float] | None = None,
-    ) -> None:
-        self.verdict = verdict
-        self.reason = reason
-        self.logprobs = logprobs or {}
-        self.calls: list[str] = []
-
-    def classify(self, prompt: str, max_tokens: int = 50) -> str:  # noqa: ARG002
-        self.calls.append(prompt)
-        return f"VERDICT: {self.verdict}\nREASON: {self.reason}"
-
-    def classify_with_logprobs(  # noqa: ARG002
-        self, prompt: str, max_tokens: int = 50
-    ) -> ClassifyResult:
-        self.calls.append(prompt)
-        return ClassifyResult(
-            text=f"VERDICT: {self.verdict}\nREASON: {self.reason}",
-            logprobs=self.logprobs,
-        )
 
 
 class FakeRalphRunner:
@@ -86,3 +60,24 @@ class FakeRalphRunner:
 @pytest.fixture
 def rules_dir() -> str:
     return os.path.join(PROJECT_ROOT, "rules")
+
+
+@pytest.fixture
+def short_sock_path() -> Iterator[str]:
+    """A short /tmp-rooted directory for AF_UNIX sockets.
+
+    macOS enforces a 104-byte AF_UNIX path limit; pytest `tmp_path` nests
+    deep enough to exceed it. This fixture keeps socket paths short.
+    """
+    directory = tempfile.mkdtemp(prefix="vd-", dir="/tmp")
+    try:
+        yield directory
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def isolate_rule_layers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep every test from loading the real bundled or user rule layers."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "no-plugin-root"))
+    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))

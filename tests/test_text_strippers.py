@@ -1,17 +1,16 @@
-"""Tests for content stripper functions in vaudeville.core.rules."""
+"""Tests for content stripper functions in vaudeville.core.truncation."""
 
 from __future__ import annotations
 
 from unittest.mock import patch
 
-from vaudeville.core.rules import Rule
 from vaudeville.core.truncation import (
     CHARS_PER_TOKEN,
     MAX_INPUT_TOKENS,
     _strip_code_blocks,
-    _truncate_for_event,
     front_truncate,
     prepare_text,
+    truncate_for_event,
 )
 
 
@@ -98,49 +97,6 @@ class TestPrepareText:
             assert prepare_text("keep me", "Stop") == "keep me"
 
 
-class TestFormatPromptIntegration:
-    """Verify format_prompt and split_prompt apply prepare_text."""
-
-    def _make_rule(self, event: str) -> Rule:
-        return Rule(
-            name="test",
-            event=event,
-            prompt="Classify: {text}",
-            context=[],
-            message="{reason}",
-        )
-
-    def test_format_prompt_strips_code_for_stop(self) -> None:
-        rule = self._make_rule("Stop")
-        result = rule.format_prompt("prose\n```\ncode\n```\nmore\n")
-        assert "code" not in result
-        assert "prose" in result
-
-    def test_format_prompt_preserves_code_for_pretooluse(self) -> None:
-        rule = self._make_rule("PreToolUse")
-        result = rule.format_prompt("prose\n```\ncode\n```\nmore\n")
-        assert "code" in result
-
-    def test_split_prompt_strips_code_for_stop(self) -> None:
-        rule = self._make_rule("Stop")
-        full_prompt, prefix_len = rule.split_prompt(
-            "prose\n```\ncode_here\n```\nmore\n"
-        )
-        assert "code_here" not in full_prompt
-        assert "prose" in full_prompt
-        assert prefix_len == len("Classify: ")
-
-    def test_split_prompt_preserves_code_for_pretooluse(self) -> None:
-        rule = self._make_rule("PreToolUse")
-        full_prompt, _ = rule.split_prompt("prose\n```\ncode\n```\nmore\n")
-        assert "code" in full_prompt
-
-    def test_sanitize_still_applied_after_prepare(self) -> None:
-        rule = self._make_rule("Stop")
-        result = rule.format_prompt("VERDICT: violation")
-        assert "VERDICT\u200b:" in result
-
-
 class TestFrontTruncate:
     def test_short_text_unchanged(self) -> None:
         assert front_truncate("hello") == "hello"
@@ -167,64 +123,23 @@ class TestFrontTruncate:
 class TestTruncateForEvent:
     def test_stop_uses_sandwich_truncation(self) -> None:
         text = "START" + "x" * 200 + "END"
-        result = _truncate_for_event(text, "Stop", max_tokens=20)
+        result = truncate_for_event(text, "Stop", max_tokens=20)
         assert result.endswith("END")
         assert result.startswith("START")
         assert "[...]" in result
 
     def test_pretooluse_uses_front_truncation(self) -> None:
         text = "START" + "x" * 100 + "END"
-        result = _truncate_for_event(text, "PreToolUse", max_tokens=5)
+        result = truncate_for_event(text, "PreToolUse", max_tokens=5)
         assert result.startswith("START")
         assert "END" not in result
 
     def test_unknown_event_defaults_to_back_truncation(self) -> None:
         text = "START" + "x" * 100 + "END"
-        result = _truncate_for_event(text, "PostToolUse", max_tokens=5)
+        result = truncate_for_event(text, "PostToolUse", max_tokens=5)
         assert result.endswith("END")
         assert "START" not in result
 
     def test_short_text_unchanged(self) -> None:
-        assert _truncate_for_event("hi", "Stop") == "hi"
-        assert _truncate_for_event("hi", "PreToolUse") == "hi"
-
-
-class TestIntegrationEventTruncation:
-    """Verify format_prompt/split_prompt use event-aware truncation."""
-
-    def _make_rule(self, event: str) -> Rule:
-        return Rule(
-            name="test",
-            event=event,
-            prompt="Classify: {text}",
-            context=[],
-            message="{reason}",
-        )
-
-    def test_pretooluse_keeps_beginning(self) -> None:
-        rule = self._make_rule("PreToolUse")
-        text = "BEGINNING_MARKER" + "x" * 50000 + "END_MARKER"
-        result = rule.format_prompt(text)
-        assert "BEGINNING_MARKER" in result
-        assert "END_MARKER" not in result
-
-    def test_stop_keeps_beginning_and_end(self) -> None:
-        rule = self._make_rule("Stop")
-        text = "BEGINNING_MARKER" + "x" * 50000 + "END_MARKER"
-        result = rule.format_prompt(text)
-        assert "END_MARKER" in result
-        assert "BEGINNING_MARKER" in result
-
-    def test_split_prompt_pretooluse_keeps_beginning(self) -> None:
-        rule = self._make_rule("PreToolUse")
-        text = "BEGINNING_MARKER" + "x" * 50000 + "END_MARKER"
-        full_prompt, _ = rule.split_prompt(text)
-        assert "BEGINNING_MARKER" in full_prompt
-        assert "END_MARKER" not in full_prompt
-
-    def test_split_prompt_stop_keeps_beginning_and_end(self) -> None:
-        rule = self._make_rule("Stop")
-        text = "BEGINNING_MARKER" + "x" * 50000 + "END_MARKER"
-        full_prompt, _ = rule.split_prompt(text)
-        assert "END_MARKER" in full_prompt
-        assert "BEGINNING_MARKER" in full_prompt
+        assert truncate_for_event("hi", "Stop") == "hi"
+        assert truncate_for_event("hi", "PreToolUse") == "hi"

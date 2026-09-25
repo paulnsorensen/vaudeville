@@ -46,7 +46,7 @@ def sandwich_truncate(text: str, max_tokens: int = MAX_INPUT_TOKENS) -> str:
     return text[:head_chars] + marker + text[-tail_chars:]
 
 
-def _truncate_for_event(
+def truncate_for_event(
     text: str,
     event: str,
     max_tokens: int = MAX_INPUT_TOKENS,

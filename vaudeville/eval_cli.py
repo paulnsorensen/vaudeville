@@ -3,38 +3,14 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 
-from .core import EvalCase, find_project_root, load_rules, load_rules_layered
-from .eval import (
-    CaseResult,
-    _load_test_file,
-    load_test_cases,
-)
-from .server import InferenceBackend
+from pydantic_ai.models import Model
 
-
-def _build_backend(args: argparse.Namespace) -> InferenceBackend:
-    """Initialize the inference backend from CLI args.
-
-    Prefers a warm daemon over in-process MLXBackend unless --no-daemon.
-    """
-    no_daemon = getattr(args, "no_daemon", False)
-    if not no_daemon:
-        from .server import DaemonBackend, daemon_is_alive
-
-        if daemon_is_alive():
-            print("Using warm daemon for inference")
-            return DaemonBackend()
-        logging.warning(
-            "[vaudeville] Daemon not available — falling back to in-process MLXBackend"
-        )
-
-    from .server.mlx_backend import MLXBackend
-
-    print(f"Loading model: {args.model}")
-    return MLXBackend(args.model)
+from .core.paths import find_project_root
+from .eval import CaseResult, load_test_cases
+from .rules import DecideTestCase, bundled_rules_dir, load_rules, load_rules_layered
+from .server.user_config import load_user_config
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -46,22 +22,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Leave-one-out cross-validation with per-fold output",
     )
     parser.add_argument(
-        "--test-file",
-        help="Extra test file to include (YAML format)",
-    )
-    parser.add_argument(
-        "--threshold-sweep",
-        action="store_true",
-        help="Sweep thresholds 0.30-0.90 and print confusion matrix per threshold",
-    )
-    parser.add_argument(
         "--calibrate",
         metavar="RULE",
-        help="Calibrate threshold for a rule: sweep, pick F1-optimal, write to YAML",
-    )
-    parser.add_argument(
-        "--eval-log",
-        help="Path to JSONL file for regression tracking (appends one line per run)",
+        help="Deferred to FU-1b (pydantic-evals); prints a notice and exits 0",
     )
     parser.add_argument(
         "--json",
@@ -72,60 +35,37 @@ def _build_parser() -> argparse.ArgumentParser:
         "--rules-dir",
         help="Load rules from this directory only (skip layered resolution)",
     )
-    parser.add_argument(
-        "--no-daemon",
-        action="store_true",
-        help="Force in-process backend, skip daemon check",
-    )
-    parser.add_argument(
-        "--model",
-        default="mlx-community/Phi-4-mini-instruct-4bit",
-        help="Model path or Hugging Face ID",
-    )
     return parser
-
-
-def _apply_extra_test_file(
-    args: argparse.Namespace, test_suites: dict[str, list[EvalCase]]
-) -> None:
-    """Merge --test-file cases into the matching test suite (mutates in place)."""
-    if not (args.test_file and args.rule):
-        return
-    extra_cases, rule_name = _load_test_file(args.test_file)
-    if rule_name != args.rule:
-        print(
-            f"Error: --test-file specifies rule '{rule_name}' but --rule is '{args.rule}'"
-        )
-        sys.exit(1)
-    existing = test_suites.get(args.rule, [])
-    test_suites[args.rule] = existing + extra_cases
 
 
 def _emit_jsonl(case_results: list[CaseResult]) -> None:
     import json
+    from dataclasses import asdict
 
     for cr in case_results:
-        print(json.dumps(cr.to_jsonl_dict()))
+        print(json.dumps(asdict(cr)))
 
 
-def main() -> None:
+def main(*, model_override: Model | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args()
     if args.json and args.cross_validate:
         parser.error("--json cannot be combined with --cross-validate")
-    backend = _build_backend(args)
+
     if getattr(args, "rules_dir", None):
         rules = load_rules(args.rules_dir)
     else:
-        rules = load_rules_layered(project_root=find_project_root())
-    test_suites = load_test_cases(rules)
-
-    _apply_extra_test_file(args, test_suites)
+        bundled_dir = bundled_rules_dir()
+        bundled_rules = load_rules(bundled_dir) if bundled_dir else {}
+        layered_rules = load_rules_layered(project_root=find_project_root()).by_name()
+        rules = {**bundled_rules, **layered_rules}
+    test_suites: dict[str, list[DecideTestCase]] = load_test_cases(rules)
 
     if args.calibrate:
         from .eval_calibrate import run_calibrate
 
-        run_calibrate(args, rules, test_suites, backend, find_project_root())
+        run_calibrate(args.calibrate)
+        sys.exit(0)
 
     if args.rule:
         test_suites = {k: v for k, v in test_suites.items() if k == args.rule}
@@ -133,21 +73,29 @@ def main() -> None:
             print(f"No test suite found for rule: {args.rule}")
             sys.exit(1)
 
-    from .eval_report import run_evaluations, threshold_sweep, write_eval_log
+    config = load_user_config()
+    no_model_configured = config.default_model is None and not config.providers
+    if no_model_configured:
+        print(
+            "vaudeville: no model configured (~/.vaudeville/config); "
+            "all decisions will fail open",
+            file=sys.stderr,
+        )
 
-    passed, all_results, all_case_results = run_evaluations(
-        args, rules, test_suites, backend
+    from .eval_report import run_evaluations
+
+    passed, _all_results, all_case_results = run_evaluations(
+        args, rules, test_suites, config, model_override=model_override
     )
 
     if args.json:
         _emit_jsonl(all_case_results)
 
-    if args.eval_log and all_results:
-        write_eval_log(args.eval_log, args.model, all_results)
-        print(f"\nEval log appended to {args.eval_log}")
-
-    if args.threshold_sweep:
-        threshold_sweep(test_suites, rules, backend)
+    if no_model_configured:
+        # A fail-open run classifies nothing; there is no pass/fail gate to apply.
+        if not args.json:
+            print("\nNo model configured: skipped the pass/fail gate")
+        sys.exit(0)
 
     if not args.json:
         print("\n" + ("ALL RULES PASS" if passed else "SOME RULES FAILED"))

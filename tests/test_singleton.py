@@ -100,16 +100,16 @@ class TestVaudevilleClientNoArgs:
         # The internal socket path should match the module-level constant
         assert client._socket_path == SOCKET_PATH
 
-    def test_client_classify_fails_open_on_missing_socket(self) -> None:
+    def test_client_hook_fails_open_on_missing_socket(self) -> None:
         """Fail-open semantics must still hold with no-arg constructor."""
         from vaudeville.core.client import VaudevilleClient
 
         with tempfile.TemporaryDirectory() as td:
             client = VaudevilleClient()
             client._socket_path = os.path.join(td, "nonexistent.sock")
-            result = client.classify("test prompt")
+            result = client.hook({"op": "hook"})
             assert result is None, (
-                "classify() must return None when daemon is unavailable (fail-open)"
+                "hook() must return None when daemon is unavailable (fail-open)"
             )
 
 
@@ -158,12 +158,8 @@ class TestVersionStamp:
         socket_path: str,
         pid_file: str,
     ) -> VaudevilleDaemon:
-        from conftest import MockBackend
-
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return VaudevilleDaemon(
-            MockBackend(), DaemonConfig(socket_path, pid_file, plugin_root)
-        )
+        return VaudevilleDaemon(DaemonConfig(socket_path, pid_file, plugin_root))
 
     def test_version_file_written_after_pid_lock(self) -> None:
         """serve() must write VERSION_FILE once the PID lock is acquired."""
@@ -294,14 +290,12 @@ class TestVersionStamp:
     def test_cleanup_removes_version_file_even_if_missing(self) -> None:
         """_cleanup() must not raise if VERSION_FILE does not exist."""
         from vaudeville.server.daemon import DaemonConfig, VaudevilleDaemon
-        from conftest import MockBackend
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            MockBackend(),
             DaemonConfig(
                 "/tmp/_test_cleanup.sock", "/tmp/_test_cleanup.pid", plugin_root
-            ),
+            )
         )
 
         # Ensure file absent
@@ -335,7 +329,7 @@ class TestRunnerNoSessionId:
         )
 
         mock_client = MagicMock()
-        mock_client.classify.return_value = None
+        mock_client.hook.return_value = {"stdout": "{}", "exit_code": 0}
 
         captured_calls: list[Any] = []
 
@@ -359,7 +353,7 @@ class TestRunnerNoSessionId:
         with (
             patch("sys.stdin", io.StringIO(hook_input)),
             patch("sys.stdout", io.StringIO()),
-            patch("sys.argv", ["runner.py", "--event", "Stop"]),
+            patch("sys.argv", ["runner.py", "--harness", "claude-code"]),
             patch.object(runner, "VaudevilleClient", side_effect=fake_constructor),
         ):
             try:

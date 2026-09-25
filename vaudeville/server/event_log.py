@@ -21,6 +21,9 @@ _LOGS_DIR = os.path.join(os.path.expanduser("~"), ".vaudeville", "logs")
 # Keep event rows lightweight for fast tail/read operations in watch mode.
 _MAX_SNIPPET_LOG_CHARS = 500
 
+# Actions that gate the session; only these route to violations.jsonl (F23).
+_BLOCKING_ACTIONS = frozenset({"block", "ask"})
+
 
 @dataclass(frozen=True)
 class ClassificationEvent:
@@ -32,6 +35,11 @@ class ClassificationEvent:
     reason: str = ""
     input_snippet: str = ""
     tier: str = "block"
+    outcome: str | None = None
+    action: str | None = None
+    model: str | None = None
+    downgrade: str | None = None
+    kind: str | None = None
 
 
 class EventLogger:
@@ -98,11 +106,17 @@ class EventLogger:
             "tier": event.tier,
             "reason": event.reason or "",
             "input_snippet": (event.input_snippet or "")[:_MAX_SNIPPET_LOG_CHARS],
+            "outcome": event.outcome,
+            "action": event.action,
+            "model": event.model,
+            "downgrade": event.downgrade,
         }
+        if event.kind is not None:
+            common["kind"] = event.kind
 
         self._logger.bind(_sink="events").info(json.dumps(common, default=str))
 
-        if event.verdict == "violation":
+        if event.action in _BLOCKING_ACTIONS and event.kind is None:
             violation = {**common}
             self._logger.bind(_sink="violations").info(
                 json.dumps(violation, default=str)

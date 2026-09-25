@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Generic hook runner — evaluates rules against hook input.
+"""Generic hook runner — forwards harness hook input to the daemon.
 
 Usage:
-  python3 runner.py --event Stop          # auto-discover rules for event
+  python3 runner.py --harness claude-code
 
-Reads Claude Code hook JSON from stdin, loads rules
-(~/.vaudeville/rules/ -> project/.vaudeville/rules/), classifies via daemon
-socket, and returns the first blocking verdict (or passes if all clean).
+Reads hook JSON from stdin, sends it to the vaudeville daemon over the
+hook wire, and prints the daemon's response verbatim.
 
-Fails open: if daemon is unavailable or input is missing, allows the hook.
+Fails open: if the daemon is unavailable, the harness is unknown, or
+stdin is missing/malformed, allows the hook.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
+from typing import NoReturn
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
@@ -25,74 +27,55 @@ PLUGIN_ROOT = os.environ.get(
 if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
-try:
-    from vaudeville.core import (
-        ClassifyResponse,
-        Rule,
-        VaudevilleClient,
-        find_project_root,
-        prepare_text,
-    )  # noqa: E402
-except ImportError as _exc:
-    print(f"[vaudeville] cannot import client ({_exc}) — fail open", file=sys.stderr)
-    print("{}")
-    sys.exit(0)
+from vaudeville.core import VaudevilleClient  # noqa: E402
+from vaudeville.core.protocol import GENERIC_ALLOW, HookResponse  # noqa: E402
 
-MIN_TEXT_LENGTH = 50
-_DEBUG = os.environ.get("VAUDEVILLE_DEBUG", "") == "1"
+_ALLOW_OUTPUT: dict[str, HookResponse] = {"claude-code": GENERIC_ALLOW}
 
 
-def _dbg(msg: str, *args: object) -> None:
-    if _DEBUG:
-        print(f"[vaudeville:debug] {msg % args if args else msg}", file=sys.stderr)
+def _parse_harness(argv: list[str]) -> str:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--harness", default="claude-code")
+    args, _unknown = parser.parse_known_args(argv)
+    return str(args.harness)
 
 
-def extract_field(data: dict[str, object], dotted_path: str) -> str:
-    """Walk a dotted path like 'tool_input.body' into nested dicts."""
-    current: object = data
-    for key in dotted_path.split("."):
-        if not isinstance(current, dict):
-            return ""
-        current = current.get(key)
-        if current is None:
-            return ""
-    return str(current)
+def _exit_allow(harness: str) -> NoReturn:
+    response = _ALLOW_OUTPUT.get(harness, GENERIC_ALLOW)
+    print(response["stdout"])
+    sys.exit(response["exit_code"])
 
 
-def extract_text_from_dict(hook_input: dict, context: list) -> str:
-    """Extract classifiable text from hook input using rule context entries."""
-    if not context:
-        return ""
+def _run() -> None:
+    try:
+        harness = _parse_harness(sys.argv[1:])
+    except SystemExit:
+        _exit_allow("claude-code")
+    if harness not in _ALLOW_OUTPUT:
+        _exit_allow(harness)
 
-    for entry in context:
-        if isinstance(entry, dict) and "field" in entry:
-            text = extract_field(hook_input, entry["field"])
-            if text:
-                return text
+    try:
+        hook_input = json.load(sys.stdin)
+    except (json.JSONDecodeError, EOFError):
+        _exit_allow(harness)
 
-    return ""
+    if not isinstance(hook_input, dict):
+        _exit_allow(harness)
 
-
-def verdict_to_hook_response(
-    name: str, message_template: str, reason: str, tier: str
-) -> dict:
-    """Translate a warn/block verdict into a Claude Code hook response."""
-    message = message_template.replace("{reason}", reason)
-
-    if tier == "warn":
-        return {
-            "reason": reason,
-            "systemMessage": (
-                f"\U0001fa9d vaudeville hook [{name}] warned about: {message}"
-            ),
-        }
-    return {
-        "decision": "block",
-        "reason": reason,
-        "systemMessage": (
-            f"\U0001fa9d vaudeville hook [{name}] prevented response: {message}"
-        ),
+    request: dict[str, object] = {
+        "op": "hook",
+        "harness": harness,
+        "event": str(hook_input.get("hook_event_name", "")),
+        "cwd": str(hook_input.get("cwd", "")),
+        "payload": hook_input,
     }
+
+    response = VaudevilleClient().hook(request)
+    if response is None:
+        _exit_allow(harness)
+
+    print(response["stdout"])
+    sys.exit(response["exit_code"])
 
 
 def main() -> None:
@@ -100,130 +83,7 @@ def main() -> None:
         _run()
     except Exception as exc:
         print(f"[vaudeville] runner crashed ({exc}) — fail open", file=sys.stderr)
-        print("{}")
-        sys.exit(0)
-
-
-def _load_rules_for_event(event: str) -> list:
-    """Auto-discover all rules matching an event via layered resolution."""
-    from vaudeville.core import load_rules_layered  # noqa: E402
-
-    project_root = find_project_root()
-    all_rules = load_rules_layered(project_root)
-    matching = [r for r in all_rules.values() if r.event == event]
-    return sorted(matching, key=lambda r: r.name)
-
-
-def _run() -> None:
-    if os.environ.get("VAUDEVILLE_SKIP", "") == "1":
-        _dbg("VAUDEVILLE_SKIP=1 — bypassing all rules")
-        print("{}")
-        sys.exit(0)
-
-    args = sys.argv[1:]
-
-    # Parse --event flag
-    event = None
-    if len(args) >= 2 and args[0] == "--event":
-        event = args[1]
-
-    if not event:
-        print("[vaudeville] runner: --event required", file=sys.stderr)
-        print("{}")
-        sys.exit(0)
-
-    _dbg("hook fired — event: %s", event)
-
-    try:
-        hook_input = json.load(sys.stdin)
-    except (json.JSONDecodeError, EOFError):
-        _dbg("no valid JSON on stdin — pass")
-        print("{}")
-        sys.exit(0)
-
-    hook_type = hook_input.get("hook_type", "?")
-    _dbg("hook=%s", hook_type)
-
-    client = VaudevilleClient()
-    _run_event_rules(event, hook_input, client)
-
-
-_CONDENSE_MAX_CHARS = (
-    500_000  # skip condense above this — daemon would mostly pass through
-)
-
-
-def _maybe_condense(text: str, event: str, client: VaudevilleClient) -> str:
-    """Condense text via SLM pre-pass for Stop events. Fail-open."""
-    if event != "Stop":
-        return text
-    _dbg("condensing %d chars for Stop event", len(text))
-    if len(text) > _CONDENSE_MAX_CHARS:
-        _dbg(
-            "skipping condense: %d chars exceeds %d limit",
-            len(text),
-            _CONDENSE_MAX_CHARS,
-        )
-        return text
-    return client.condense(text)
-
-
-def _dispatch_violation(rule: Rule, result: ClassifyResponse) -> bool:
-    """Handle a tier-aware violation. Returns True if the rule loop should continue."""
-    if rule.tier == "shadow":
-        _dbg(
-            "shadow %s: %s (%.2f)",
-            rule.name,
-            result.verdict,
-            result.confidence,
-        )
-        return True
-    if rule.tier == "log":
-        print(f"[vaudeville] {rule.name}: {result.reason}", file=sys.stderr)
-        return True
-
-    response = verdict_to_hook_response(
-        rule.name, rule.message, result.reason, rule.tier
-    )
-    print(json.dumps(response))
-    sys.exit(0)
-
-
-def _run_event_rules(event: str, hook_input: dict, client: VaudevilleClient) -> None:
-    rules = _load_rules_for_event(event)
-    condensed: dict[str, str] = {}
-    for rule in rules:
-        if rule.tier == "disabled":
-            _dbg("skipping disabled rule: %s", rule.name)
-            continue
-
-        text = extract_text_from_dict(hook_input, rule.context)
-        if not text or len(text) < MIN_TEXT_LENGTH:
-            continue
-
-        text = prepare_text(text, event)
-        if text not in condensed:
-            condensed[text] = _maybe_condense(text, event, client)
-        text = condensed[text]
-        context_str = rule.resolve_context(hook_input, PLUGIN_ROOT)
-        prompt, prefix_len = rule.split_prompt(text, context_str)
-
-        result = client.classify(
-            prompt,
-            rule=rule.name,
-            prefix_len=prefix_len,
-            tier=rule.tier,
-            input_text=text,
-        )
-        if result is None:
-            continue
-        if result.verdict != "violation" or result.confidence < rule.threshold:
-            continue
-        if _dispatch_violation(rule, result):
-            continue
-
-    print("{}")
-    sys.exit(0)
+        _exit_allow("claude-code")
 
 
 if __name__ == "__main__":

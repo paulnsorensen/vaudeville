@@ -81,6 +81,7 @@ def test_violation_written_to_both_files(tmp_path: pathlib.Path) -> None:
                 prompt_chars=200,
                 reason="Unearned praise detected",
                 input_snippet="Great question! That's a really smart approach.",
+                action="block",
             )
         )
         time.sleep(0.05)
@@ -119,6 +120,7 @@ def test_input_snippet_truncated_at_500(tmp_path: pathlib.Path) -> None:
                 prompt_chars=1000,
                 reason="too long",
                 input_snippet=long_snippet,
+                action="block",
             )
         )
         time.sleep(0.05)
@@ -247,6 +249,7 @@ def test_tier_included_in_event(tmp_path: pathlib.Path) -> None:
                 prompt_chars=100,
                 reason="hedging",
                 tier="shadow",
+                action="block",
             )
         )
         time.sleep(0.05)
@@ -295,5 +298,136 @@ def test_latency_rounded(tmp_path: pathlib.Path) -> None:
 
         events = _read_jsonl(tmp_path / "events.jsonl")
         assert events[0]["latency_ms"] == 42.3
+    finally:
+        logger.close()
+
+
+def test_decision_fields_included_in_event(tmp_path: pathlib.Path) -> None:
+    """Outcome, action, model, and downgrade are written to events.jsonl."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="test-decision",
+                verdict="violation",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+                outcome="violation",
+                action="block",
+                model="fake:model",
+                downgrade="warn",
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        evt = events[0]
+        assert evt["outcome"] == "violation"
+        assert evt["action"] == "block"
+        assert evt["model"] == "fake:model"
+        assert evt["downgrade"] == "warn"
+    finally:
+        logger.close()
+
+
+def test_violation_verdict_without_blocking_action_not_in_violations(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A violation verdict routed to warn/allow stays out of violations.jsonl."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="no-hedging",
+                verdict="violation",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+                action="warn",
+            )
+        )
+        time.sleep(0.05)
+
+        violations_path = tmp_path / "violations.jsonl"
+        assert not violations_path.exists() or violations_path.read_text().strip() == ""
+    finally:
+        logger.close()
+
+
+def test_ask_action_routes_to_violations(tmp_path: pathlib.Path) -> None:
+    """An `ask` action lands in violations.jsonl even with a non-violation verdict."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="no-hedging",
+                verdict="clean",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+                action="ask",
+            )
+        )
+        time.sleep(0.05)
+
+        violations = _read_jsonl(tmp_path / "violations.jsonl")
+        assert len(violations) == 1
+        assert violations[0]["action"] == "ask"
+    finally:
+        logger.close()
+
+
+def test_decision_fields_default_to_none(tmp_path: pathlib.Path) -> None:
+    """Outcome, action, model, and downgrade default to null when unset."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="test-decision",
+                verdict="clean",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        evt = events[0]
+        assert evt["outcome"] is None
+        assert evt["action"] is None
+        assert evt["model"] is None
+        assert evt["downgrade"] is None
+        assert "kind" not in evt
+    finally:
+        logger.close()
+
+
+def test_dropped_kind_excluded_from_violations(tmp_path: pathlib.Path) -> None:
+    """F24: a `kind: dropped` diagnostic row carries `action` but is excluded
+    from violations.jsonl even when the action would otherwise block."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="a-warn-rule",
+                verdict="violation",
+                confidence=0.9,
+                latency_ms=10.0,
+                prompt_chars=50,
+                action="block",
+                kind="dropped",
+            )
+        )
+        time.sleep(0.05)
+
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        assert len(events) == 1
+        assert events[0]["kind"] == "dropped"
+        assert events[0]["action"] == "block"
+
+        violations_path = tmp_path / "violations.jsonl"
+        assert not violations_path.exists() or not violations_path.read_text().strip()
     finally:
         logger.close()

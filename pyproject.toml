@@ -117,6 +117,31 @@ max-statements = 40
 "vaudeville/server/effects/rewrite.py" = ["ANN401", "PLR0913"]
 "vaudeville/server/hook/pipeline.py" = ["ARG001", "PLR0913", "PLR0915"]
 
+[tool.vulture]
+# vaudeville/ only, deliberately: code reachable solely from tests is dead code
+# in a shipped package, not live code. Adding tests/ here would hide exactly that.
+paths = ["vaudeville"]
+min_confidence = 60
+# Pydantic calls these by name at runtime; vulture cannot see decorator-registered
+# validators or a ClassVar the metaclass reads off the class body.
+ignore_decorators = ["@field_validator", "@model_validator"]
+ignore_names = [
+    "model_config",                    # pydantic ClassVar read by BaseModel's metaclass
+    "cls",                              # first arg of every @field_validator/@model_validator classmethod
+    "completer",                        # argcomplete reads Action.completer by attribute name
+    "__getattr__",                      # PEP 562 module hook called by the interpreter
+    "__dir__",                          # PEP 562 module hook called by the interpreter
+    "hook",                             # VaudevilleClient.hook is called from hooks/runner.py, outside paths
+    "exit_code",                        # HookResponse/RenderResult TypedDict field read via dict key
+    "harness",                          # HookEvent field read via attribute in adapter tests
+    "timed_out",                        # EscalateResult dataclass field read via attribute in tests
+    "draft",                            # DecideRule/RewriteRule field; loader.py reads raw YAML "draft"
+                                         # before parse_rule so extra="forbid" still accepts the key
+    "clear_cache",                      # rules/cache.py test-only escape hatch, used by tests/test_rules_cache.py
+    "cache_size",                       # rules/cache.py test-only introspection, used by tests/test_rules_cache.py
+    "query_session_patterns",           # public API invoked by skills/session-analytics/SKILL.md, not imported statically
+]
+
 [dependency-groups]
 dev = [
     "diff-cover>=9.6.0",
@@ -125,4 +150,5 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.11.0",
     "types-pyyaml>=6.0.12.20250915",
+    "vulture>=2.16",
 ]

@@ -17,7 +17,6 @@ SOCKET_PATH = os.environ.get("VAUDEVILLE_SOCKET") or str(
     pathlib.Path(RUNTIME_DIR) / "vaudeville.sock"
 )
 PID_FILE = str(pathlib.Path(RUNTIME_DIR) / "vaudeville.pid")
-LOG_FILE = str(pathlib.Path(RUNTIME_DIR) / "vaudeville.log")
 VERSION_FILE = str(pathlib.Path(RUNTIME_DIR) / "vaudeville.version")
 
 

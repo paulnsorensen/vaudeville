@@ -20,7 +20,7 @@ coverage *args:
         --cov-config=pyproject.toml {{args}}
 
 # Run all quality checks (format, lint, type)
-check: fmt-check lint type-check
+check: fmt-check lint type-check vulture
     @echo "All checks passed ✓"
 
 # Full validation pipeline (rtk-wrapped). Agents MUST run this before completion.
@@ -37,6 +37,8 @@ build:
     uv run rtk ruff check --fix .
     echo "→ typecheck (mypy --strict)"
     uv run rtk mypy --strict vaudeville/ tests/
+    echo "→ dead code (vulture)"
+    uv run rtk vulture
     echo "→ tests + coverage (xml + term)"
     uv run rtk pytest \
         --cov=vaudeville \
@@ -71,6 +73,10 @@ fmt-check:
 # Run mypy type checker (strict mode)
 type-check:
     uv run mypy --strict vaudeville/ tests/
+
+# Run vulture dead-code check (config in pyproject.toml)
+vulture:
+    uv run vulture
 
 # Install `vaudeville` CLI to ~/.local/bin via uv tool (no shell rc modifications)
 install-cli:

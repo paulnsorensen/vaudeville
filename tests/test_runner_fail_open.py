@@ -38,9 +38,7 @@ def _run_and_capture(
 def test_unreachable(short_sock_path: str, capsys: pytest.CaptureFixture[str]) -> None:
     sock_path = os.path.join(short_sock_path, "nonexistent.sock")
     with patch("vaudeville.core.client.SOCKET_PATH", sock_path):
-        code, out = _run_and_capture(
-            ["runner.py", "--harness", "claude-code"], HOOK_INPUT, capsys
-        )
+        code, out = _run_and_capture(["runner.py", "--harness", "claude-code"], HOOK_INPUT, capsys)
     assert code == 0
     assert out == ""
 
@@ -96,9 +94,7 @@ def test_daemon_error(short_sock_path: str, capsys: pytest.CaptureFixture[str]) 
     t.start()
 
     with patch("vaudeville.core.client.SOCKET_PATH", sock_path):
-        code, out = _run_and_capture(
-            ["runner.py", "--harness", "claude-code"], HOOK_INPUT, capsys
-        )
+        code, out = _run_and_capture(["runner.py", "--harness", "claude-code"], HOOK_INPUT, capsys)
     server_done.wait(timeout=3.0)
     assert server_done.is_set()
     assert code == 0
@@ -106,8 +102,6 @@ def test_daemon_error(short_sock_path: str, capsys: pytest.CaptureFixture[str]) 
 
 
 def test_unknown_harness(capsys: pytest.CaptureFixture[str]) -> None:
-    code, out = _run_and_capture(
-        ["runner.py", "--harness", "bogus-cli"], HOOK_INPUT, capsys
-    )
+    code, out = _run_and_capture(["runner.py", "--harness", "bogus-cli"], HOOK_INPUT, capsys)
     assert code == 0
     assert out == ""

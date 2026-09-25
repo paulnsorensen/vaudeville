@@ -12,6 +12,11 @@ import json
 from pathlib import Path
 
 import pytest
+from _hook_helpers import CONFIG as _CONFIG
+from _hook_helpers import decide_fn as _decide_fn
+from _hook_helpers import make_request as _request
+from _hook_helpers import patch_rewrite
+from _hook_helpers import write_rule as _write_rule
 from pydantic import ValidationError
 
 from vaudeville.rules import parse_rule
@@ -22,12 +27,6 @@ from vaudeville.server.agents.delimit import (
 )
 from vaudeville.server.effects.rewrite import apply_rewrite
 from vaudeville.server.hook import handle_hook_request
-
-from _hook_helpers import CONFIG as _CONFIG
-from _hook_helpers import decide_fn as _decide_fn
-from _hook_helpers import make_request as _request
-from _hook_helpers import patch_rewrite
-from _hook_helpers import write_rule as _write_rule
 
 
 class TestLoadTimeTargetGuard:

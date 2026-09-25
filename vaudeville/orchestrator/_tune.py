@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -146,15 +145,13 @@ def orchestrate_tune(
         rule_name=rule_name,
         rules_dir=rules_dir,
         project_root=project_root,
-        design_dir=os.path.join(commands_dir, "design"),
-        tune_dir=os.path.join(commands_dir, "tune"),
-        judge_dir=os.path.join(commands_dir, "judge"),
+        design_dir=str(Path(commands_dir) / "design"),
+        tune_dir=str(Path(commands_dir) / "tune"),
+        judge_dir=str(Path(commands_dir) / "judge"),
         tuner_iters=tuner_iters,
         runner=_make_runner(runner, tui.append_line if tui else None),
     )
-    plan_file = (
-        Path(project_root) / "commands" / "tune" / "state" / f"{rule_name}.plan.md"
-    )
+    plan_file = Path(project_root) / "commands" / "tune" / "state" / f"{rule_name}.plan.md"
     verdict = JudgeVerdict(kind="JUDGE_CONTINUE_RE_DESIGN")
     judge_stdout = ""
 

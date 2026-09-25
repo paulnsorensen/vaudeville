@@ -85,9 +85,7 @@ def resolve_model(
         return ModelResolution(model=_build_model(model_name, api_key))
     except Exception as exc:
         detail = str(exc) if isinstance(exc, ImportError) else type(exc).__name__
-        logger.warning(
-            "vaudeville: cannot build model %r (%s); allowing", model_name, detail
-        )
+        logger.warning("vaudeville: cannot build model %r (%s); allowing", model_name, detail)
         return ModelResolution(model=None)
 
 
@@ -100,9 +98,7 @@ def _build_model(model_name: str, api_key: str) -> Model:
     return infer_model(model_name, provider_factory=_provider)
 
 
-def build_agent(
-    prompt: str, model: Model | str, output_type: type[T]
-) -> Agent[None, T]:
+def build_agent(prompt: str, model: Model | str, output_type: type[T]) -> Agent[None, T]:
     """Build an agent with the data instruction, temperature 0.0, and the request timeout."""
     return Agent(
         model,

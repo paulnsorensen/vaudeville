@@ -10,12 +10,11 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 from unittest.mock import patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # parse_judge_signal — adversarial inputs
@@ -202,9 +201,7 @@ class TestAbandonRuleAdversarial:
         # Should still have exactly one tier: disabled, not two
         assert content.count("tier: disabled") == 1
 
-    def test_abandon_tier_inside_multiline_string_also_replaced(
-        self, tmp_path: Path
-    ) -> None:
+    def test_abandon_tier_inside_multiline_string_also_replaced(self, tmp_path: Path) -> None:
         """tier: inside a multiline string (prompt: |) is a false match risk.
         The regex ^tier:\\s*\\S+ with MULTILINE replaces ALL occurrences."""
         from vaudeville.orchestrator import abandon_rule
@@ -244,9 +241,7 @@ class TestAbandonRuleAdversarial:
         # json.dumps preserves double quotes via escaping; they round-trip correctly
         assert '"quoted"' in entry["reason"]
 
-    def test_abandon_reason_with_backslash_produces_valid_json(
-        self, tmp_path: Path
-    ) -> None:
+    def test_abandon_reason_with_backslash_produces_valid_json(self, tmp_path: Path) -> None:
         """Backslash in reason — json.dumps handles escaping."""
         from vaudeville.orchestrator import abandon_rule
 
@@ -261,9 +256,7 @@ class TestAbandonRuleAdversarial:
         # Backslashes preserved via json.dumps escaping; full string round-trips
         assert entry["reason"] == "path\\to\\thing"
 
-    def test_abandon_reason_with_carriage_return_sanitized(
-        self, tmp_path: Path
-    ) -> None:
+    def test_abandon_reason_with_carriage_return_sanitized(self, tmp_path: Path) -> None:
         """\\r in reason is replaced with space (sanitized)."""
         from vaudeville.orchestrator import abandon_rule
 
@@ -369,9 +362,7 @@ class TestAbandonRuleAdversarial:
         with pytest.raises(FileNotFoundError):
             _locate_rule_file("ghost", str(rules_dir))
 
-    def test_abandon_multiple_calls_append_multiple_jsonl_entries(
-        self, tmp_path: Path
-    ) -> None:
+    def test_abandon_multiple_calls_append_multiple_jsonl_entries(self, tmp_path: Path) -> None:
         """Two abandon calls append two separate lines to abandoned.jsonl."""
         from vaudeville.orchestrator import abandon_rule
 
@@ -435,9 +426,7 @@ class FakeRalphRunner:
 
 
 def _ok(stdout: str = "") -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(
-        args=["ralph"], returncode=0, stdout=stdout, stderr=""
-    )
+    return subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout=stdout, stderr="")
 
 
 def _fail(returncode: int = 1) -> subprocess.CompletedProcess[str]:
@@ -510,9 +499,7 @@ class TestOrchestrateTuneAdversarial:
                 rules_dir=str(tmp_path / ".vaudeville" / "rules"),
             )
 
-    def test_no_judge_signal_in_stdout_raises_judge_parse_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_no_judge_signal_in_stdout_raises_judge_parse_error(self, tmp_path: Path) -> None:
         """Judge phase returns 0 but stdout has no JUDGE_* → JudgeParseError raised."""
         from vaudeville.orchestrator import (
             JudgeParseError,
@@ -544,9 +531,7 @@ class TestOrchestrateTuneAdversarial:
                 rules_dir=str(tmp_path / ".vaudeville" / "rules"),
             )
 
-    def test_empty_stdout_from_judge_raises_judge_parse_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_empty_stdout_from_judge_raises_judge_parse_error(self, tmp_path: Path) -> None:
         """Judge returns 0 but empty stdout → JudgeParseError."""
         from vaudeville.orchestrator import (
             JudgeParseError,
@@ -769,9 +754,7 @@ class TestOrchestrateGenerateAdversarial:
 
         # Return metrics exactly at threshold
         exact_result = Thresholds(p_min=0.9, r_min=0.8, f1_min=0.85)
-        with patch(
-            "vaudeville.orchestrator._abandon._eval_rule", return_value=exact_result
-        ):
+        with patch("vaudeville.orchestrator._abandon._eval_rule", return_value=exact_result):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -812,9 +795,7 @@ class TestOrchestrateGenerateAdversarial:
 
         # p_min is 0.8999 < 0.9 threshold
         below_result = Thresholds(p_min=0.8999, r_min=0.8, f1_min=0.85)
-        with patch(
-            "vaudeville.orchestrator._abandon._eval_rule", return_value=below_result
-        ):
+        with patch("vaudeville.orchestrator._abandon._eval_rule", return_value=below_result):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -841,9 +822,7 @@ class TestOrchestrateGenerateAdversarial:
         def gen_side_effect() -> None:
             rules_dir.mkdir(parents=True, exist_ok=True)
             for i in range(5):
-                (rules_dir / f"rule{i}.yaml").write_text(
-                    f"name: rule{i}\ntier: shadow\n"
-                )
+                (rules_dir / f"rule{i}.yaml").write_text(f"name: rule{i}\ntier: shadow\n")
 
         runner.add_side_effect(gen_side_effect, _ok("Generated 5 rules"))
 
@@ -854,9 +833,7 @@ class TestOrchestrateGenerateAdversarial:
             eval_call_count += 1
             return thresholds  # all pass
 
-        with patch(
-            "vaudeville.orchestrator._abandon._eval_rule", side_effect=mock_eval
-        ):
+        with patch("vaudeville.orchestrator._abandon._eval_rule", side_effect=mock_eval):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -1021,9 +998,7 @@ class TestIsEmptyPlan:
         f.write_text("")
         assert _is_empty_plan(f) is False
 
-    def test_plan_file_empty_plan_with_surrounding_whitespace(
-        self, tmp_path: Path
-    ) -> None:
+    def test_plan_file_empty_plan_with_surrounding_whitespace(self, tmp_path: Path) -> None:
         from vaudeville.orchestrator._phase import _is_empty_plan
 
         f = tmp_path / "rule.plan.md"

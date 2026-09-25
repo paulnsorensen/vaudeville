@@ -49,9 +49,7 @@ hook_stats = _load("hook_stats")
 
 
 def _mock_result(stdout: str = "", returncode: int = 0, stderr: str = "") -> object:
-    return type(
-        "R", (), {"returncode": returncode, "stdout": stdout, "stderr": stderr}
-    )()
+    return type("R", (), {"returncode": returncode, "stdout": stdout, "stderr": stderr})()
 
 
 # ── _db.query ──
@@ -76,11 +74,11 @@ class TestDbQuery:
     def test_nonzero_returncode_returns_empty(self, tmp_path: Path) -> None:
         db = tmp_path / "test.duckdb"
         db.touch()
-        with patch.object(_db, "DB_PATH", str(db)):
-            with patch(
-                "subprocess.run", return_value=_mock_result(returncode=1, stderr="err")
-            ):
-                assert _db.query("SELECT 1") == []
+        with (
+            patch.object(_db, "DB_PATH", str(db)),
+            patch("subprocess.run", return_value=_mock_result(returncode=1, stderr="err")),
+        ):
+            assert _db.query("SELECT 1") == []
 
     def test_empty_stdout_returns_empty(self, tmp_path: Path) -> None:
         db = tmp_path / "test.duckdb"
@@ -107,11 +105,11 @@ class TestDbQuery:
         db = tmp_path / "test.duckdb"
         db.touch()
         data = [{"tool": "Bash", "cnt": "5"}]
-        with patch.object(_db, "DB_PATH", str(db)):
-            with patch(
-                "subprocess.run", return_value=_mock_result(stdout=json.dumps(data))
-            ):
-                assert _db.query("SELECT 1") == data
+        with (
+            patch.object(_db, "DB_PATH", str(db)),
+            patch("subprocess.run", return_value=_mock_result(stdout=json.dumps(data))),
+        ):
+            assert _db.query("SELECT 1") == data
 
 
 # ── _db.parse_days / parse_limit ──
@@ -156,9 +154,7 @@ class TestOutput:
         assert lines[1] == "1\t2"
         assert lines[2] == "3\t4"
 
-    def test_empty_rows_prints_no_results(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_empty_rows_prints_no_results(self, capsys: pytest.CaptureFixture[str]) -> None:
         _db.output([], [])
         assert "(no results)" in capsys.readouterr().out
 
@@ -206,9 +202,7 @@ class TestToolUsage:
         assert "tool_uses" in sql
         assert "tool_name" in sql
 
-    def test_output_includes_sessions_column(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_output_includes_sessions_column(self, capsys: pytest.CaptureFixture[str]) -> None:
         rows = [{"tool_name": "Read", "uses": "50", "sessions": "10"}]
         with patch.object(tool_usage, "query", return_value=rows):
             with patch("sys.argv", ["tool_usage.py", "--json"]):
@@ -303,7 +297,7 @@ class TestHookStats:
         ]
         call_idx = [0]
 
-        def _q(sql: str) -> list[dict[str, str]]:  # noqa: ARG001
+        def _q(sql: str) -> list[dict[str, str]]:
             idx = call_idx[0]
             call_idx[0] += 1
             return returns[idx]
@@ -311,45 +305,51 @@ class TestHookStats:
         return _q
 
     def test_coverage_calculation(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with patch.object(
-            hook_stats, "query", side_effect=self._mock_three_queries(50, 100)
+        with (
+            patch.object(hook_stats, "query", side_effect=self._mock_three_queries(50, 100)),
+            patch("sys.argv", ["hook_stats.py"]),
         ):
-            with patch("sys.argv", ["hook_stats.py"]):
-                hook_stats.main()
+            hook_stats.main()
         out = capsys.readouterr().out
         assert "50.0%" in out
 
     def test_zero_stops_no_crash(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with patch.object(
-            hook_stats, "query", side_effect=self._mock_three_queries(0, 0)
+        with (
+            patch.object(hook_stats, "query", side_effect=self._mock_three_queries(0, 0)),
+            patch("sys.argv", ["hook_stats.py"]),
         ):
-            with patch("sys.argv", ["hook_stats.py"]):
-                hook_stats.main()
+            hook_stats.main()
         out = capsys.readouterr().out
         assert "0%" in out
 
     def test_json_output_structure(self, capsys: pytest.CaptureFixture[str]) -> None:
         errors = [{"error": "Timeout", "cnt": "3"}]
-        with patch.object(
-            hook_stats, "query", side_effect=self._mock_three_queries(30, 100, errors)
+        with (
+            patch.object(
+                hook_stats,
+                "query",
+                side_effect=self._mock_three_queries(30, 100, errors),
+            ),
+            patch("sys.argv", ["hook_stats.py", "--json"]),
         ):
-            with patch("sys.argv", ["hook_stats.py", "--json"]):
-                hook_stats.main()
+            hook_stats.main()
         parsed = json.loads(capsys.readouterr().out)
         assert parsed["stop_events"] == 100
         assert parsed["hook_executions"] == 30
         assert parsed["coverage_pct"] == 30.0
         assert parsed["errors"][0]["error"] == "Timeout"
 
-    def test_errors_shown_in_text_mode(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_errors_shown_in_text_mode(self, capsys: pytest.CaptureFixture[str]) -> None:
         errors = [{"error": "Script crashed", "cnt": "5"}]
-        with patch.object(
-            hook_stats, "query", side_effect=self._mock_three_queries(10, 50, errors)
+        with (
+            patch.object(
+                hook_stats,
+                "query",
+                side_effect=self._mock_three_queries(10, 50, errors),
+            ),
+            patch("sys.argv", ["hook_stats.py"]),
         ):
-            with patch("sys.argv", ["hook_stats.py"]):
-                hook_stats.main()
+            hook_stats.main()
         out = capsys.readouterr().out
         assert "Script crashed" in out
         assert "5x" in out

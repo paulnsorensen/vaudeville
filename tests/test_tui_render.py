@@ -9,6 +9,7 @@ class TestOrchestratorTUIRender:
     def test_render_shows_phase(self) -> None:
         """Phase name appears in rendered output."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         console = Console(record=True, width=120)
@@ -24,6 +25,7 @@ class TestOrchestratorTUIRender:
     def test_render_shows_rule_name(self) -> None:
         """Rule name appears in header when set."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         console = Console(record=True, width=120)
@@ -39,6 +41,7 @@ class TestOrchestratorTUIRender:
     def test_render_shows_round_info(self) -> None:
         """Round n/N appears in header when total_rounds > 0."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         console = Console(record=True, width=120)
@@ -54,6 +57,7 @@ class TestOrchestratorTUIRender:
     def test_render_shows_verdict(self) -> None:
         """Last verdict appears in header after update_verdict."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         console = Console(record=True, width=120)
@@ -69,6 +73,7 @@ class TestOrchestratorTUIRender:
     def test_render_uses_verdict_text_helper(self) -> None:
         """verdict_text from vaudeville.tui drives verdict styling (no inline markup)."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         console = Console(record=True, width=120)
@@ -84,6 +89,7 @@ class TestOrchestratorTUIRender:
     def test_render_shows_tail_lines(self) -> None:
         """Tail panel shows appended log lines."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         console = Console(record=True, width=120)
@@ -101,6 +107,7 @@ class TestOrchestratorTUIRender:
     def test_render_shows_waiting_when_no_tail(self) -> None:
         """Empty tail shows placeholder text."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         console = Console(record=True, width=120)
@@ -115,6 +122,7 @@ class TestOrchestratorTUIRender:
     def test_tail_bounded_to_20_lines(self) -> None:
         """Tail deque evicts oldest entries beyond 20 lines."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         tui = OrchestratorTUI(console=Console(record=True, width=120))
@@ -128,16 +136,18 @@ class TestOrchestratorTUIRender:
     def test_enter_exit_context_manager(self) -> None:
         """OrchestratorTUI can be used as a context manager without error."""
         from unittest.mock import patch
+
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         tui = OrchestratorTUI(console=Console(record=True, width=80))
         with (
             patch.object(tui._live, "start") as mock_start,
             patch.object(tui._live, "stop") as mock_stop,
+            tui,
         ):
-            with tui:
-                pass
+            pass
         mock_start.assert_called_once()
         mock_stop.assert_called_once()
 
@@ -145,6 +155,7 @@ class TestOrchestratorTUIRender:
         """TUI exposes a Rich Spinner so users can see activity during silent ralph waits."""
         from rich.console import Console
         from rich.spinner import Spinner
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         tui = OrchestratorTUI(console=Console(record=True, width=80))
@@ -154,6 +165,7 @@ class TestOrchestratorTUIRender:
         """__rich__ returns the same renderable Live polls per refresh tick."""
         from rich.console import Console
         from rich.layout import Layout
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         tui = OrchestratorTUI(console=Console(record=True, width=80))
@@ -164,6 +176,7 @@ class TestOrchestratorTUIRender:
     def test_live_polls_self_for_auto_refresh(self) -> None:
         """Live's renderable is the TUI itself so refresh ticks animate the spinner."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         tui = OrchestratorTUI(console=Console(record=True, width=80))
@@ -173,18 +186,15 @@ class TestOrchestratorTUIRender:
     def test_concurrent_mutations_are_race_free(self) -> None:
         """append_line + update_verdict from many threads produce consistent state."""
         from rich.console import Console
+
         from vaudeville.orchestrator_tui import OrchestratorTUI
 
         tui = OrchestratorTUI(console=Console(record=True, width=80))
 
         threads: list[threading.Thread] = []
         for i in range(8):
-            threads.append(
-                threading.Thread(target=lambda i=i: tui.append_line(f"line-{i}"))
-            )
-            threads.append(
-                threading.Thread(target=lambda i=i: tui.update_verdict(f"V-{i}"))
-            )
+            threads.append(threading.Thread(target=lambda i=i: tui.append_line(f"line-{i}")))
+            threads.append(threading.Thread(target=lambda i=i: tui.update_verdict(f"V-{i}")))
         for t in threads:
             t.start()
         for t in threads:

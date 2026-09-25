@@ -105,9 +105,7 @@ def _classify_shadow(rule: dict, tier_thresholds: dict) -> tuple[str, str]:
         )
 
     agreement_str = (
-        f"{agreement:.0%} agreement, "
-        if agreement is not None
-        else "no agreement data, "
+        f"{agreement:.0%} agreement, " if agreement is not None else "no agreement data, "
     )
     return "promote-to-warn", f"{total} evals, {agreement_str}{vr:.0%} violation rate."
 

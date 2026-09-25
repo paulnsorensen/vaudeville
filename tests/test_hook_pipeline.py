@@ -12,6 +12,11 @@ import time
 from pathlib import Path
 
 import pytest
+from _hook_helpers import CONFIG as _CONFIG
+from _hook_helpers import decide_fn as _decide_fn
+from _hook_helpers import make_request as _request
+from _hook_helpers import patch_rewrite, patch_run_command
+from _hook_helpers import write_rule as _write_rule
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -24,13 +29,6 @@ from vaudeville.server.hook import handle_hook_request
 from vaudeville.server.hook import pipeline as pipeline_module
 from vaudeville.server.log_config import LogConfig
 from vaudeville.server.user_config import UserConfig
-
-from _hook_helpers import CONFIG as _CONFIG
-from _hook_helpers import decide_fn as _decide_fn
-from _hook_helpers import make_request as _request
-from _hook_helpers import patch_rewrite, patch_run_command
-from _hook_helpers import write_rule as _write_rule
-
 
 DECIDE_RULE_YAML = """
 type: decide
@@ -75,9 +73,7 @@ class TestOnMap:
 
 
 class TestMatcher:
-    def test_matcher_no_model_call(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_matcher_no_model_call(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(tmp_path, "pipeline-git-gate", DECIDE_RULE_YAML)
         fn, recorder = _decide_fn('{"outcome": "violation"}')
@@ -206,13 +202,9 @@ class TestRequestDeadline:
             deadlines.append(deadline)
             return real_escalate_result(run, deadline=deadline, rule_name=rule_name)  # type: ignore[arg-type]
 
-        monkeypatch.setattr(
-            pipeline_module, "escalate_result", recording_escalate_result
-        )
+        monkeypatch.setattr(pipeline_module, "escalate_result", recording_escalate_result)
 
-        handle_hook_request(
-            _request(tmp_path), config=_CONFIG, decide_fn=fn, deadline_seconds=1.5
-        )
+        handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=fn, deadline_seconds=1.5)
 
         assert deadlines
         assert all(d <= 1.5 for d in deadlines)
@@ -320,9 +312,7 @@ class TestRenderDowngradeTelemetry:
             },
         }
         try:
-            handle_hook_request(
-                request, config=_CONFIG, decide_fn=fn, event_logger=logger
-            )
+            handle_hook_request(request, config=_CONFIG, decide_fn=fn, event_logger=logger)
             time.sleep(0.05)
 
             lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
@@ -715,9 +705,7 @@ tier: block
         fn, _ = _decide_fn('{"outcome": "violation"}')
         patch_rewrite(monkeypatch, "sanitized text")
 
-        request = _request(
-            tmp_path, tool_input={"content": "old text", "file_path": "notes.txt"}
-        )
+        request = _request(tmp_path, tool_input={"content": "old text", "file_path": "notes.txt"})
         result = handle_hook_request(request, config=_CONFIG, decide_fn=fn)
 
         assert "updatedInput" in str(result["stdout"])
@@ -818,9 +806,7 @@ tier: disabled
             calls[rule.name] = calls.get(rule.name, 0) + 1
             return DecideResult(outcome="violation")
 
-        result = handle_hook_request(
-            _request(tmp_path), config=_CONFIG, decide_fn=decide_fn
-        )
+        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=decide_fn)
 
         assert calls["escalate-target"] == 0
         assert result == {"stdout": "", "exit_code": 0}
@@ -979,9 +965,7 @@ class TestTruncation:
         logs_dir = tmp_path / "logs"
         logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
         try:
-            handle_hook_request(
-                request, config=_CONFIG, decide_fn=fn, event_logger=logger
-            )
+            handle_hook_request(request, config=_CONFIG, decide_fn=fn, event_logger=logger)
             time.sleep(0.05)
             lines = (logs_dir / "events.jsonl").read_text().strip().splitlines()
             record = json.loads(lines[-1])

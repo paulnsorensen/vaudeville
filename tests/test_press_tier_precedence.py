@@ -5,15 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
-from vaudeville.server.agents import DecideResult
-from vaudeville.server.hook import handle_hook_request
-
 from _hook_helpers import CONFIG as _CONFIG
 from _hook_helpers import decide_fn as _decide_fn
 from _hook_helpers import make_request as _request
 from _hook_helpers import patch_run_command
 from _hook_helpers import write_rule as _write_rule
+
+from vaudeville.server.agents import DecideResult
+from vaudeville.server.hook import handle_hook_request
 
 
 def _decide_rule(name: str, action_yaml: str, tier: str = "block") -> str:
@@ -51,9 +50,7 @@ class TestEscalateAtTierCeiling:
         _write_rule(
             tmp_path,
             "outer-warn",
-            _decide_rule(
-                "outer-warn", "{action: escalate, rule: inner-block}", tier="warn"
-            ),
+            _decide_rule("outer-warn", "{action: escalate, rule: inner-block}", tier="warn"),
         )
         _write_rule(
             tmp_path,

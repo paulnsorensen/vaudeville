@@ -181,18 +181,14 @@ def _classify_user_response(text: str) -> str:
     return "uncertain"
 
 
-def _find_next_user_message(
-    violation_ts: str, user_msgs: list[tuple[str, str]]
-) -> str | None:
+def _find_next_user_message(violation_ts: str, user_msgs: list[tuple[str, str]]) -> str | None:
     """Find the next user message after a violation, within a 5-minute window.
 
     Without sessionId in the verdicts table, we use a time gap heuristic:
     messages more than 5 minutes after the violation likely belong to a
     different session or context.
     """
-    cutoff = (
-        violation_ts[:11] + _add_minutes(violation_ts[11:16], 5) + violation_ts[16:]
-    )
+    cutoff = violation_ts[:11] + _add_minutes(violation_ts[11:16], 5) + violation_ts[16:]
     for ts, text in user_msgs:
         if ts > violation_ts:
             if ts > cutoff:

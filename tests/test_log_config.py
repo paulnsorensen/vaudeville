@@ -113,9 +113,7 @@ def test_load_write_defaults_oserror(tmp_path: object, monkeypatch: object) -> N
 
     path = pathlib.Path(str(tmp_path)) / "nonexistent" / "deep" / "config.yaml"
 
-    with patch(
-        "vaudeville.server.log_config._write_defaults", side_effect=OSError("no")
-    ):
+    with patch("vaudeville.server.log_config._write_defaults", side_effect=OSError("no")):
         cfg = load_log_config(str(path))
 
     assert cfg == LogConfig()

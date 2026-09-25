@@ -7,16 +7,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from conftest import FakeRalphRunner
 
 
 class TestOrchestrateGenerate:
     """Test generate orchestration: designer → eval rules → tune if needed."""
 
-    def test_orchestrate_generate_all_rules_pass_immediately(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestrate_generate_all_rules_pass_immediately(self, tmp_path: Path) -> None:
         """All 3 rules pass eval immediately → no tune pipeline → exit 0."""
         from vaudeville.orchestrator import (
             Thresholds,
@@ -105,16 +102,12 @@ class TestOrchestrateGenerate:
 
         runner.add_response(
             bad_design,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Design", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Design", stderr=""),
         )
 
         runner.add_response(
             None,
-            subprocess.CompletedProcess(
-                args=["ralph"], returncode=0, stdout="Tune", stderr=""
-            ),
+            subprocess.CompletedProcess(args=["ralph"], returncode=0, stdout="Tune", stderr=""),
         )
 
         runner.add_response(
@@ -127,9 +120,7 @@ class TestOrchestrateGenerate:
             ),
         )
 
-        with patch(
-            "vaudeville.orchestrator._abandon._eval_rule", side_effect=mock_eval
-        ):
+        with patch("vaudeville.orchestrator._abandon._eval_rule", side_effect=mock_eval):
             rc = orchestrate_generate(
                 instructions="test instructions",
                 thresholds=thresholds,
@@ -221,9 +212,7 @@ class TestOrchestrateGenerate:
                 rules_dir=str(tmp_path / ".vaudeville" / "rules"),
             )
 
-    def test_orchestrate_generate_uses_rules_dir_for_snapshot(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestrate_generate_uses_rules_dir_for_snapshot(self, tmp_path: Path) -> None:
         """Snapshot uses rules_dir, not project_root/.vaudeville/rules."""
         from vaudeville.orchestrator import Thresholds, orchestrate_generate
 
@@ -232,9 +221,7 @@ class TestOrchestrateGenerate:
 
         def generate_side_effect() -> None:
             custom_rules_dir.mkdir(parents=True, exist_ok=True)
-            (custom_rules_dir / "new-rule.yaml").write_text(
-                "name: new-rule\ntier: shadow\n"
-            )
+            (custom_rules_dir / "new-rule.yaml").write_text("name: new-rule\ntier: shadow\n")
 
         runner.add_response(
             generate_side_effect,
@@ -245,9 +232,7 @@ class TestOrchestrateGenerate:
 
         thresholds = Thresholds(p_min=0.95, r_min=0.80, f1_min=0.85)
 
-        with patch(
-            "vaudeville.orchestrator._abandon._eval_rule", return_value=thresholds
-        ):
+        with patch("vaudeville.orchestrator._abandon._eval_rule", return_value=thresholds):
             rc = orchestrate_generate(
                 instructions="test",
                 thresholds=thresholds,
@@ -264,9 +249,7 @@ class TestOrchestrateGenerate:
         # 1 call (generate) + eval returned passing → no tune
         assert len(runner.calls) == 1
 
-    def test_orchestrate_generate_passes_rules_dir_to_designer(
-        self, tmp_path: Path
-    ) -> None:
+    def test_orchestrate_generate_passes_rules_dir_to_designer(self, tmp_path: Path) -> None:
         """--rules_dir is included in the generate phase args."""
         from vaudeville.orchestrator import Thresholds, orchestrate_generate
 

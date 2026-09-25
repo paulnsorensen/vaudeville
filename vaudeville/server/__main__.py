@@ -22,9 +22,7 @@ def main() -> None:
     parser.add_argument("--pid-file", default=PID_FILE, help="PID file path")
     args = parser.parse_args()
 
-    log_level = (
-        logging.DEBUG if os.environ.get("VAUDEVILLE_DEBUG") == "1" else logging.INFO
-    )
+    log_level = logging.DEBUG if os.environ.get("VAUDEVILLE_DEBUG") == "1" else logging.INFO
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s [vaudeville] %(message)s",
@@ -49,9 +47,7 @@ def main() -> None:
     try:
         event_logger: EventLogger | None = EventLogger()
     except Exception as exc:
-        logging.warning(
-            "Failed to initialize event logger; continuing without it: %s", exc
-        )
+        logging.warning("Failed to initialize event logger; continuing without it: %s", exc)
         event_logger = None
 
     config = DaemonConfig(

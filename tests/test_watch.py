@@ -3,17 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
+import pathlib
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vaudeville.tui import (
-    confidence_text as _confidence_text,
-    tier_text as _tier_text,
-    verdict_text as _verdict_text,
-)
 from vaudeville.server.watch import (
     _MAX_ROWS,
     _build_table,
@@ -21,7 +16,15 @@ from vaudeville.server.watch import (
     _sanitize_display,
     watch,
 )
-
+from vaudeville.tui import (
+    confidence_text as _confidence_text,
+)
+from vaudeville.tui import (
+    tier_text as _tier_text,
+)
+from vaudeville.tui import (
+    verdict_text as _verdict_text,
+)
 
 # --- _parse_ts_display ---
 
@@ -238,13 +241,13 @@ def test_watch_creates_log_file(tmp_path: Any) -> None:
             with pytest.raises(KeyboardInterrupt):
                 watch(log_path=log_path)
 
-    assert os.path.exists(log_path)
+    assert pathlib.Path(log_path).exists()
 
 
 def test_watch_reads_new_lines(tmp_path: Any) -> None:
     log_path = str(tmp_path / "events.jsonl")
     # Pre-create empty file
-    with open(log_path, "w"):
+    with pathlib.Path(log_path).open("w"):
         pass
 
     call_count = 0
@@ -254,7 +257,7 @@ def test_watch_reads_new_lines(tmp_path: Any) -> None:
         call_count += 1
         if call_count == 1:
             # Write an event after first poll
-            with open(log_path, "a") as f:
+            with pathlib.Path(log_path).open("a") as f:
                 f.write(json.dumps(_make_event()) + "\n")
         elif call_count >= 3:
             raise KeyboardInterrupt
@@ -276,7 +279,7 @@ def test_watch_reads_new_lines(tmp_path: Any) -> None:
 
 def test_watch_counts_violations(tmp_path: Any) -> None:
     log_path = str(tmp_path / "events.jsonl")
-    with open(log_path, "w"):
+    with pathlib.Path(log_path).open("w"):
         pass
 
     call_count = 0
@@ -285,10 +288,8 @@ def test_watch_counts_violations(tmp_path: Any) -> None:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            with open(log_path, "a") as f:
-                f.write(
-                    json.dumps(_make_event(verdict="violation", action="block")) + "\n"
-                )
+            with pathlib.Path(log_path).open("a") as f:
+                f.write(json.dumps(_make_event(verdict="violation", action="block")) + "\n")
                 f.write(json.dumps(_make_event(verdict="clean")) + "\n")
         elif call_count >= 3:
             raise KeyboardInterrupt
@@ -312,7 +313,7 @@ def test_watch_counts_violations(tmp_path: Any) -> None:
 
 def test_watch_skips_malformed_lines(tmp_path: Any) -> None:
     log_path = str(tmp_path / "events.jsonl")
-    with open(log_path, "w"):
+    with pathlib.Path(log_path).open("w"):
         pass
 
     call_count = 0
@@ -321,7 +322,7 @@ def test_watch_skips_malformed_lines(tmp_path: Any) -> None:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            with open(log_path, "a") as f:
+            with pathlib.Path(log_path).open("a") as f:
                 f.write("not valid json\n")
                 f.write("\n")
                 f.write(json.dumps(_make_event()) + "\n")
@@ -348,7 +349,7 @@ def test_watch_skips_malformed_lines(tmp_path: Any) -> None:
 def test_watch_seeks_to_end(tmp_path: Any) -> None:
     """Pre-existing lines are skipped; only new lines are shown."""
     log_path = str(tmp_path / "events.jsonl")
-    with open(log_path, "w") as f:
+    with pathlib.Path(log_path).open("w") as f:
         f.write(json.dumps(_make_event(rule="old")) + "\n")
 
     call_count = 0
@@ -357,7 +358,7 @@ def test_watch_seeks_to_end(tmp_path: Any) -> None:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            with open(log_path, "a") as f:
+            with pathlib.Path(log_path).open("a") as f:
                 f.write(json.dumps(_make_event(rule="new")) + "\n")
         elif call_count >= 3:
             raise KeyboardInterrupt
@@ -390,9 +391,7 @@ def test_read_new_events_excludes_dropped_kind_from_display() -> None:
     from vaudeville.server.watch import _read_new_events
 
     lines = (
-        json.dumps(
-            {"rule": "a", "verdict": "violation", "action": "block", "kind": "dropped"}
-        )
+        json.dumps({"rule": "a", "verdict": "violation", "action": "block", "kind": "dropped"})
         + "\n"
         + json.dumps({"rule": "b", "verdict": "clean"})
         + "\n"

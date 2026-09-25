@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from vaudeville.cli_rules import (
+    cmd_completion,
     cmd_delete,
     cmd_demote,
     cmd_disable,
@@ -21,15 +22,14 @@ from vaudeville.cli_rules import (
     cmd_promote,
     cmd_show,
     cmd_validate,
-    cmd_completion,
     dispatch_rule_command,
 )
 from vaudeville.rules import (
-    locate_rule_file,
-    locate_all_rule_files,
-    set_tier,
     list_rules_with_source,
     load_rule_file,
+    locate_all_rule_files,
+    locate_rule_file,
+    set_tier,
 )
 
 
@@ -72,9 +72,7 @@ def _proj_rules(tmp_path: Path) -> Path:
 
 
 class TestLocateRuleFile:
-    def test_finds_in_home(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_finds_in_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "test-rule")
         path = locate_rule_file("test-rule")
@@ -108,17 +106,13 @@ class TestLocateRuleFile:
         written.rename(renamed)
         assert locate_all_rule_files("test-rule") == [renamed]
 
-    def test_falls_back_to_home(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_falls_back_to_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "test-rule")
         path = locate_rule_file("test-rule", str(tmp_path / "proj"))
         assert path.parent.parent.parent == tmp_path
 
-    def test_raises_when_not_found(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raises_when_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         with pytest.raises(FileNotFoundError, match="test-rule"):
             locate_rule_file("test-rule")
@@ -139,9 +133,7 @@ class TestLocateAllRuleFiles:
         paths = locate_all_rule_files("test-rule")
         assert len(paths) == 1
 
-    def test_returns_both_locations(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_both_locations(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "test-rule")
         _write_rule(_proj_rules(tmp_path), "test-rule")
@@ -150,9 +142,7 @@ class TestLocateAllRuleFiles:
 
 
 class TestSetTier:
-    def test_updates_existing_tier(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_updates_existing_tier(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "test-rule", tier="shadow")
         set_tier("test-rule", "warn")
@@ -171,17 +161,13 @@ class TestSetTier:
         set_tier("no-tier", "block")
         assert "tier: block" in p.read_text()
 
-    def test_raises_on_invalid_tier(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_raises_on_invalid_tier(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "test-rule")
         with pytest.raises(ValueError, match="Invalid tier"):
             set_tier("test-rule", "invalid")
 
-    def test_returns_path(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "test-rule", tier="shadow")
         result = set_tier("test-rule", "warn")
@@ -190,9 +176,7 @@ class TestSetTier:
 
 
 class TestListRulesWithSource:
-    def test_returns_pairs(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_pairs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "rule-a")
         _write_rule(_home_rules(tmp_path), "rule-b", tier="warn")
@@ -213,9 +197,7 @@ class TestListRulesWithSource:
         assert rule.tier == "shadow"
         assert source == str(_home_rules(tmp_path))
 
-    def test_empty_when_no_rules(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_empty_when_no_rules(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         assert list_rules_with_source() == []
 
@@ -424,16 +406,16 @@ class TestCmdShow:
         assert data["name"] == "my-rule"
         assert "path" in data
 
-    def test_not_found_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_not_found_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_show(Namespace(name="missing", json=False))
+            cmd_show(Namespace(name="missing", json=False))
 
     def test_shows_test_case_counts(
         self,
@@ -585,41 +567,45 @@ class TestCmdDelete:
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         p = _write_rule(_home_rules(tmp_path), "my-rule")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            patch("builtins.input", return_value="N"),
+            patch("sys.stdin") as mock_stdin,
         ):
-            with patch("builtins.input", return_value="N"):
-                with patch("sys.stdin") as mock_stdin:
-                    mock_stdin.isatty.return_value = True
-                    cmd_delete(Namespace(name="my-rule", yes=False))
+            mock_stdin.isatty.return_value = True
+            cmd_delete(Namespace(name="my-rule", yes=False))
         assert p.exists()
         assert "Aborted" in capsys.readouterr().out
 
-    def test_delete_not_found_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_delete_not_found_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_delete(Namespace(name="missing", yes=True))
+            cmd_delete(Namespace(name="missing", yes=True))
 
     def test_non_interactive_without_yes_exits(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "my-rule")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            patch("sys.stdin") as mock_stdin,
         ):
-            with patch("sys.stdin") as mock_stdin:
-                mock_stdin.isatty.return_value = False
-                with pytest.raises(SystemExit):
-                    cmd_delete(Namespace(name="my-rule", yes=False))
+            mock_stdin.isatty.return_value = False
+            with pytest.raises(SystemExit):
+                cmd_delete(Namespace(name="my-rule", yes=False))
 
 
 # ---------------------------------------------------------------------------
@@ -660,9 +646,7 @@ class TestCmdPromote:
         assert "tier: warn" in p.read_text()
         assert "log → warn" in capsys.readouterr().out
 
-    def test_warn_to_block(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_warn_to_block(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         p = _write_rule(_home_rules(tmp_path), "my-rule", tier="warn")
         with patch(
@@ -688,17 +672,17 @@ class TestCmdPromote:
         assert "ceiling" in capsys.readouterr().out
         assert "tier: block" in p.read_text()
 
-    def test_disabled_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_disabled_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "my-rule", tier="disabled")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_promote(Namespace(name="my-rule"))
+            cmd_promote(Namespace(name="my-rule"))
 
 
 class TestCmdDemote:
@@ -765,17 +749,17 @@ class TestCmdDemote:
             cmd_demote(Namespace(name="my-rule"))
         assert "floor" in capsys.readouterr().out
 
-    def test_disabled_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_disabled_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "my-rule", tier="disabled")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_demote(Namespace(name="my-rule"))
+            cmd_demote(Namespace(name="my-rule"))
 
 
 # ---------------------------------------------------------------------------
@@ -817,22 +801,20 @@ class TestCmdDisable:
             cmd_disable(Namespace(name="my-rule"))
         assert "already disabled" in capsys.readouterr().out
 
-    def test_not_found_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_not_found_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_disable(Namespace(name="missing"))
+            cmd_disable(Namespace(name="missing"))
 
 
 class TestCmdEnable:
-    def test_restores_previous_tier(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_restores_previous_tier(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         p = _write_rule(_home_rules(tmp_path), "my-rule", tier="warn")
         with patch(
@@ -872,16 +854,16 @@ class TestCmdEnable:
             cmd_enable(Namespace(name="my-rule"))
         assert "already enabled" in capsys.readouterr().out
 
-    def test_not_found_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_not_found_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_enable(Namespace(name="missing"))
+            cmd_enable(Namespace(name="missing"))
 
 
 # ---------------------------------------------------------------------------
@@ -906,16 +888,16 @@ class TestCmdPath:
         out = capsys.readouterr().out.strip()
         assert out.endswith("my-rule.yaml")
 
-    def test_not_found_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_not_found_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_path(Namespace(name="missing"))
+            cmd_path(Namespace(name="missing"))
 
 
 # ---------------------------------------------------------------------------
@@ -943,12 +925,14 @@ class TestCmdValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_validate(Namespace(name="missing"))
+            cmd_validate(Namespace(name="missing"))
 
     def test_all_rules_valid(
         self,
@@ -968,20 +952,20 @@ class TestCmdValidate:
         assert "OK" in out
         assert "rule-a" in out
 
-    def test_invalid_rule_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_invalid_rule_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         rules_dir = _home_rules(tmp_path)
         rules_dir.mkdir(parents=True)
         bad = rules_dir / "bad.yaml"
         bad.write_text("tier: bad-tier\nname: bad\nevent: Stop\nprompt: x\n")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_validate(Namespace(name=None))
+            cmd_validate(Namespace(name=None))
 
 
 # ---------------------------------------------------------------------------
@@ -1059,9 +1043,7 @@ class TestAttachRuleParsers:
         parser = argparse.ArgumentParser()
         sub = parser.add_subparsers(dest="cmd")
         attach_rule_parsers(sub)
-        args = parser.parse_args(
-            ["list", "--tier", "warn", "--event", "Stop", "--json"]
-        )
+        args = parser.parse_args(["list", "--tier", "warn", "--event", "Stop", "--json"])
         assert args.tier == "warn"
         assert args.event == "Stop"
         assert args.json is True
@@ -1121,13 +1103,13 @@ class TestCoverageEdgeCases:
         from vaudeville.cli_rules import _run_list_live
 
         class _FakeLive:
-            instances: list["_FakeLive"] = []
+            instances: list[_FakeLive] = []
 
             def __init__(self, *_: object, **__: object) -> None:
                 self.updated: list[object] = []
                 _FakeLive.instances.append(self)
 
-            def __enter__(self) -> "_FakeLive":
+            def __enter__(self) -> _FakeLive:
                 return self
 
             def __exit__(
@@ -1164,36 +1146,34 @@ class TestCoverageEdgeCases:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        with patch(
-            "vaudeville.cli_rules._find_project_root", return_value=str(tmp_path)
+        with (
+            patch("vaudeville.cli_rules._find_project_root", return_value=str(tmp_path)),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_promote(Namespace(name="missing"))
+            cmd_promote(Namespace(name="missing"))
 
-    def test_demote_not_found_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_demote_not_found_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
-        with patch(
-            "vaudeville.cli_rules._find_project_root", return_value=str(tmp_path)
+        with (
+            patch("vaudeville.cli_rules._find_project_root", return_value=str(tmp_path)),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_demote(Namespace(name="missing"))
+            cmd_demote(Namespace(name="missing"))
 
-    def test_show_draft_exits(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_show_draft_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         rules_dir = _home_rules(tmp_path)
         rules_dir.mkdir(parents=True)
         p = rules_dir / "draft-rule.yaml"
         p.write_text("name: draft-rule\ndraft: true\nevent: Stop\nprompt: x\n")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_show(Namespace(name="draft-rule", json=False))
+            cmd_show(Namespace(name="draft-rule", json=False))
 
     def test_disable_rule_without_tier_field(
         self,
@@ -1222,12 +1202,14 @@ class TestCoverageEdgeCases:
         rules_dir.mkdir(parents=True)
         p = rules_dir / "bad.yaml"
         p.write_text("name: bad\ntier: invalid-tier\nevent: Stop\nprompt: x\n")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            pytest.raises(SystemExit),
         ):
-            with pytest.raises(SystemExit):
-                cmd_validate(Namespace(name="bad"))
+            cmd_validate(Namespace(name="bad"))
 
     def test_validate_all_skips_non_yaml(
         self,
@@ -1256,14 +1238,16 @@ class TestCoverageEdgeCases:
     ) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))
         p = _write_rule(_home_rules(tmp_path), "my-rule")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            patch("builtins.input", return_value="y"),
+            patch("sys.stdin") as ms,
         ):
-            with patch("builtins.input", return_value="y"):
-                with patch("sys.stdin") as ms:
-                    ms.isatty.return_value = True
-                    cmd_delete(Namespace(name="my-rule", yes=False))
+            ms.isatty.return_value = True
+            cmd_delete(Namespace(name="my-rule", yes=False))
         assert not p.exists()
 
     def test_delete_multiple_index_select(
@@ -1274,14 +1258,16 @@ class TestCoverageEdgeCases:
         monkeypatch.setenv("HOME", str(tmp_path))
         ph = _write_rule(_home_rules(tmp_path), "dup-rule")
         pp = _write_rule(_proj_rules(tmp_path), "dup-rule")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            patch("builtins.input", return_value="1"),
+            patch("sys.stdin") as ms,
         ):
-            with patch("builtins.input", return_value="1"):
-                with patch("sys.stdin") as ms:
-                    ms.isatty.return_value = True
-                    cmd_delete(Namespace(name="dup-rule", yes=False))
+            ms.isatty.return_value = True
+            cmd_delete(Namespace(name="dup-rule", yes=False))
         assert not ph.exists() or not pp.exists()
 
     def test_delete_multiple_all(
@@ -1292,14 +1278,16 @@ class TestCoverageEdgeCases:
         monkeypatch.setenv("HOME", str(tmp_path))
         ph = _write_rule(_home_rules(tmp_path), "dup-rule")
         pp = _write_rule(_proj_rules(tmp_path), "dup-rule")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            patch("builtins.input", return_value="all"),
+            patch("sys.stdin") as ms,
         ):
-            with patch("builtins.input", return_value="all"):
-                with patch("sys.stdin") as ms:
-                    ms.isatty.return_value = True
-                    cmd_delete(Namespace(name="dup-rule", yes=False))
+            ms.isatty.return_value = True
+            cmd_delete(Namespace(name="dup-rule", yes=False))
         assert not ph.exists()
         assert not pp.exists()
 
@@ -1312,22 +1300,22 @@ class TestCoverageEdgeCases:
         monkeypatch.setenv("HOME", str(tmp_path))
         _write_rule(_home_rules(tmp_path), "dup-rule")
         _write_rule(_proj_rules(tmp_path), "dup-rule")
-        with patch(
-            "vaudeville.cli_rules._find_project_root",
-            return_value=str(tmp_path / "proj"),
+        with (
+            patch(
+                "vaudeville.cli_rules._find_project_root",
+                return_value=str(tmp_path / "proj"),
+            ),
+            patch("builtins.input", return_value="99"),
+            patch("sys.stdin") as ms,
         ):
-            with patch("builtins.input", return_value="99"):
-                with patch("sys.stdin") as ms:
-                    ms.isatty.return_value = True
-                    cmd_delete(Namespace(name="dup-rule", yes=False))
+            ms.isatty.return_value = True
+            cmd_delete(Namespace(name="dup-rule", yes=False))
         assert "Aborted" in capsys.readouterr().out
 
     def test_rule_names_completer_exception(self) -> None:
         from vaudeville.cli_rules import _rule_names_completer
 
-        with patch(
-            "vaudeville.cli_rules.load_rules_layered", side_effect=Exception("boom")
-        ):
+        with patch("vaudeville.cli_rules.load_rules_layered", side_effect=Exception("boom")):
             result = _rule_names_completer("my")
         assert result == []
 

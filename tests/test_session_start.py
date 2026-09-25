@@ -125,9 +125,7 @@ class TestLogRotation:
 
         assert result.returncode == 0, result.stderr.decode()
         rotated = runtime_dir / "vaudeville.log.1"
-        assert rotated.exists(), (
-            "Expected vaudeville.log.1 to exist after rotation of 60 MB log"
-        )
+        assert rotated.exists(), "Expected vaudeville.log.1 to exist after rotation of 60 MB log"
         # Rotation message must appear in stderr
         assert b"Log rotated" in result.stderr
 
@@ -155,9 +153,7 @@ class TestLogRotation:
         assert result.returncode == 0, result.stderr.decode()
         assert not (runtime_dir / "vaudeville.log.1").exists()
 
-    def test_existing_log_1_overwritten_on_second_rotation(
-        self, session_env: SessionEnv
-    ) -> None:
+    def test_existing_log_1_overwritten_on_second_rotation(self, session_env: SessionEnv) -> None:
         """If .log.1 already exists from a previous rotation it is replaced."""
         _skip_if_unsupported()
 
@@ -183,9 +179,7 @@ class TestLogRotation:
 class TestRestartRaceDaemonWarning:
     """After spawning a daemon that never binds its socket, warn to stderr."""
 
-    def test_daemon_no_socket_emits_warning_and_exits_0(
-        self, session_env: SessionEnv
-    ) -> None:
+    def test_daemon_no_socket_emits_warning_and_exits_0(self, session_env: SessionEnv) -> None:
         """Fake daemon (exits immediately, no socket) triggers the 3-second
         warning message.  The hook must still exit 0 (fail-open).
         """
@@ -200,12 +194,8 @@ class TestRestartRaceDaemonWarning:
             f"Expected 'daemon did not come up' warning in stderr.\nstderr={stderr!r}"
         )
 
-    @pytest.mark.skipif(
-        sys.platform == "darwin", reason="flock(1) unavailable on macOS"
-    )
-    def test_restart_race_with_flock_emits_warning(
-        self, session_env: SessionEnv
-    ) -> None:
+    @pytest.mark.skipif(sys.platform == "darwin", reason="flock(1) unavailable on macOS")
+    def test_restart_race_with_flock_emits_warning(self, session_env: SessionEnv) -> None:
         """Simulate restart race: old daemon holds flock on PID_FILE.
 
         Setup:
@@ -235,9 +225,7 @@ class TestRestartRaceDaemonWarning:
 
             # Hold an exclusive flock on PID_FILE from a separate process to
             # simulate the daemon's PID-lock surviving the kill window.
-            flock_holder = subprocess.Popen(
-                ["bash", "-c", f"flock -x {pid_file} sleep 60"]
-            )
+            flock_holder = subprocess.Popen(["bash", "-c", f"flock -x {pid_file} sleep 60"])
             try:
                 result = _run_session_start(session_env["env"])
             finally:

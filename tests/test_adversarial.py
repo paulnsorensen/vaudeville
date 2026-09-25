@@ -30,11 +30,10 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from vaudeville.core.paths import VERSION_FILE
-from vaudeville.server import DaemonConfig, VaudevilleDaemon
+from vaudeville.server import DaemonConfig, VaudevilleDaemon, user_config
 from vaudeville.server._handlers import handle_request
 from vaudeville.server.agents import decide
 from vaudeville.server.hook import pipeline as pipeline_module
-from vaudeville.server import user_config
 
 
 def _write_rule(rules_root: Path) -> None:
@@ -71,9 +70,7 @@ def _hook_payload(rules_root: Path, tool_input: dict[str, object]) -> dict[str, 
     }
 
 
-def _patch_decide(
-    monkeypatch: pytest.MonkeyPatch, output: str, delay: float = 0.0
-) -> list[int]:
+def _patch_decide(monkeypatch: pytest.MonkeyPatch, output: str, delay: float = 0.0) -> list[int]:
     """Replace `default_decide` with a scripted model; returns its call log."""
     calls: list[int] = []
 
@@ -177,12 +174,12 @@ class TestVersionStampRace:
             socket_path = f1.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         daemon1, thread1 = _ready_daemon(socket_path, pid_file, version_file)
 
         try:
-            version_after_winner = open(version_file).read().strip()
+            version_after_winner = Path(version_file).open().read().strip()
             assert version_after_winner != "", "winner must write a non-empty version"
 
             # Second daemon with SAME pid_file — should bail after PID lock conflict
@@ -190,7 +187,7 @@ class TestVersionStampRace:
                 suffix=".sock2", dir=tempfile.gettempdir(), delete=False
             ) as f2:
                 socket_path2 = f2.name
-            os.unlink(socket_path2)
+            Path(socket_path2).unlink()
 
             plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             daemon2 = VaudevilleDaemon(
@@ -203,7 +200,7 @@ class TestVersionStampRace:
             assert not thread2.is_alive(), "loser daemon should have exited"
 
             # Version file must still belong to daemon1
-            assert open(version_file).read().strip() == version_after_winner
+            assert Path(version_file).open().read().strip() == version_after_winner
         finally:
             daemon1._stop_event.set()
             thread1.join(timeout=3)
@@ -226,8 +223,8 @@ class TestVersionStampRace:
             socket_path = f.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
-        os.unlink(version_file)
+        Path(socket_path).unlink()
+        Path(version_file).unlink()
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
@@ -278,7 +275,7 @@ class TestVersionFilePermissions:
         ):
             socket_path = f.name
             pid_file = fp.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         # Use a path that will be unwritable (inside a read-only dir we create)
         with tempfile.TemporaryDirectory() as td:
@@ -342,10 +339,8 @@ class TestGitNotAvailable:
         with patch("subprocess.run", side_effect=OSError("git not found")):
             daemon._write_version_stamp()
 
-        content = open(version_file).read().strip()
-        assert content == "unknown", (
-            f"Expected 'unknown' when git is unavailable, got {content!r}"
-        )
+        content = Path(version_file).open().read().strip()
+        assert content == "unknown", f"Expected 'unknown' when git is unavailable, got {content!r}"
 
     def test_write_version_stamp_falls_back_when_git_nonzero_exit(self) -> None:
         """Non-zero git exit → stamp is 'unknown'."""
@@ -371,10 +366,8 @@ class TestGitNotAvailable:
         with patch("subprocess.run", return_value=fake_result):
             daemon._write_version_stamp()
 
-        content = open(version_file).read().strip()
-        assert content == "unknown", (
-            f"Expected 'unknown' for non-zero git exit, got {content!r}"
-        )
+        content = Path(version_file).open().read().strip()
+        assert content == "unknown", f"Expected 'unknown' for non-zero git exit, got {content!r}"
 
     def test_write_version_stamp_falls_back_on_timeout(self) -> None:
         """Timed-out git command → stamp is 'unknown', no exception raised."""
@@ -399,10 +392,8 @@ class TestGitNotAvailable:
         ):
             daemon._write_version_stamp()
 
-        content = open(version_file).read().strip()
-        assert content == "unknown", (
-            f"Expected 'unknown' for git timeout, got {content!r}"
-        )
+        content = Path(version_file).open().read().strip()
+        assert content == "unknown", f"Expected 'unknown' for git timeout, got {content!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +426,7 @@ class TestShutdownRace:
             socket_path = f.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
@@ -453,9 +444,7 @@ class TestShutdownRace:
             except (ConnectionRefusedError, FileNotFoundError, OSError):
                 time.sleep(0.05)
 
-        payload = (
-            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
-        )
+        payload = json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
 
         results: list[dict[str, object]] = []
         errors: list[Exception] = []
@@ -498,14 +487,14 @@ class TestShutdownRace:
             socket_path = f.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         daemon, thread = _ready_daemon(socket_path, pid_file, version_file)
         daemon._stop_event.set()
         thread.join(timeout=5)
 
         # _cleanup() must remove the socket file
-        assert not os.path.exists(socket_path), (
+        assert not Path(socket_path).exists(), (
             "Socket file not removed on shutdown — stale socket left behind"
         )
 
@@ -532,7 +521,7 @@ class TestPidFileGarbage:
             socket_path = f.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         # Pre-lock the PID file with LOCK_EX so daemon can't acquire it
         lock_fd = os.open(pid_file, os.O_WRONLY | os.O_CREAT, 0o644)
@@ -546,11 +535,9 @@ class TestPidFileGarbage:
             thread = threading.Thread(target=daemon.serve, daemon=True)
             thread.start()
             thread.join(timeout=3.0)
-            assert not thread.is_alive(), (
-                "Daemon should exit when PID file is already locked"
-            )
+            assert not thread.is_alive(), "Daemon should exit when PID file is already locked"
             # Socket must NOT have been created
-            assert not os.path.exists(socket_path), (
+            assert not Path(socket_path).exists(), (
                 "Daemon bound socket even though PID lock was held by another process"
             )
         finally:
@@ -573,7 +560,7 @@ class TestPidFileGarbage:
             pid_file = fp.name
             version_file = fv.name
             fp.write("not-a-pid\x00\xff garbage\n")
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         # The daemon re-opens and relocks the PID file; garbage content shouldn't matter
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -597,9 +584,7 @@ class TestPidFileGarbage:
         daemon._stop_event.set()
         thread.join(timeout=3)
 
-        assert socket_ready, (
-            "Daemon failed to start when PID file contained garbage content"
-        )
+        assert socket_ready, "Daemon failed to start when PID file contained garbage content"
 
 
 # ---------------------------------------------------------------------------
@@ -640,7 +625,7 @@ class TestCleanupInterrupted:
             pid_file = fp.name
             version_file = fv.name
             fv.write("stale-git-hash-from-dead-daemon\n")
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
@@ -659,7 +644,7 @@ class TestCleanupInterrupted:
                 time.sleep(0.05)
 
         try:
-            content = open(version_file).read().strip()
+            content = Path(version_file).open().read().strip()
             assert content != "stale-git-hash-from-dead-daemon", (
                 "New daemon must overwrite stale version file, not keep old value"
             )
@@ -697,13 +682,11 @@ class TestRequestLockContention:
             socket_path = f.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         daemon, thread = _ready_daemon(socket_path, pid_file, version_file)
 
-        payload = (
-            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
-        )
+        payload = json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
 
         responses: list[dict[str, object]] = []
         errors: list[Exception] = []
@@ -767,7 +750,7 @@ class TestRequestLockContention:
             socket_path = f.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
@@ -785,14 +768,11 @@ class TestRequestLockContention:
             except (ConnectionRefusedError, FileNotFoundError, OSError):
                 time.sleep(0.05)
 
-        payload = (
-            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
-        )
+        payload = json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
 
         started = time.monotonic()
         workers = [
-            threading.Thread(target=_send_request, args=(socket_path, payload))
-            for _ in range(5)
+            threading.Thread(target=_send_request, args=(socket_path, payload)) for _ in range(5)
         ]
         for w in workers:
             w.start()
@@ -832,13 +812,11 @@ class TestRequestLockContention:
             socket_path = f.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         daemon, thread = _ready_daemon(socket_path, pid_file, version_file)
 
-        payload = (
-            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
-        )
+        payload = json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
 
         responses: list[dict[str, object]] = []
         lock = threading.Lock()
@@ -892,13 +870,11 @@ class TestDecideRouting:
             socket_path = f.name
             pid_file = fp.name
             version_file = fv.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         daemon, thread = _ready_daemon(socket_path, pid_file, version_file)
 
-        payload = (
-            json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
-        )
+        payload = json.dumps(_hook_payload(tmp_path, {"content": "hello"})).encode() + b"\n"
 
         result = _send_request(socket_path, payload)
 
@@ -933,10 +909,7 @@ class TestHandleRequestEdgeCases:
     def test_oversized_payload(self, tmp_path: Path) -> None:
         """A 10MB hook payload with no matching rule must fail open, not crash."""
         giant_text = "x" * (10 * 1024 * 1024)
-        payload = (
-            json.dumps(_hook_payload(tmp_path, {"content": giant_text})).encode()
-            + b"\n"
-        )
+        payload = json.dumps(_hook_payload(tmp_path, {"content": giant_text})).encode() + b"\n"
         response = json.loads(handle_request(payload))
         assert response.get("exit_code") == 0
 

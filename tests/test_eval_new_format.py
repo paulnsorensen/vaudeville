@@ -32,9 +32,7 @@ _RULE = {
 
 
 def _config() -> UserConfig:
-    return UserConfig(
-        providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")}
-    )
+    return UserConfig(providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")})
 
 
 def _function_model(output: str) -> FunctionModel:
@@ -78,9 +76,7 @@ class TestNewFormatClassifyCase:
 
         case = DecideTestCase(text="should I commit?", outcome="violation")
 
-        case_result = classify_case(
-            case, rule, _config(), results, model_override=model
-        )
+        case_result = classify_case(case, rule, _config(), results, model_override=model)
 
         assert case_result.predicted == "violation"
         assert case_result.expected == "violation"
@@ -104,9 +100,7 @@ class TestNewFormatClassifyCase:
 
 
 class TestConfusionCounts:
-    def test_confusion_counts_tp_fp_tn_fn(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_confusion_counts_tp_fp_tn_fn(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
         rule = parse_rule(_RULE)
         assert isinstance(rule, DecideRule)

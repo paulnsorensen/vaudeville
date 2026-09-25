@@ -33,9 +33,7 @@ class TestCmdStats:
                 "vaudeville.__main__.load_rules_layered",
                 return_value=RuleSet(rules=(mock_rule,)),  # type: ignore[arg-type]
             ),
-            patch(
-                "vaudeville.server.aggregate_events", return_value=mock_result
-            ) as mock_agg,
+            patch("vaudeville.server.aggregate_events", return_value=mock_result) as mock_agg,
         ):
             from vaudeville.__main__ import cmd_stats
 
@@ -57,9 +55,7 @@ class TestCmdStats:
                 "vaudeville.__main__.load_rules_layered",
                 return_value=RuleSet(),
             ),
-            patch(
-                "vaudeville.server.aggregate_events", return_value=mock_result
-            ) as mock_agg,
+            patch("vaudeville.server.aggregate_events", return_value=mock_result) as mock_agg,
         ):
             from vaudeville.__main__ import cmd_stats
 
@@ -131,9 +127,7 @@ class TestMain:
     def test_tune_command_dispatches(self) -> None:
         with (
             patch("sys.argv", ["vaudeville", "tune", "no-hedging"]),
-            patch(
-                "vaudeville.orchestrator.orchestrate_tune", return_value=0
-            ) as mock_tune,
+            patch("vaudeville.orchestrator.orchestrate_tune", return_value=0) as mock_tune,
         ):
             from vaudeville.__main__ import main
 
@@ -145,9 +139,7 @@ class TestMain:
     def test_generate_command_dispatches(self) -> None:
         with (
             patch("sys.argv", ["vaudeville", "generate", "describe rule"]),
-            patch(
-                "vaudeville.orchestrator.orchestrate_generate", return_value=0
-            ) as mock_gen,
+            patch("vaudeville.orchestrator.orchestrate_generate", return_value=0) as mock_gen,
         ):
             from vaudeville.__main__ import main
 

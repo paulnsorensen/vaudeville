@@ -62,9 +62,7 @@ class TestDaemonEventLoggerWiring:
     def test_daemon_none_event_logger_default(self) -> None:
         """Daemon defaults to None event_logger."""
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        daemon = VaudevilleDaemon(
-            DaemonConfig("/tmp/test.sock", "/tmp/test.pid", plugin_root)
-        )
+        daemon = VaudevilleDaemon(DaemonConfig("/tmp/test.sock", "/tmp/test.pid", plugin_root))
         assert daemon._event_logger is None
 
 
@@ -77,14 +75,12 @@ class TestDaemonSocketProtocol:
             socket_path = f.name
         with tempfile.NamedTemporaryFile(suffix=".pid", delete=False) as f:
             pid_file = f.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with tempfile.NamedTemporaryFile(suffix=".version", delete=True) as vf:
             version_file = vf.name
-        daemon = VaudevilleDaemon(
-            DaemonConfig(socket_path, pid_file, plugin_root, version_file)
-        )
+        daemon = VaudevilleDaemon(DaemonConfig(socket_path, pid_file, plugin_root, version_file))
 
         thread = threading.Thread(target=daemon.serve, daemon=True)
         thread.start()
@@ -114,9 +110,7 @@ class TestSignalHandlers:
     def test_sigterm_sets_stop_event(self) -> None:
         """Verify SIGTERM triggers graceful shutdown via _stop_event."""
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        daemon = VaudevilleDaemon(
-            DaemonConfig("/tmp/test.sock", "/tmp/test.pid", plugin_root)
-        )
+        daemon = VaudevilleDaemon(DaemonConfig("/tmp/test.sock", "/tmp/test.pid", plugin_root))
 
         # Install handlers (normally done by serve())
         daemon._install_signal_handlers()
@@ -128,13 +122,9 @@ class TestSignalHandlers:
 
 
 class TestVersionStamp:
-    def _make_daemon(
-        self, socket_path: str, pid_file: str, version_file: str
-    ) -> VaudevilleDaemon:
+    def _make_daemon(self, socket_path: str, pid_file: str, version_file: str) -> VaudevilleDaemon:
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return VaudevilleDaemon(
-            DaemonConfig(socket_path, pid_file, plugin_root, version_file)
-        )
+        return VaudevilleDaemon(DaemonConfig(socket_path, pid_file, plugin_root, version_file))
 
     def test_version_file_written_after_serve(self) -> None:
         """serve() writes the version file once the PID lock is acquired."""
@@ -144,7 +134,7 @@ class TestVersionStamp:
             pid_file = f.name
         with tempfile.NamedTemporaryFile(suffix=".version", delete=False) as f:
             version_file = f.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         daemon = self._make_daemon(socket_path, pid_file, version_file)
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -157,8 +147,8 @@ class TestVersionStamp:
             raise
 
         try:
-            assert os.path.exists(version_file), "version file not written"
-            content = open(version_file).read().strip()
+            assert Path(version_file).exists(), "version file not written"
+            content = Path(version_file).open().read().strip()
             assert content != "", "version file is empty"
         finally:
             daemon._stop_event.set()
@@ -172,7 +162,7 @@ class TestVersionStamp:
             pid_file = f.name
         with tempfile.NamedTemporaryFile(suffix=".version", delete=False) as f:
             version_file = f.name
-        os.unlink(socket_path)
+        Path(socket_path).unlink()
 
         daemon = self._make_daemon(socket_path, pid_file, version_file)
         thread = threading.Thread(target=daemon.serve, daemon=True)
@@ -186,7 +176,7 @@ class TestVersionStamp:
         daemon._stop_event.set()
         thread.join(timeout=5)
 
-        assert not os.path.exists(version_file), "version file not removed on cleanup"
+        assert not Path(version_file).exists(), "version file not removed on cleanup"
 
 
 class TestAcquirePidLock:

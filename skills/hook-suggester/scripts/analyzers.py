@@ -148,9 +148,7 @@ def check_high_error_tools(days, min_occ):
     """)
     if not rows:
         return None
-    tools = [
-        f"{r['tool_name']} ({r['error_pct']}% errors, {r['total']} calls)" for r in rows
-    ]
+    tools = [f"{r['tool_name']} ({r['error_pct']}% errors, {r['total']} calls)" for r in rows]
     return {
         "id": "high-error-tools",
         "event": "PostToolUse",

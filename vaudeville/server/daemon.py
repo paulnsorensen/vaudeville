@@ -5,10 +5,12 @@ Serves hook requests over Unix socket. Self-terminates after idle timeout.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import fcntl
 import logging
 import os
+import pathlib
 import signal
 import socket
 import subprocess
@@ -42,10 +44,8 @@ logger = logging.getLogger(__name__)
 
 
 def _close_fd_safely(fd: int) -> None:
-    try:
+    with contextlib.suppress(OSError):
         os.close(fd)
-    except OSError:
-        pass
 
 
 def acquire_pid_lock(pid_file: str) -> int | None:
@@ -132,10 +132,8 @@ class VaudevilleDaemon:
         self._write_version_stamp()
 
         server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
-            os.unlink(self.config.socket_path)
-        except (FileNotFoundError, PermissionError):
-            pass
+        with contextlib.suppress(FileNotFoundError, PermissionError):
+            pathlib.Path(self.config.socket_path).unlink()
         server_socket.bind(self.config.socket_path)
         server_socket.listen(16)
         server_socket.settimeout(1.0)
@@ -158,10 +156,8 @@ class VaudevilleDaemon:
                 break
             try:
                 conn, _ = server_socket.accept()
-                threading.Thread(
-                    target=self._handle_client, args=(conn,), daemon=True
-                ).start()
-            except socket.timeout:
+                threading.Thread(target=self._handle_client, args=(conn,), daemon=True).start()
+            except TimeoutError:
                 continue
 
     def _handle_client(self, conn: socket.socket) -> None:
@@ -207,7 +203,7 @@ class VaudevilleDaemon:
         except (OSError, subprocess.TimeoutExpired):
             stamp = "unknown"
         try:
-            with open(self.config.version_file, "w") as f:
+            with pathlib.Path(self.config.version_file).open("w") as f:
                 f.write(stamp + "\n")
         except OSError:
             logger.warning("Could not write version stamp")
@@ -223,7 +219,5 @@ class VaudevilleDaemon:
             self.config.pid_file,
             self.config.version_file,
         ):
-            try:
-                os.unlink(path)
-            except FileNotFoundError:
-                pass
+            with contextlib.suppress(FileNotFoundError):
+                pathlib.Path(path).unlink()

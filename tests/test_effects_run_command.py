@@ -63,9 +63,7 @@ class TestRunEnforcesTimeout:
     def test_process_killed_after_timeout_expires(self) -> None:
         fake_process = MagicMock()
         fake_process.stdin = MagicMock()
-        fake_process.wait.side_effect = subprocess.TimeoutExpired(
-            cmd="sleeper", timeout=0.05
-        )
+        fake_process.wait.side_effect = subprocess.TimeoutExpired(cmd="sleeper", timeout=0.05)
         config = UserConfig(commands={"sleeper": ["/bin/sleep", "5"]})
 
         with patch("subprocess.Popen", return_value=fake_process):
@@ -78,14 +76,10 @@ class TestRunEnforcesTimeout:
 
 
 class TestRunUndefinedNameSkipped:
-    def test_undefined_name_skipped_and_logged(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_undefined_name_skipped_and_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         config = UserConfig(commands={})
 
-        with caplog.at_level(
-            logging.WARNING, logger="vaudeville.server.effects.run_command"
-        ):
+        with caplog.at_level(logging.WARNING, logger="vaudeville.server.effects.run_command"):
             result = run_named_command("missing", config, "{}", timeout=1.0)
 
         assert result is False
@@ -148,9 +142,7 @@ class TestRunStripsProviderKeyEnv:
 
         _, kwargs = popen.call_args
         child_env = kwargs["env"]
-        leaked = {"ANTHROPIC_AUTH_TOKEN", "FOO_API_KEY", "AWS_SECRET_ACCESS_KEY"} & set(
-            child_env
-        )
+        leaked = {"ANTHROPIC_AUTH_TOKEN", "FOO_API_KEY", "AWS_SECRET_ACCESS_KEY"} & set(child_env)
         assert leaked == set()
         assert child_env.get("PATH") == os.environ.get("PATH")
 
@@ -158,9 +150,7 @@ class TestRunStripsProviderKeyEnv:
 class TestRunStartFailure:
     """F6: a command that cannot start is logged and skipped, never raised."""
 
-    def test_missing_binary_returns_false_and_logs(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_missing_binary_returns_false_and_logs(self, caplog: pytest.LogCaptureFixture) -> None:
         config = UserConfig(commands={"ghost": ["/nonexistent/vaudeville-ghost-bin"]})
 
         with caplog.at_level(logging.WARNING):

@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import pathlib
 import socket
 import subprocess
 import sys
@@ -101,7 +102,7 @@ def test_daemon_allow_passthrough_over_socket(
     """Daemon-allow passthrough over a real socket; not an AC-13 proof."""
     with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
         sock_path = f.name
-    os.unlink(sock_path)
+    pathlib.Path(sock_path).unlink()
 
     server_done = threading.Event()
 
@@ -137,5 +138,5 @@ def test_daemon_allow_passthrough_over_socket(
         assert exc_info.value.code == 0
         assert capsys.readouterr().out.strip() == "{}"
     finally:
-        if os.path.exists(sock_path):
-            os.unlink(sock_path)
+        if pathlib.Path(sock_path).exists():
+            pathlib.Path(sock_path).unlink()

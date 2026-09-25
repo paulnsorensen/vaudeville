@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import pathlib
 import socket
 import sys
 import tempfile
@@ -13,7 +14,6 @@ import time
 from typing import Any
 
 from vaudeville.server.daemon import DaemonConfig, VaudevilleDaemon
-
 
 # ---------------------------------------------------------------------------
 # client.py contract
@@ -42,9 +42,7 @@ class TestClientSocketPath:
         from vaudeville.core.paths import SOCKET_PATH
 
         expected = f"/tmp/vaudeville-{os.getuid()}/vaudeville.sock"
-        assert SOCKET_PATH == expected, (
-            f"SOCKET_PATH is {SOCKET_PATH!r}, expected {expected!r}"
-        )
+        assert expected == SOCKET_PATH, f"SOCKET_PATH is {SOCKET_PATH!r}, expected {expected!r}"
 
     def test_SOCKET_PATH_is_a_string(self) -> None:
         from vaudeville.core.paths import SOCKET_PATH
@@ -87,8 +85,7 @@ class TestVaudevilleClientNoArgs:
             )
         ]
         assert len(params) == 0, (
-            f"VaudevilleClient.__init__ has required parameters: "
-            f"{[p.name for p in params]}"
+            f"VaudevilleClient.__init__ has required parameters: {[p.name for p in params]}"
         )
 
     def test_client_uses_fixed_socket_path_internally(self) -> None:
@@ -108,9 +105,7 @@ class TestVaudevilleClientNoArgs:
             client = VaudevilleClient()
             client._socket_path = os.path.join(td, "nonexistent.sock")
             result = client.hook({"op": "hook"})
-            assert result is None, (
-                "hook() must return None when daemon is unavailable (fail-open)"
-            )
+            assert result is None, "hook() must return None when daemon is unavailable (fail-open)"
 
 
 # ---------------------------------------------------------------------------
@@ -123,9 +118,7 @@ class TestDaemonConstants:
         """Idle timeout must be 1 hour (3600 seconds)."""
         from vaudeville.server.daemon import IDLE_TIMEOUT
 
-        assert IDLE_TIMEOUT == 3600, (
-            f"IDLE_TIMEOUT is {IDLE_TIMEOUT}, expected 3600 (1 hour)"
-        )
+        assert IDLE_TIMEOUT == 3600, f"IDLE_TIMEOUT is {IDLE_TIMEOUT}, expected 3600 (1 hour)"
 
     def test_VERSION_FILE_constant_exists(self) -> None:
         """daemon.py must export VERSION_FILE constant."""
@@ -140,9 +133,7 @@ class TestDaemonConstants:
         from vaudeville.core.paths import VERSION_FILE
 
         expected = f"/tmp/vaudeville-{os.getuid()}/vaudeville.version"
-        assert VERSION_FILE == expected, (
-            f"VERSION_FILE is {VERSION_FILE!r}, expected {expected!r}"
-        )
+        assert expected == VERSION_FILE, f"VERSION_FILE is {VERSION_FILE!r}, expected {expected!r}"
 
     def test_VERSION_FILE_is_a_string(self) -> None:
         from vaudeville.core.paths import VERSION_FILE
@@ -173,11 +164,11 @@ class TestVersionStamp:
             suffix=".pid", dir=tempfile.gettempdir(), delete=False
         ) as f:
             pid_file = f.name
-        os.unlink(socket_path)
+        pathlib.Path(socket_path).unlink()
 
         # Clean slate — remove version file if leftover from a previous run
         try:
-            os.unlink(VERSION_FILE)
+            pathlib.Path(VERSION_FILE).unlink()
         except FileNotFoundError:
             pass
 
@@ -199,7 +190,7 @@ class TestVersionStamp:
             raise RuntimeError("Daemon socket never became ready")
 
         try:
-            assert os.path.exists(VERSION_FILE), (
+            assert pathlib.Path(VERSION_FILE).exists(), (
                 f"VERSION_FILE {VERSION_FILE!r} was not written during serve()"
             )
         finally:
@@ -218,10 +209,10 @@ class TestVersionStamp:
             suffix=".pid", dir=tempfile.gettempdir(), delete=False
         ) as f:
             pid_file = f.name
-        os.unlink(socket_path)
+        pathlib.Path(socket_path).unlink()
 
         try:
-            os.unlink(VERSION_FILE)
+            pathlib.Path(VERSION_FILE).unlink()
         except FileNotFoundError:
             pass
 
@@ -239,8 +230,8 @@ class TestVersionStamp:
                 time.sleep(0.05)
 
         try:
-            if os.path.exists(VERSION_FILE):
-                content = open(VERSION_FILE).read().strip()
+            if pathlib.Path(VERSION_FILE).exists():
+                content = pathlib.Path(VERSION_FILE).open().read().strip()
                 assert content != "", "VERSION_FILE exists but is empty"
         finally:
             daemon._stop_event.set()
@@ -258,10 +249,10 @@ class TestVersionStamp:
             suffix=".pid", dir=tempfile.gettempdir(), delete=False
         ) as f:
             pid_file = f.name
-        os.unlink(socket_path)
+        pathlib.Path(socket_path).unlink()
 
         try:
-            os.unlink(VERSION_FILE)
+            pathlib.Path(VERSION_FILE).unlink()
         except FileNotFoundError:
             pass
 
@@ -283,7 +274,7 @@ class TestVersionStamp:
         daemon._stop_event.set()
         thread.join(timeout=5)
 
-        assert not os.path.exists(VERSION_FILE), (
+        assert not pathlib.Path(VERSION_FILE).exists(), (
             f"VERSION_FILE {VERSION_FILE!r} was not removed during _cleanup()"
         )
 
@@ -293,16 +284,14 @@ class TestVersionStamp:
 
         plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         daemon = VaudevilleDaemon(
-            DaemonConfig(
-                "/tmp/_test_cleanup.sock", "/tmp/_test_cleanup.pid", plugin_root
-            )
+            DaemonConfig("/tmp/_test_cleanup.sock", "/tmp/_test_cleanup.pid", plugin_root)
         )
 
         # Ensure file absent
         from vaudeville.core.paths import VERSION_FILE
 
         try:
-            os.unlink(VERSION_FILE)
+            pathlib.Path(VERSION_FILE).unlink()
         except FileNotFoundError:
             pass
 
@@ -363,19 +352,15 @@ class TestRunnerNoSessionId:
 
         assert len(captured_calls) == 1, "VaudevilleClient should be constructed once"
         args, kwargs = captured_calls[0]
-        assert args == (), (
-            f"VaudevilleClient must be called with no positional args, got: {args}"
-        )
-        assert kwargs == {}, (
-            f"VaudevilleClient must be called with no keyword args, got: {kwargs}"
-        )
+        assert args == (), f"VaudevilleClient must be called with no positional args, got: {args}"
+        assert kwargs == {}, f"VaudevilleClient must be called with no keyword args, got: {kwargs}"
 
     def test_runner_source_does_not_extract_session_id(self) -> None:
         """runner.py must not contain session_id extraction after the singleton change."""
         hooks_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks"
         )
-        runner_src = open(os.path.join(hooks_dir, "runner.py")).read()
+        runner_src = pathlib.Path(os.path.join(hooks_dir, "runner.py")).open().read()
 
         # Old pattern: session_id = hook_input.get("session_id", ...)
         assert "session_id" not in runner_src, (

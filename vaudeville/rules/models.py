@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, Union, get_args
+from typing import Annotated, Any, Literal, get_args
 
 from pydantic import (
     BaseModel,
@@ -69,7 +69,7 @@ class DecideRule(BaseModel):
         return _check_tier(value, info.data.get("name", "?"))
 
     @model_validator(mode="after")
-    def _validate_typesafe_reason(self) -> "DecideRule":
+    def _validate_typesafe_reason(self) -> DecideRule:
         if self.model and self.model.startswith("typesafe:") and self.reason == "text":
             raise ValueError(
                 f"rule {self.name!r}: a typesafe: model cannot declare reason: text "
@@ -78,7 +78,7 @@ class DecideRule(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_outcomes_coverage(self) -> "DecideRule":
+    def _validate_outcomes_coverage(self) -> DecideRule:
         outcomes = set(self.outcomes)
         for key in self.on:
             if key not in outcomes:
@@ -140,12 +140,11 @@ class RewriteRule(BaseModel):
         return _check_tier(value, info.data.get("name", "?"))
 
     @model_validator(mode="after")
-    def _validate_target_no_bash(self) -> "RewriteRule":
+    def _validate_target_no_bash(self) -> RewriteRule:
         for target in self.target:
             if not target.startswith(_TOOL_INPUT_PREFIX):
                 raise ValueError(
-                    f"rule {self.name!r}: target {target!r} must start with "
-                    f"{_TOOL_INPUT_PREFIX!r}"
+                    f"rule {self.name!r}: target {target!r} must start with {_TOOL_INPUT_PREFIX!r}"
                 )
             if _target_is_bash_command(target):
                 raise ValueError(
@@ -160,7 +159,7 @@ class RewriteRule(BaseModel):
         return self
 
 
-Rule = Annotated[Union[DecideRule, RewriteRule], Field(discriminator="type")]
+Rule = Annotated[DecideRule | RewriteRule, Field(discriminator="type")]
 
 _RULE_ADAPTER: TypeAdapter[DecideRule | RewriteRule] = TypeAdapter(Rule)
 

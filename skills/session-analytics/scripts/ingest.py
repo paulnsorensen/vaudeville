@@ -7,9 +7,9 @@ module required. Skips ingestion if the database is less than 1 hour old.
 Usage: python3 ingest.py [--force]
 """
 
+import os
 import subprocess
 import sys
-import os
 import time
 
 DB_DIR = os.path.expanduser("~/.claude/analytics")

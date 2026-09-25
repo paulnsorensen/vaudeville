@@ -56,11 +56,9 @@ def _start_daemon() -> tuple[VaudevilleDaemon, str]:
         pid_file = f.name
     with tempfile.NamedTemporaryFile(suffix=".version", delete=True) as f:
         version_file = f.name
-    os.unlink(socket_path)
+    Path(socket_path).unlink()
 
-    daemon = VaudevilleDaemon(
-        DaemonConfig(socket_path, pid_file, os.getcwd(), version_file)
-    )
+    daemon = VaudevilleDaemon(DaemonConfig(socket_path, pid_file, os.getcwd(), version_file))
     thread = threading.Thread(target=daemon.serve, daemon=True)
     thread.start()
 

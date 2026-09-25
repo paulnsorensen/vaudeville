@@ -17,11 +17,12 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from typing import NoReturn
 
 PLUGIN_ROOT = os.environ.get(
     "CLAUDE_PLUGIN_ROOT",
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    str(Path(__file__).resolve().parent.parent),
 )
 
 if PLUGIN_ROOT not in sys.path:

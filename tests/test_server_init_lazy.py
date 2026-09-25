@@ -15,8 +15,7 @@ class TestServerStatsImportStaysLight:
             [
                 sys.executable,
                 "-c",
-                "import vaudeville.server.stats, sys; "
-                "print('pydantic_ai' in sys.modules)",
+                "import vaudeville.server.stats, sys; print('pydantic_ai' in sys.modules)",
             ],
             capture_output=True,
             text=True,
@@ -36,7 +35,7 @@ class TestServerDaemonImportStillLazyLoads:
         import vaudeville.server as server
 
         try:
-            server.does_not_exist
+            server.does_not_exist  # noqa: B018 — triggers __getattr__ under test
         except AttributeError:
             pass
         else:

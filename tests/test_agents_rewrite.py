@@ -139,9 +139,7 @@ class TestRewriteFailOpen:
     def test_unlisted_provider_makes_no_call_and_fails_open(self) -> None:
         recorder = _RecordingModel("rewritten")
 
-        result = rewrite(
-            _rule(), UserConfig(), "some content", model_override=recorder.model
-        )
+        result = rewrite(_rule(), UserConfig(), "some content", model_override=recorder.model)
 
         assert result is None
         assert recorder.prompts == []

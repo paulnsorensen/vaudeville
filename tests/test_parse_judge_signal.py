@@ -79,7 +79,7 @@ class TestParseJudgeSignal:
             parse_judge_signal(output)
 
     def test_parse_judge_raise_double_dot_float_raises_error(self) -> None:
-        """JUDGE_RAISE with '1..0' matches regex but float() raises ValueError → JudgeParseError."""
+        """JUDGE_RAISE '1..0' matches regex but float() raises ValueError, so JudgeParseError."""
         from vaudeville.orchestrator import JudgeParseError, parse_judge_signal
 
         output = "Analysis\nJUDGE_RAISE 1..0 0.5 0.5"

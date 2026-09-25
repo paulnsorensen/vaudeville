@@ -3,16 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+
 from vaudeville.core.paths import find_project_root as _core_find_project_root
 from vaudeville.rules import (
     VALID_TIERS,
@@ -36,7 +37,7 @@ _console = Console()
 
 
 def _find_project_root() -> str:
-    return _core_find_project_root() or os.getcwd()
+    return _core_find_project_root() or str(Path.cwd())
 
 
 def _human_prompt(prompt: str) -> str:
@@ -174,7 +175,7 @@ def _run_list_live(
 
 
 def _build_show_summary_table(rule: Rule, path: Path) -> Table:
-    home = os.path.expanduser("~")
+    home = str(Path.home())
     display_path = str(path).replace(home, "~")
     table = styled_table(rule.name)
     table.add_column("Field", no_wrap=True)
@@ -352,9 +353,7 @@ def cmd_disable(args: argparse.Namespace) -> None:
     if current == "disabled":
         _console.print(f"Rule {args.name!r} is already disabled.")
         return
-    new_content, count = re.subn(
-        r"^tier:\s*\S+", "tier: disabled", content, flags=re.MULTILINE
-    )
+    new_content, count = re.subn(r"^tier:\s*\S+", "tier: disabled", content, flags=re.MULTILINE)
     if count == 0:
         sep = "" if not content or content.endswith("\n") else "\n"
         new_content = content + sep + "tier: disabled\n"
@@ -363,7 +362,8 @@ def cmd_disable(args: argparse.Namespace) -> None:
     new_content += f"# previous-tier: {current}\n"
     path.write_text(new_content)
     _console.print(
-        f"Disabled {args.name!r} (was {current!r}). Use 'vaudeville enable {args.name}' to restore."
+        f"Disabled {args.name!r} (was {current!r}). "
+        f"Use 'vaudeville enable {args.name}' to restore."
     )
 
 
@@ -382,12 +382,8 @@ def cmd_enable(args: argparse.Namespace) -> None:
         return
     pm = re.search(r"^# previous-tier:\s*(\S+)", content, re.MULTILINE)
     restore = pm.group(1) if pm else "shadow"
-    new_content = re.sub(
-        r"^tier:\s*\S+", f"tier: {restore}", content, flags=re.MULTILINE
-    )
-    new_content = re.sub(
-        r"^# previous-tier:[^\n]*\n?", "", new_content, flags=re.MULTILINE
-    )
+    new_content = re.sub(r"^tier:\s*\S+", f"tier: {restore}", content, flags=re.MULTILINE)
+    new_content = re.sub(r"^# previous-tier:[^\n]*\n?", "", new_content, flags=re.MULTILINE)
     path.write_text(new_content)
     _console.print(f"Enabled {args.name!r} (tier: {restore!r}).")
 
@@ -428,10 +424,10 @@ def cmd_validate(args: argparse.Namespace) -> None:
         return
     errors = 0
     for rules_dir in rules_search_path(project_root):
-        for filename in sorted(os.listdir(rules_dir)):
+        for p in sorted(Path(rules_dir).iterdir()):
+            filename = p.name
             if not (filename.endswith(".yaml") or filename.endswith(".yml")):
                 continue
-            p = Path(rules_dir) / filename
             name = filename.rsplit(".", 1)[0]
             if not _validate_rule_file(p, name):
                 errors += 1
@@ -471,9 +467,7 @@ def attach_rule_parsers(sub: Any) -> None:
     ):
         _name(sub.add_parser(cmd, help=help_txt))
 
-    vp = sub.add_parser(
-        "validate", help="Validate rule YAML (all rules if name omitted)"
-    )
+    vp = sub.add_parser("validate", help="Validate rule YAML (all rules if name omitted)")
     vp.add_argument("name", nargs="?", help="Rule name")
 
     cp = sub.add_parser("completion", help="Print shell completion setup command")

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+import pathlib
 import socket
 
 from .paths import SOCKET_PATH
@@ -37,7 +37,7 @@ class VaudevilleClient:
             return None
 
     def _send(self, request: dict[str, object]) -> HookResponse | None:
-        if not os.path.exists(self._socket_path):
+        if not pathlib.Path(self._socket_path).exists():
             raise FileNotFoundError(self._socket_path)
 
         payload = json.dumps(request).encode() + b"\n"

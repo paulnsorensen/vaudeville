@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import os
+import pathlib
 from collections import OrderedDict
 
 from .loader import layered_search_path, load_rules_layered, rule_filenames
@@ -26,11 +27,12 @@ def project_root_for(cwd: str) -> str:
     Hook `cwd` follows `cd`, so a session in a subdirectory still loads the
     project's rules. Falls back to `cwd` when no `.git` is found.
     """
-    current = os.path.abspath(cwd)
+    # Path.resolve() would also resolve symlinks, changing behavior; keep os.path.abspath.
+    current = os.path.abspath(cwd)  # noqa: PTH100
     while True:
-        if os.path.exists(os.path.join(current, ".git")):
+        if (pathlib.Path(current) / ".git").exists():
             return current
-        parent = os.path.dirname(current)
+        parent = str(pathlib.Path(current).parent)
         if parent == current:
             return cwd
         current = parent
@@ -40,9 +42,9 @@ def _fingerprint(project_root: str | None) -> _Fingerprint:
     stats: list[tuple[str, int]] = []
     for rules_dir in layered_search_path(project_root):
         for name in rule_filenames(rules_dir):
-            path = os.path.join(rules_dir, name)
+            path = str(pathlib.Path(rules_dir) / name)
             try:
-                stats.append((path, os.stat(path).st_mtime_ns))
+                stats.append((path, pathlib.Path(path).stat().st_mtime_ns))
             except OSError:
                 continue
     return tuple(stats)

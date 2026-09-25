@@ -6,7 +6,8 @@ Creates the file with defaults when absent.
 
 from __future__ import annotations
 
-import os
+import contextlib
+import pathlib
 from dataclasses import dataclass
 
 import yaml
@@ -14,8 +15,8 @@ import yaml
 DEFAULT_RETENTION_DAYS = 7
 DEFAULT_MAX_SIZE_MB = 10
 
-_LOGS_DIR = os.path.join(os.path.expanduser("~"), ".vaudeville", "logs")
-_CONFIG_PATH = os.path.join(_LOGS_DIR, "config.yaml")
+_LOGS_DIR = str(pathlib.Path.home() / ".vaudeville" / "logs")
+_CONFIG_PATH = str(pathlib.Path(_LOGS_DIR) / "config.yaml")
 
 
 @dataclass(frozen=True)
@@ -25,8 +26,8 @@ class LogConfig:
 
 
 def _write_defaults(path: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    pathlib.Path(path).parent.mkdir(exist_ok=True, parents=True)
+    with pathlib.Path(path).open("w") as f:
         yaml.safe_dump(
             {
                 "retention_days": DEFAULT_RETENTION_DAYS,
@@ -41,15 +42,13 @@ def load_log_config(config_path: str = _CONFIG_PATH) -> LogConfig:
 
     Malformed or unreadable files fall back to defaults without raising.
     """
-    if not os.path.exists(config_path):
-        try:
+    if not pathlib.Path(config_path).exists():
+        with contextlib.suppress(OSError):
             _write_defaults(config_path)
-        except OSError:
-            pass
         return LogConfig()
 
     try:
-        with open(config_path) as f:
+        with pathlib.Path(config_path).open() as f:
             data = yaml.safe_load(f)
     except (OSError, yaml.YAMLError):
         return LogConfig()

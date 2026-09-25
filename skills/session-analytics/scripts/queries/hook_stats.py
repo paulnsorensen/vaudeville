@@ -6,6 +6,7 @@ Usage: python3 hook_stats.py [--days 14] [--json]
 
 import json
 import sys
+
 from _db import parse_days, query
 
 

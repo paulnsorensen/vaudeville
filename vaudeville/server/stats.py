@@ -7,10 +7,9 @@ breakdowns, latency percentiles, and histogram buckets.
 from __future__ import annotations
 
 import json
-import os
+import pathlib
 import statistics
 from typing import Any
-
 
 _HISTOGRAM_BUCKETS = [50, 100, 200, 500, 1000]
 
@@ -24,9 +23,7 @@ def _empty_histogram() -> dict[str, int]:
     return h
 
 
-def aggregate_events(
-    log_path: str, allowed_rules: set[str] | None = None
-) -> dict[str, Any]:
+def aggregate_events(log_path: str, allowed_rules: set[str] | None = None) -> dict[str, Any]:
     """Read *log_path* and return aggregated statistics.
 
     Returns a dict with keys: ``total``, ``rules``, ``latency``,
@@ -125,9 +122,9 @@ def _parse_line(line: str) -> dict[str, Any] | None:
 
 
 def _parse_events(log_path: str) -> list[dict[str, Any]]:
-    if not os.path.exists(log_path):
+    if not pathlib.Path(log_path).exists():
         return []
-    with open(log_path) as f:
+    with pathlib.Path(log_path).open() as f:
         return [evt for line in f if (evt := _parse_line(line)) is not None]
 
 

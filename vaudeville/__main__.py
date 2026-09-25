@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 import argcomplete
@@ -19,25 +20,22 @@ from vaudeville import orchestrator
 from vaudeville._stats_rendering import print_stats_human
 from vaudeville.cli_rules import attach_rule_parsers, dispatch_rule_command
 from vaudeville.core.paths import find_project_root as _core_find_project_root
-from vaudeville.rules import load_rules_layered
 from vaudeville.orchestrator import RalphError, Thresholds
+from vaudeville.rules import load_rules_layered
 
-
-_EVENTS_LOG = os.path.join(
-    os.path.expanduser("~"), ".vaudeville", "logs", "events.jsonl"
-)
+_EVENTS_LOG = str(Path.home() / ".vaudeville" / "logs" / "events.jsonl")
 
 _console = Console()
 
 
 def cmd_watch(args: argparse.Namespace) -> None:
     """Launch the live watch TUI."""
+    import contextlib
+
     from vaudeville.server import watch
 
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         watch(log_path=args.log_path)
-    except KeyboardInterrupt:
-        pass
 
 
 def cmd_stats(args: argparse.Namespace) -> None:
@@ -59,7 +57,7 @@ def cmd_stats(args: argparse.Namespace) -> None:
 
 
 def _find_project_root() -> str:
-    return _core_find_project_root() or os.getcwd()
+    return _core_find_project_root() or str(Path.cwd())
 
 
 def _strict_project_root() -> str | None:
@@ -68,11 +66,11 @@ def _strict_project_root() -> str | None:
 
 def _resolve_rules_dir(scope: str, strict_root: str | None) -> str:
     if scope == "global":
-        return os.path.join(os.path.expanduser("~"), ".vaudeville", "rules")
+        return str(Path.home() / ".vaudeville" / "rules")
     if strict_root is None:
         print("error: --scope project requires a git project root", file=sys.stderr)
         sys.exit(2)
-    return os.path.join(strict_root, ".vaudeville", "rules")
+    return str(Path(strict_root) / ".vaudeville" / "rules")
 
 
 def _find_commands_dir() -> str:
@@ -80,7 +78,7 @@ def _find_commands_dir() -> str:
     override = os.environ.get("VAUDEVILLE_COMMANDS_DIR")
     if override:
         return override
-    return os.path.join(_find_project_root(), "commands")
+    return str(Path(_find_project_root()) / "commands")
 
 
 def _threshold_float(value: str) -> float:
@@ -97,7 +95,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
     from vaudeville.orchestrator_tui import OrchestratorTUI
 
     strict_root = _strict_project_root()
-    project_root = strict_root or os.getcwd()
+    project_root = strict_root or str(Path.cwd())
     commands_dir = _find_commands_dir()
     rules_dir = _resolve_rules_dir(args.scope, strict_root)
     thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
@@ -126,7 +124,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
     from vaudeville.orchestrator_tui import OrchestratorTUI
 
     strict_root = _strict_project_root()
-    project_root = strict_root or os.getcwd()
+    project_root = strict_root or str(Path.cwd())
     commands_dir = _find_commands_dir()
     rules_dir = _resolve_rules_dir(args.scope, strict_root)
     mode = "live" if args.live else "shadow"

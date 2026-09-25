@@ -90,9 +90,7 @@ class TestLoadRulesDirectory:
 
     def test_draft_rule_skipped_while_others_load(self, tmp_path: Path) -> None:
         _write_rule(tmp_path, "good.yaml", DECIDE_RULE)
-        _write_rule(
-            tmp_path, "draft.yaml", dict(DECIDE_RULE, name="draft-rule", draft=True)
-        )
+        _write_rule(tmp_path, "draft.yaml", dict(DECIDE_RULE, name="draft-rule", draft=True))
 
         rules = load_rules(str(tmp_path))
         assert set(rules) == {"git-gate"}
@@ -274,9 +272,7 @@ class TestReferenceValidation:
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "empty-plugin-root"))
         return load_rules_layered(None)
 
-    def test_valid_references_kept(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_valid_references_kept(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         ruleset = self._load(
             tmp_path,
             monkeypatch,

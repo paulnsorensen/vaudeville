@@ -61,11 +61,61 @@ python_files = ["test_*.py"]
 [tool.coverage.run]
 source = ["vaudeville"]
 omit = [
-    "vaudeville/server/mlx_backend.py",
-    "vaudeville/server/gguf_backend.py",
-    "vaudeville/setup.py",
     "vaudeville/server/__main__.py",
 ]
+
+[tool.ruff]
+line-length = 99
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "UP",
+    "ANN", "ARG", "BLE", "PTH", "SIM", "B",
+    "RUF100", "PLR0913", "PLR0915",
+]
+
+[tool.ruff.lint.pylint]
+max-args = 4
+max-statements = 40
+
+[tool.ruff.lint.per-file-ignores]
+# Tests exercise dynamic fixtures, subprocess doubles, and platform paths rather than
+# production annotation and portability policy.
+"tests/**" = ["ANN", "ARG", "BLE", "B008", "B017", "PTH", "SIM"]
+"tests/test_analytics.py" = ["PLR0913"]
+"tests/test_harness_claude_code.py" = ["PLR0913"]
+"tests/test_stats.py" = ["PLR0913"]
+"tests/test_watch.py" = ["PLR0913"]
+
+# Bundled example scripts under skills/ ship as standalone Claude Code skill
+# assets, not vaudeville/ package modules; they keep looser annotation and
+# portability policy like tests/**.
+"skills/**" = ["ANN", "BLE", "PTH", "B904", "E501"]
+
+# These production exceptions are the measured baseline for FU-5. Each rule
+# remains selected globally; remove an entry when its owning module is simplified.
+"hooks/runner.py" = ["BLE001"]
+"vaudeville/__main__.py" = ["ANN401"]
+"vaudeville/analytics/__init__.py" = ["ANN401"]
+"vaudeville/cli_rules.py" = ["ANN401", "BLE001"]
+"vaudeville/core/client.py" = ["BLE001"]
+"vaudeville/core/truncation.py" = ["BLE001"]
+"vaudeville/eval.py" = ["PLR0913"]
+"vaudeville/eval_report.py" = ["PLR0913"]
+"vaudeville/orchestrator/_abandon.py" = ["PLR0913"]
+"vaudeville/orchestrator/_generate.py" = ["PLR0913"]
+"vaudeville/orchestrator/_phase.py" = ["PLR0913"]
+"vaudeville/orchestrator/_tune.py" = ["PLR0913"]
+"vaudeville/rules/admin.py" = ["BLE001"]
+"vaudeville/rules/loader.py" = ["BLE001"]
+"vaudeville/server/__init__.py" = ["ANN401"]
+"vaudeville/server/__main__.py" = ["BLE001"]
+"vaudeville/server/_handlers.py" = ["BLE001"]
+"vaudeville/server/agents/model_resolution.py" = ["BLE001"]
+"vaudeville/server/daemon.py" = ["BLE001"]
+"vaudeville/server/effects/escalate.py" = ["BLE001"]
+"vaudeville/server/effects/rewrite.py" = ["ANN401", "PLR0913"]
+"vaudeville/server/hook/pipeline.py" = ["ARG001", "PLR0913", "PLR0915"]
 
 [dependency-groups]
 dev = [

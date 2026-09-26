@@ -43,7 +43,7 @@ A rule name and action. If not provided, ask. Valid actions: `promote`,
 vaudeville show <rule-name>
 ```
 
-Show the user the current tier, event, and outcomes. If not found, stop.
+Show the user the current tier, event, and outcomes (or target for a rewrite rule). If not found, stop.
 
 ### 2. Apply the change
 

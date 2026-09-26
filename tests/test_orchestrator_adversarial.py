@@ -580,16 +580,20 @@ class TestOrchestrateTuneAdversarial:
         runner.add_side_effect(mk_plan, _ok("Design"))
         runner.add_response(_ok("Judge\nJUDGE_ABANDON"))
 
-        orchestrate_tune(
-            "r",
-            Thresholds(0.9, 0.8, 0.85),
-            rounds=3,
-            tuner_iters=5,
-            project_root=str(tmp_path),
-            commands_dir=str(tmp_path / "commands"),
-            runner=runner,
-            rules_dir=str(rules_dir),
-        )
+        with (
+            patch("vaudeville.orchestrator._abandon._eval_rule", return_value=None),
+            patch("vaudeville.orchestrator._abandon.capture_eval_log", return_value=""),
+        ):
+            orchestrate_tune(
+                "r",
+                Thresholds(0.9, 0.8, 0.85),
+                rounds=3,
+                tuner_iters=5,
+                project_root=str(tmp_path),
+                commands_dir=str(tmp_path / "commands"),
+                runner=runner,
+                rules_dir=str(rules_dir),
+            )
 
         # Only 2 calls: design + judge (no tune, plan was EMPTY)
         assert len(runner.calls) == 2

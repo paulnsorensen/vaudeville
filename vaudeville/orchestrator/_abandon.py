@@ -113,7 +113,7 @@ def _eval_rule(rule_name: str, project_root: str) -> Thresholds | None:
         return None
     try:
         payload = json.loads(out)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError:
         return None
     if not isinstance(payload, dict):
         return None

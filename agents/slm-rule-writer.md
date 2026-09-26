@@ -184,15 +184,14 @@ Default for new SLM rules: **`warn`** if the prompt has been eval'd at ≥90% pr
 
 ### Text the harness extracts per event
 
-The runner extracts one text string per event automatically; a rule has no
-YAML key to select it:
+The harness adapter extracts one text string per event automatically; a rule
+has no YAML key to select it:
 
 | Event | Text passed to the model |
 |-------|---------------------------|
 | Stop | `last_assistant_message` |
-| PostToolUse | `tool_input.*` / `tool_result.*` (event-specific) |
-| PreToolUse | `tool_input.*` (event-specific) |
-| UserPromptSubmit | `user_prompt` |
+| PreToolUse / PostToolUse | first non-empty of `tool_input.command/content/new_string/prompt/body`, else a string `tool_response` |
+| UserPromptSubmit | `prompt` |
 
 ## Writing Good Prompts
 

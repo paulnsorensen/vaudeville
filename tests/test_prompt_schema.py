@@ -73,9 +73,11 @@ class TestSlmRuleWriterSchema:
         doc = _read("agents/slm-rule-writer.md")
         shipped = {p.stem for p in (ROOT / "examples" / "rules").glob("*.yaml")}
         assert shipped, "no shipped example rules found to check against"
-        for missing in ("hedging-detector", "dismissal-detector"):
-            assert missing not in shipped
-            assert missing not in doc, f"slm-rule-writer.md cites unshipped example {missing!r}"
+        section = doc.split("## Style Reference", 1)[1].split("## Gotchas", 1)[0]
+        named = re.findall(r"`([a-z0-9-]+)`", section)
+        assert named, "no example rule names found under ## Style Reference"
+        for name in named:
+            assert name in shipped, f"slm-rule-writer.md cites unshipped example {name!r}"
 
 
 class TestDesignPromptListsUnsure:

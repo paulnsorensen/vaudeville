@@ -318,8 +318,13 @@ class TestVersionFilePermissions:
 
 
 class TestGitNotAvailable:
-    def test_write_version_stamp_falls_back_to_unknown_when_git_missing(self) -> None:
-        """If git is unavailable, version stamp must be 'unknown', not an error."""
+    """When git fails, the stamp falls back to the plugin.json `version`
+    (always present, even on a marketplace/non-git install) rather than the
+    bare string 'unknown' (AC gap 4).
+    """
+
+    def test_write_version_stamp_falls_back_to_manifest_version_when_git_missing(self) -> None:
+        """If git is unavailable, version stamp is the manifest version, not an error."""
         with tempfile.NamedTemporaryFile(
             suffix=".version", dir=tempfile.gettempdir(), delete=False
         ) as fv:
@@ -340,10 +345,13 @@ class TestGitNotAvailable:
             daemon._write_version_stamp()
 
         content = Path(version_file).open().read().strip()
-        assert content == "unknown", f"Expected 'unknown' when git is unavailable, got {content!r}"
+        assert content == daemon._read_manifest_version(), (
+            f"Expected the manifest version when git is unavailable, got {content!r}"
+        )
+        assert "+" not in content
 
     def test_write_version_stamp_falls_back_when_git_nonzero_exit(self) -> None:
-        """Non-zero git exit → stamp is 'unknown'."""
+        """Non-zero git exit → stamp is the manifest version, no git suffix."""
         with tempfile.NamedTemporaryFile(
             suffix=".version", dir=tempfile.gettempdir(), delete=False
         ) as fv:
@@ -367,10 +375,12 @@ class TestGitNotAvailable:
             daemon._write_version_stamp()
 
         content = Path(version_file).open().read().strip()
-        assert content == "unknown", f"Expected 'unknown' for non-zero git exit, got {content!r}"
+        assert content == daemon._read_manifest_version(), (
+            f"Expected the manifest version for non-zero git exit, got {content!r}"
+        )
 
     def test_write_version_stamp_falls_back_on_timeout(self) -> None:
-        """Timed-out git command → stamp is 'unknown', no exception raised."""
+        """Timed-out git command → stamp is the manifest version, no exception raised."""
         with tempfile.NamedTemporaryFile(
             suffix=".version", dir=tempfile.gettempdir(), delete=False
         ) as fv:
@@ -393,7 +403,31 @@ class TestGitNotAvailable:
             daemon._write_version_stamp()
 
         content = Path(version_file).open().read().strip()
-        assert content == "unknown", f"Expected 'unknown' for git timeout, got {content!r}"
+        assert content == daemon._read_manifest_version(), (
+            f"Expected the manifest version for git timeout, got {content!r}"
+        )
+
+    def test_write_version_stamp_falls_back_to_unknown_when_manifest_missing(self) -> None:
+        """No plugin.json under plugin_root (e.g. a stray install) → 'unknown'."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".version", dir=tempfile.gettempdir(), delete=False
+        ) as fv:
+            version_file = fv.name
+
+        with tempfile.TemporaryDirectory() as empty_root:
+            daemon = VaudevilleDaemon(
+                DaemonConfig(
+                    "/tmp/_test_no_manifest.sock",
+                    "/tmp/_test_no_manifest.pid",
+                    empty_root,
+                    version_file,
+                ),
+            )
+            with patch("subprocess.run", side_effect=OSError("git not found")):
+                daemon._write_version_stamp()
+
+        content = Path(version_file).open().read().strip()
+        assert content == "unknown"
 
 
 # ---------------------------------------------------------------------------

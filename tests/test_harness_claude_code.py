@@ -302,3 +302,74 @@ class TestNormalize:
         }
         event = adapter.normalize(raw)
         assert event.text == "deferred: revisit auth flow later"
+
+
+class TestNewlyWiredEvents:
+    """PreModelSwitch, PostToolBatch, UserPromptExpansion (AC-7 follow-up)."""
+
+    def test_pre_model_switch_block_uses_permission_decision(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(_outcome("block", "PreModelSwitch", message="no downgrades"))
+        payload = _stdout_json(result)
+        assert payload == {
+            "hookSpecificOutput": {
+                "hookEventName": "PreModelSwitch",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "no downgrades",
+            }
+        }
+        assert result["downgrades"] == []
+
+    def test_pre_model_switch_ask(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(_outcome("ask", "PreModelSwitch", message="confirm switch?"))
+        payload = _stdout_json(result)
+        assert payload == {
+            "hookSpecificOutput": {
+                "hookEventName": "PreModelSwitch",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "confirm switch?",
+            }
+        }
+        assert result["downgrades"] == []
+
+    def test_pre_model_switch_rewrite_degrades_updated_input_unsupported(self) -> None:
+        """PreModelSwitch does not accept updatedInput; rewrite must degrade."""
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(
+            _outcome("rewrite", "PreModelSwitch", updated_input={"to_model": "claude-opus-5"})
+        )
+        payload = _stdout_json(result)
+        assert payload == {"systemMessage": "blocked by rule"}
+        assert result["downgrades"] == [
+            {"from": "rewrite", "to": "warn", "event": "PreModelSwitch"}
+        ]
+
+    def test_post_tool_batch_add_context(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(_outcome("add-context", "PostToolBatch", context="batch note"))
+        payload = _stdout_json(result)
+        assert payload == {
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolBatch",
+                "additionalContext": "batch note",
+            }
+        }
+        assert result["downgrades"] == []
+
+    def test_post_tool_batch_block_uses_top_level_decision(self) -> None:
+        """PostToolBatch is in the Decision control "Top-level decision" row."""
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(_outcome("block", "PostToolBatch", message="nope"))
+        payload = _stdout_json(result)
+        assert payload == {"decision": "block", "reason": "nope"}
+        assert result["downgrades"] == []
+
+    def test_user_prompt_expansion_block_uses_top_level_decision(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        result = adapter.render(
+            _outcome("block", "UserPromptExpansion", message="expansion blocked")
+        )
+        payload = _stdout_json(result)
+        assert payload == {"decision": "block", "reason": "expansion blocked"}
+        assert result["downgrades"] == []

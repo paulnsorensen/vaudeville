@@ -306,7 +306,11 @@ class TestDecideConfidenceFromProviderDetails:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
         rule, config = self._rule_and_config()
         model = self._function_model(
-            {"probabilities": {"outcome": {"violation": 0.73, "clean": 0.27}}}
+            {
+                "probabilities": {"outcome": {"violation": 0.73, "clean": 0.27}},
+                "confidence": {"outcome": 0.2},
+                "scores": {"outcome": {"violation": 1.0, "clean": 0.0}},
+            }
         )
 
         result = decide(rule, config, "text", model_override=model)
@@ -318,7 +322,13 @@ class TestDecideConfidenceFromProviderDetails:
     ) -> None:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
         rule, config = self._rule_and_config()
-        model = self._function_model({"confidence": {"outcome": 0.42}})
+        model = self._function_model(
+            {
+                "probabilities": {"outcome": {"clean": 0.58}},
+                "confidence": {"outcome": 0.42},
+                "scores": {"outcome": {"clean": 1.0}},
+            }
+        )
 
         result = decide(rule, config, "text", model_override=model)
 

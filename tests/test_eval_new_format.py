@@ -20,6 +20,10 @@ from vaudeville.server.user_config import ProviderConfig, UserConfig
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLES_RULES_DIR = os.path.join(PROJECT_ROOT, "examples", "rules")
 
+# Live smoke test opt-in: set VAUDEVILLE_LIVE=1 as well as this key to run
+# a real Jev call. One constant so the skipif and the config never drift.
+_TYPESAFE_KEY_ENV = "TYPESAFE_API_KEY"
+
 _RULE = {
     "type": "decide",
     "name": "git-gate",
@@ -203,18 +207,20 @@ class TestReportCaseConfidenceFromProviderDetails:
         assert results.confidences == [0.83]
 
     @pytest.mark.skipif(
-        not os.environ.get("TYPESAFE_API_KEY"),
-        reason="requires a live TYPESAFE_API_KEY",
+        os.environ.get("VAUDEVILLE_LIVE") != "1" or not os.environ.get(_TYPESAFE_KEY_ENV),
+        reason="set VAUDEVILLE_LIVE=1 and TYPESAFE_API_KEY to run the live typesafe smoke test",
     )
     def test_live_typesafe_smoke(self) -> None:
         rule = parse_rule({**_RULE, "model": "typesafe:jev-1.13"})
         assert isinstance(rule, DecideRule)
         from vaudeville.rules import DecideTestCase
 
-        config = UserConfig(providers={"typesafe": ProviderConfig(key_env="TYPESAFE_API_KEY")})
+        config = UserConfig(providers={"typesafe": ProviderConfig(key_env=_TYPESAFE_KEY_ENV)})
         cases = [DecideTestCase(text="should I commit?", outcome="violation")]
 
         results, case_results = evaluate_rule(rule.name, cases, {rule.name: rule}, config)
 
         assert results.total == 1
         assert len(case_results) == 1
+        assert case_results[0].confidence is not None
+        assert 0.0 <= case_results[0].confidence <= 1.0

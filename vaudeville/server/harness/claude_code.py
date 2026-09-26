@@ -17,9 +17,14 @@ from vaudeville.server.harness import HookEvent, Outcome, RenderResult
 _Rendered = tuple[HookResponse, dict[str, str] | None]
 _RenderStep = Callable[[Outcome], _Rendered]
 
-# hookSpecificOutput.permissionDecision (allow/deny/ask) and updatedInput
-# exist only on PreToolUse.
-_PERMISSION_DECISION_EVENTS = frozenset({"PreToolUse"})
+# hookSpecificOutput.permissionDecision (allow/deny/ask) exists on
+# PreToolUse and PreModelSwitch ("PreModelSwitch accepts allow, deny, and
+# ask", docs read 2026-09-26).
+_PERMISSION_DECISION_EVENTS = frozenset({"PreToolUse", "PreModelSwitch"})
+
+# updatedInput on the permissionDecision channel exists only on PreToolUse;
+# PreModelSwitch explicitly does not accept it.
+_REWRITE_INPUT_EVENTS = frozenset({"PreToolUse"})
 
 # Top-level `decision: "block"` + `reason` events, per the Decision control
 # table's "Top-level decision" row.
@@ -206,7 +211,7 @@ class ClaudeCodeAdapter:
     def _render_rewrite(self, outcome: Outcome) -> _Rendered:
         # `ask` shows the changed input for approval; a rewrite never grants
         # more permission than the unmodified call gets.
-        if outcome.event in _PERMISSION_DECISION_EVENTS and outcome.updated_input is not None:
+        if outcome.event in _REWRITE_INPUT_EVENTS and outcome.updated_input is not None:
             return (
                 _json(
                     {

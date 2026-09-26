@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import errno
 import fcntl
+import json
 import logging
 import os
 import pathlib
@@ -190,7 +191,21 @@ class VaudevilleDaemon:
             elif count > THREAD_WARN:
                 logger.warning("Thread count %d exceeds warning threshold", count)
 
+    def _read_manifest_version(self) -> str:
+        """The plugin.json `version`, present even on a marketplace install
+        that has no git checkout (AC gap 4).
+        """
+        manifest_path = pathlib.Path(self.config.plugin_root) / ".claude-plugin" / "plugin.json"
+        try:
+            with manifest_path.open() as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return "unknown"
+        version = data.get("version")
+        return version if isinstance(version, str) and version else "unknown"
+
     def _write_version_stamp(self) -> None:
+        manifest_version = self._read_manifest_version()
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
@@ -199,9 +214,10 @@ class VaudevilleDaemon:
                 text=True,
                 timeout=5,
             )
-            stamp = result.stdout.strip() if result.returncode == 0 else "unknown"
+            git_rev = result.stdout.strip() if result.returncode == 0 else ""
         except (OSError, subprocess.TimeoutExpired):
-            stamp = "unknown"
+            git_rev = ""
+        stamp = f"{manifest_version}+{git_rev}" if git_rev else manifest_version
         try:
             with pathlib.Path(self.config.version_file).open("w") as f:
                 f.write(stamp + "\n")

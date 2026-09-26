@@ -272,7 +272,7 @@ def run_dataset(
     def _task(text: str) -> DecideOutcome:
         nonlocal first_failure
         if first_failure is not None:
-            raise first_failure
+            raise RuntimeError("skipped after first failure") from None
         try:
             result = decide(rule, config, text, model_override=model_override)
         except Exception as exc:

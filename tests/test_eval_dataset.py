@@ -6,6 +6,8 @@ Parity: TP/FP/TN/FN/precision/recall/F1 from `evaluate_rule` running through
 
 from __future__ import annotations
 
+import traceback
+
 import pytest
 from pydantic_ai.messages import (
     ModelMessage,
@@ -309,3 +311,44 @@ def test_run_dataset_stops_model_calls_after_first_failure(
     with pytest.raises(RuntimeError, match=r"eval case 0 failed: ConnectionError: upstream 503"):
         run_dataset(dataset, rule, _config())
     assert calls == ["one"]
+
+
+def test_run_dataset_keeps_original_failure_traceback_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    original_failure = ConnectionError("upstream 503")
+    rule = parse_rule(_RULE)
+    assert isinstance(rule, DecideRule)
+    rule = rule.model_copy(
+        update={
+            "test_cases": [
+                DecideTestCase(text="one", outcome="violation"),
+                DecideTestCase(text="two", outcome="clean"),
+                DecideTestCase(text="three", outcome="clean"),
+                DecideTestCase(text="four", outcome="clean"),
+            ]
+        }
+    )
+    dataset = build_dataset(rule)
+
+    def fake_decide(
+        rule: DecideRule, config: UserConfig, text: str, *, model_override: object = None
+    ) -> DecideResult:
+        del rule, config, model_override
+        calls.append(text)
+        raise original_failure
+
+    monkeypatch.setattr("vaudeville.eval.decide", fake_decide)
+
+    with pytest.raises(RuntimeError, match=r"eval case 0 failed: ConnectionError: upstream 503"):
+        run_dataset(dataset, rule, _config())
+
+    assert calls == ["one"]
+    assert original_failure.__traceback__ is not None
+    task_frames = [
+        frame
+        for frame, _ in traceback.walk_tb(original_failure.__traceback__)
+        if frame.f_code.co_name == "_task"
+    ]
+    assert len(task_frames) == 1

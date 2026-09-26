@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, create_model
 
 from vaudeville.rules import DecideRule
 
@@ -23,12 +23,12 @@ def build_decide_output_type(rule: DecideRule) -> type[BaseModel]:
     `outcome` is a Literal over `rule.outcomes`. `reason` is a Literal over
     the `rule.reasons` bucket ids when the rule declares them, a free-text
     string when the rule declares `reason: text`, otherwise the field is
-    absent. `confidence`, when present, is bounded to [0, 1].
+    absent. There is no `confidence` field: `decide` reads confidence from
+    the model response's `provider_details`, not from a self-report.
     """
     outcome_type: Any = Literal[tuple(rule.outcomes)]
     fields: dict[str, Any] = {
         "outcome": (outcome_type, ...),
-        "confidence": (float | None, Field(default=None, ge=0.0, le=1.0)),
     }
     if rule.reasons:
         reason_type: Any = Literal[tuple(rule.reasons.keys())]

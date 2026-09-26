@@ -31,6 +31,25 @@ Then run the one-time setup to write your config:
 
 This creates `~/.vaudeville/config` with a `default_model`, `providers` (API key env vars), and optional `commands`. Any project rule may invoke any configured command; a command's child process never sees the provider API key env vars.
 
+### Install for Pi
+
+```bash
+pi install git:github.com/paulnsorensen/vaudeville
+```
+
+Pi loads `pi/extensions/vaudeville.ts` from the package's `pi.extensions` manifest entry (`package.json`). The extension talks to the same daemon over its Unix socket and spawns it on `session_start` via `hooks/session-start.sh`; it does not run `hooks/hooks.json`, so a Pi-only install has exactly one enforcement path.
+
+### Install for oh-my-pi
+
+In an oh-my-pi session:
+
+```text
+/marketplace add paulnsorensen/vaudeville
+/marketplace install vaudeville@paulnsorensen
+```
+
+oh-my-pi reads `.claude-plugin/marketplace.json` and loads the extension from `package.json#omp.extensions`. Its Claude-plugin loader reads only `hooks/pre/` and `hooks/post/`, so it does not run `hooks/hooks.json`. The extension is the one enforcement path.
+
 ## Quick Start (5 minutes to first hook)
 
 1. Copy the bundled rules to your global rules directory:

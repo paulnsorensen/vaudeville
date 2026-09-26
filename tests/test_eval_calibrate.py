@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from pydantic_evals.reporting.analyses import ReportAnalysis, ScalarResult, TableResult
 
 from vaudeville.eval import CaseResult
-from vaudeville.eval_calibrate import calibrate
+from vaudeville.eval_calibrate import _scalar, calibrate, format_calibration
 
 
 def _cases(n_correct: int, n_incorrect: int) -> list[CaseResult]:
@@ -172,3 +173,91 @@ class TestCalibrateNoConfidence:
         assert result.sweep == []
         assert result.recommended_below is None
         assert result.unsure_rate is None
+
+
+def _case(case_id: int, confidence: float | None, *, correct: bool) -> CaseResult:
+    return CaseResult(
+        rule="r",
+        case_id=case_id,
+        text="t",
+        expected="clean",
+        predicted="clean" if correct else "violation",
+        confidence=confidence,
+    )
+
+
+class TestMinimumConfidentCases:
+    def test_one_confident_case_never_yields_a_recommendation(self) -> None:
+        """One correct case at 0.9 gives precision 1.0 from 0.25 up, but a
+        single confident case is not enough evidence to recommend `below`."""
+        cases = [_case(0, 0.9, correct=True)]
+        cases += [_case(i, 0.2, correct=False) for i in range(1, 4)]
+
+        result = calibrate(cases)
+
+        point = next(p for p in result.sweep if p.threshold == 0.5)
+        assert (point.confident, point.precision) == (1, 1.0)
+        assert result.recommended_below is None
+        assert result.unsure_rate is None
+        text = format_calibration("r", result)
+        assert "with enough confident cases (>= 2)" in text
+        assert "Recommended" not in text
+
+    def test_two_confident_cases_reach_the_floor(self) -> None:
+        cases = [_case(0, 0.9, correct=True), _case(1, 0.9, correct=True)]
+        cases += [_case(i, 0.2, correct=False) for i in range(2, 4)]
+
+        result = calibrate(cases)
+
+        assert result.recommended_below == 0.25
+        assert result.unsure_rate == 0.5
+
+
+class TestUnfilteredGateNote:
+    def test_recommendation_states_it_assumes_an_unfiltered_gate(self) -> None:
+        text = format_calibration("r", calibrate(_cases(20, 20)))
+
+        assert (
+            "Recommended unsure.below=0.35 (unsure rate 0.500;"
+            " assumes an unfiltered gate: an unsure.outcomes filter gates fewer cases)"
+        ) in text
+
+
+class TestScoredCount:
+    def test_low_sample_line_reports_scored_of_total(self) -> None:
+        """40 cases with 29 confidences is low-sample on the scored count,
+        and the text must say so without contradicting itself."""
+        cases = [_case(i, 0.9, correct=True) for i in range(29)]
+        cases += [_case(i, None, correct=True) for i in range(29, 40)]
+
+        result = calibrate(cases)
+
+        assert result.status == "low-sample"
+        assert (result.n, result.scored) == (40, 29)
+        assert "scored=29 of n=40 (< 30): low-sample" in format_calibration("r", result)
+
+    def test_full_sample_scored_equals_confident_cases(self) -> None:
+        result = calibrate(_cases(20, 20))
+
+        assert (result.n, result.scored) == (40, 40)
+
+    def test_no_confidence_has_zero_scored(self) -> None:
+        result = calibrate([_case(i, None, correct=True) for i in range(3)])
+
+        assert (result.status, result.n, result.scored) == ("n/a", 3, 0)
+
+
+class TestScalarSelection:
+    def test_scalar_is_read_by_type_when_a_non_scalar_is_last(self) -> None:
+        analyses: list[ReportAnalysis] = [
+            ScalarResult(title="auc", value=0.7),
+            TableResult(title="t", columns=["a"], rows=[[1]]),
+        ]
+
+        assert _scalar(analyses) == 0.7
+
+    def test_no_scalar_returns_none(self) -> None:
+        assert _scalar([TableResult(title="t", columns=["a"], rows=[[1]])]) is None
+
+    def test_nan_scalar_returns_none(self) -> None:
+        assert _scalar([ScalarResult(title="auc", value=float("nan"))]) is None

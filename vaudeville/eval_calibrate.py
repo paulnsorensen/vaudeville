@@ -27,14 +27,22 @@ __all__ = ["Calibration", "ThresholdPoint", "calibrate", "format_calibration"]
 
 _MIN_FULL_SAMPLE = 30
 _TARGET_PRECISION = 0.95
+# A recommendation needs at least this many confident cases: one correct
+# confident case alone gives precision 1.0.
+_MIN_CONFIDENT_CASES = 2
 _ECE_BINS = 10
 _SWEEP_THRESHOLDS = [round(i * 0.05, 2) for i in range(1, 20)] + [0.96, 0.97, 0.98, 0.99]
 
 
 class ThresholdPoint(BaseModel):
-    """Precision and unsure rate if `unsure.below` were set to `threshold`."""
+    """Precision and unsure rate if `unsure.below` were set to `threshold`.
+
+    The rate assumes the gate covers every outcome (no `unsure.outcomes`
+    filter).
+    """
 
     threshold: float
+    confident: int
     precision: float | None
     unsure_rate: float
 
@@ -42,12 +50,16 @@ class ThresholdPoint(BaseModel):
 class Calibration(BaseModel):
     """Confidence-calibration report for one rule's eval cases.
 
+    `n` counts every case; `scored` counts the cases with a confidence (0 in
+    a summary that predates the field).
     `status` is `"n/a"` when no case carries a confidence, `"low-sample"`
-    under 30 cases (the numbers are still reported, but noisy), else `"ok"`.
+    under 30 scored cases (the numbers are still reported, but noisy), else
+    `"ok"`.
     """
 
     status: Literal["ok", "low-sample", "n/a"]
     n: int
+    scored: int = 0
     roc_auc: float | None = None
     ks: float | None = None
     brier: float | None = None
@@ -89,8 +101,9 @@ def _report_context(scored: list[tuple[float, bool]]) -> ReportEvaluatorContext[
 
 
 def _scalar(analyses: list[ReportAnalysis]) -> float | None:
-    result = analyses[-1]
-    if not isinstance(result, ScalarResult):
+    """Value of the first `ScalarResult` in `analyses`, or None if absent or NaN."""
+    result = next((a for a in analyses if isinstance(a, ScalarResult)), None)
+    if result is None:
         return None
     value = float(result.value)
     return None if math.isnan(value) else value
@@ -140,7 +153,12 @@ def _sweep(scored: list[tuple[float, bool]]) -> list[ThresholdPoint]:
         )
         unsure_rate = 1 - len(confident) / total
         points.append(
-            ThresholdPoint(threshold=threshold, precision=precision, unsure_rate=unsure_rate)
+            ThresholdPoint(
+                threshold=threshold,
+                confident=len(confident),
+                precision=precision,
+                unsure_rate=unsure_rate,
+            )
         )
     return points
 
@@ -148,11 +166,15 @@ def _sweep(scored: list[tuple[float, bool]]) -> list[ThresholdPoint]:
 def _recommended(sweep: list[ThresholdPoint]) -> tuple[float, float] | None:
     """Lowest swept threshold whose confident cases reach the target precision.
 
-    An empty confident set never counts as reaching the target. Returns
-    None when no swept threshold reaches it.
+    A confident set under `_MIN_CONFIDENT_CASES` never counts as reaching the
+    target. Returns None when no swept threshold reaches it.
     """
     for point in sweep:
-        if point.precision is not None and point.precision >= _TARGET_PRECISION:
+        if (
+            point.confident >= _MIN_CONFIDENT_CASES
+            and point.precision is not None
+            and point.precision >= _TARGET_PRECISION
+        ):
             return point.threshold, point.unsure_rate
     return None
 
@@ -162,7 +184,7 @@ def calibrate(case_results: list[CaseResult]) -> Calibration:
     n = len(case_results)
     scored = _scored(case_results)
     if not scored:
-        return Calibration(status="n/a", n=n)
+        return Calibration(status="n/a", n=n, scored=0)
 
     sweep = _sweep(scored)
     recommended = _recommended(sweep)
@@ -172,6 +194,7 @@ def calibrate(case_results: list[CaseResult]) -> Calibration:
     return Calibration(
         status=status,
         n=n,
+        scored=len(scored),
         roc_auc=_roc_auc(scored),
         ks=_ks(scored),
         brier=_brier(scored),
@@ -190,7 +213,10 @@ def format_calibration(rule_name: str, calibration: Calibration) -> str:
         return "\n".join(lines)
 
     if calibration.status == "low-sample":
-        lines.append(f"n={calibration.n} (< {_MIN_FULL_SAMPLE}): low-sample, numbers are noisy")
+        lines.append(
+            f"scored={calibration.scored} of n={calibration.n} (< {_MIN_FULL_SAMPLE}):"
+            " low-sample, numbers are noisy"
+        )
 
     lines.append(
         f"ROC AUC: {calibration.roc_auc:.3f}"
@@ -212,8 +238,12 @@ def format_calibration(rule_name: str, calibration: Calibration) -> str:
     if calibration.recommended_below is not None:
         lines.append(
             f"Recommended unsure.below={calibration.recommended_below:.2f}"
-            f" (unsure rate {calibration.unsure_rate:.3f})"
+            f" (unsure rate {calibration.unsure_rate:.3f};"
+            " assumes an unfiltered gate: an unsure.outcomes filter gates fewer cases)"
         )
     else:
-        lines.append(f"No threshold reached the target precision ({_TARGET_PRECISION:.2f})")
+        lines.append(
+            f"No threshold reached the target precision ({_TARGET_PRECISION:.2f})"
+            f" with enough confident cases (>= {_MIN_CONFIDENT_CASES})"
+        )
     return "\n".join(lines)

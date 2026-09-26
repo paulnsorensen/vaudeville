@@ -22,7 +22,11 @@ _RECALL_GATE = 0.80
 
 
 class RuleSummary(BaseModel):
-    """One rule's `--json` run-summary entry."""
+    """One rule's `--json` run-summary entry.
+
+    `n` is the rule's case count. It can exceed `tp + fp + tn + fn`, because
+    a mislabel between two non-positive outcomes is in no bucket.
+    """
 
     rule: str
     n: int
@@ -139,10 +143,11 @@ def build_run_summary(
     for rule_name, results in sorted(all_results.items()):
         rule_passed = _passes_gate(results)
         overall_pass = overall_pass and rule_passed
+        rule_cases = cases_by_rule.get(rule_name, [])
         rule_summaries.append(
             RuleSummary(
                 rule=rule_name,
-                n=results.total,
+                n=len(rule_cases),
                 tp=results.tp,
                 fp=results.fp,
                 tn=results.tn,
@@ -151,7 +156,7 @@ def build_run_summary(
                 recall=results.recall,
                 f1=results.f1,
                 passed=rule_passed,
-                calibration=calibrate(cases_by_rule.get(rule_name, [])),
+                calibration=calibrate(rule_cases),
             )
         )
     return RunSummary(passed=overall_pass, rules=rule_summaries)

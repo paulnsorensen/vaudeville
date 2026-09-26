@@ -344,6 +344,59 @@ class TestJsonRunSummary:
         assert rule_summary["passed"] is True
         assert rule_summary["calibration"]["status"] == "low-sample"
 
+    def test_json_n_counts_every_case_including_non_positive_mislabel(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A `ticket` vs `clean` mislabel is in no tp/fp/tn/fn bucket; `n`
+        still counts it and agrees with `calibration.n`."""
+        from vaudeville.server.agents.decide import DecideResult
+
+        rule = parse_rule({**_RULE_DICT, "outcomes": ["violation", "ticket", "clean"]})
+        assert isinstance(rule, DecideRule)
+        cases = [
+            DecideTestCase(text="violation case", outcome="violation"),
+            DecideTestCase(text="clean case", outcome="clean"),
+            DecideTestCase(text="ticket case", outcome="ticket"),
+        ]
+
+        def fake_decide(
+            rule: DecideRule, config: UserConfig, text: str, *, model_override: object = None
+        ) -> DecideResult:
+            del rule, config, model_override
+            # "ticket case" is mislabeled as clean: both outcomes are non-positive.
+            outcome = "violation" if "violation" in text else "clean"
+            return DecideResult(outcome=outcome, confidence=0.8)
+
+        with (
+            patch("sys.argv", ["eval", "--json", "--rule", "git-gate"]),
+            patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
+            patch("vaudeville.eval_cli.load_test_cases", return_value={"git-gate": cases}),
+            patch("vaudeville.eval_cli.load_user_config", return_value=UserConfig()),
+            patch("vaudeville.eval.decide", side_effect=fake_decide),
+        ):
+            mock_layered.return_value.by_name.return_value = {"git-gate": rule}
+            from vaudeville.eval_cli import main
+
+            with pytest.raises(SystemExit):
+                main()
+        record = json.loads(capsys.readouterr().out)
+        rule_summary = record["rules"][0]
+        assert (
+            rule_summary["tp"],
+            rule_summary["fp"],
+            rule_summary["tn"],
+            rule_summary["fn"],
+        ) == (
+            1,
+            0,
+            1,
+            0,
+        )
+        assert rule_summary["n"] == 3
+        assert rule_summary["calibration"]["n"] == 3
+        assert rule_summary["precision"] == 1.0
+        assert rule_summary["recall"] == 1.0
+
     def test_json_run_summary_prints_one_object_with_no_model_configured(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

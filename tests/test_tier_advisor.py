@@ -154,8 +154,8 @@ class TestAnalyze:
         assert analyze_mod._add_minutes("10:00", 5) == "10:05"
 
     def test_build_analysis_tolerates_null_confidence(self, analyze_mod: Any) -> None:
-        """A rule whose every row has a null confidence (unsure gate present,
-        no on: dispatch) must not raise on `round(None, 3)`."""
+        """A rule whose every row has a null confidence (the model reported
+        no confidence) must not raise on `round(None, 3)`."""
         metrics = [
             {
                 "rule": "unsure-gate",
@@ -299,8 +299,8 @@ class TestReport:
         assert rec == "promote-to-block"
 
     def test_classify_warn_to_block_with_null_p50_confidence(self, report_mod: Any) -> None:
-        """A null p50_confidence (unsure gate, no on: dispatch) skips the
-        median-confidence check rather than blocking promotion on it."""
+        """A null p50_confidence (the model reported no confidence) skips
+        the median-confidence check rather than blocking promotion on it."""
         with patch.object(report_mod, "get_current_tier", return_value="warn"):
             rec, _ = report_mod.classify(
                 self._make_rule(

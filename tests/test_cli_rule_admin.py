@@ -405,6 +405,39 @@ class TestCmdShow:
         data = json.loads(capsys.readouterr().out)
         assert data["name"] == "my-rule"
         assert "path" in data
+        assert data["unsure"] is None
+
+    def test_json_output_includes_unsure_gate(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules_dir = _home_rules(tmp_path)
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        (rules_dir / "gated-rule.yaml").write_text(
+            yaml.dump(
+                {
+                    "type": "decide",
+                    "name": "gated-rule",
+                    "event": "Stop",
+                    "tier": "shadow",
+                    "model": "typesafe:jev-1.13",
+                    "prompt": "Is this a violation?\n{text}",
+                    "outcomes": ["violation", "clean"],
+                    "on": {"violation": "warn"},
+                    "unsure": {"below": 0.6, "action": {"action": "log"}},
+                }
+            )
+        )
+        with patch(
+            "vaudeville.cli_rules._find_project_root",
+            return_value=str(tmp_path / "proj"),
+        ):
+            cmd_show(Namespace(name="gated-rule", json=True))
+        data = json.loads(capsys.readouterr().out)
+        assert data["unsure"] == {"below": 0.6, "action": {"action": "log"}}
 
     def test_not_found_exits(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("HOME", str(tmp_path))

@@ -443,7 +443,7 @@ def test_confidence_cell_number_renders_confidence_text() -> None:
 
 
 def test_build_table_null_confidence_renders_dim_dash() -> None:
-    """A null confidence (unsure gate, no on: dispatch) renders `-`, not 0.00."""
+    """A null confidence (the model reported no confidence) renders `-`, not 0.00."""
     events = [_make_event(confidence=None)]
     table = _build_table(events, (1, 0, 0))
     col_names = [str(c.header) for c in table.columns]

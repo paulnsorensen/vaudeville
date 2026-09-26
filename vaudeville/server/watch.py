@@ -71,8 +71,9 @@ def _to_float(value: object) -> float:
 
 
 def _confidence_cell(confidence: object) -> Text:
-    """Render a null confidence (a rule's unsure gate never dispatched an
-    `on:` action) as a dim placeholder instead of a misleading 0.00."""
+    """Render a null confidence (the model reported no confidence: a
+    non-typesafe model, missing provider_details, or a no-text/decide-error
+    record) as a dim placeholder instead of a misleading 0.00."""
     if confidence is None:
         return Text("-", style="dim")
     return _confidence_text(_to_float(confidence))

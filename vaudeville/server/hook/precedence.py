@@ -32,6 +32,9 @@ class EvaluatedAction:
     updated_input: dict[str, object] | None = None
     command: str | None = None
     downgrade: str | None = None
+    unsure: bool = False
+    unsure_below: float | None = None
+    confidence_missing: bool = False
     verdict: str = ""
     confidence: float | None = None
     latency_ms: float = 0.0

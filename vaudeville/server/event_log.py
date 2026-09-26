@@ -40,6 +40,9 @@ class ClassificationEvent:
     action: str | None = None
     model: str | None = None
     downgrade: str | None = None
+    unsure: bool = False
+    unsure_below: float | None = None
+    confidence_missing: bool = False
     kind: str | None = None
 
 
@@ -113,6 +116,9 @@ class EventLogger:
             "action": event.action,
             "model": event.model,
             "downgrade": event.downgrade,
+            "unsure": event.unsure,
+            "unsure_below": event.unsure_below,
+            "confidence_missing": event.confidence_missing,
         }
         if event.kind is not None:
             common["kind"] = event.kind

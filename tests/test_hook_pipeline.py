@@ -1115,7 +1115,9 @@ class TestUnsureGate:
         row = [r for r in rows if r["rule"] == "unsure-gate"][0]
         assert row["action"] == "warn"
         assert row["confidence"] == 0.5
-        assert "unsure:below=0.7" in row["downgrade"]
+        assert row["unsure"] is True
+        assert row["unsure_below"] == 0.7
+        assert not (row["downgrade"] or "").startswith("unsure")
 
     def test_unsure_unfiltered_below_dispatches_unsure_action(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1173,17 +1175,25 @@ class TestUnsureGate:
         ]
         row = [r for r in rows if r["rule"] == "unsure-gate"][0]
         assert row["action"] == "block"
-        assert not (row["downgrade"] or "").startswith("unsure")
+        assert row["unsure"] is False
 
+    @pytest.mark.parametrize(
+        ("tier", "expected_action"),
+        [("warn", "warn"), ("shadow", "allow")],
+    )
     def test_unsure_tier_ceiling_still_caps_substituted_action(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        tier: str,
+        expected_action: str,
     ) -> None:
-        """A `warn`-tier rule caps its gate's `block` substitute to `warn`."""
+        """A tier-capped rule caps its gate's `block` substitute."""
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(
             tmp_path,
             "unsure-gate",
-            UNSURE_RULE_YAML.replace("tier: block", "tier: warn").replace(
+            UNSURE_RULE_YAML.replace("tier: block", f"tier: {tier}").replace(
                 "  action: warn", "  action: block"
             ),
         )
@@ -1206,9 +1216,10 @@ class TestUnsureGate:
             for line in (logs_dir / "events.jsonl").read_text().strip().splitlines()
         ]
         row = [r for r in rows if r["rule"] == "unsure-gate"][0]
-        assert row["action"] == "warn"
-        assert "tier:warn" in row["downgrade"]
-        assert "unsure:below=0.7" in row["downgrade"]
+        assert row["action"] == expected_action
+        assert f"tier:{tier}" in row["downgrade"]
+        assert row["unsure"] is True
+        assert row["unsure_below"] == 0.7
 
     def test_unsure_confidence_missing_keeps_on_action(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1236,7 +1247,42 @@ class TestUnsureGate:
         row = [r for r in rows if r["rule"] == "unsure-gate"][0]
         assert row["action"] == "block"
         assert row["confidence"] is None
-        assert "confidence-missing" in row["downgrade"]
+        assert row["confidence_missing"] is True
+        assert not row["downgrade"]
+
+    def test_unsure_outcome_outside_filter_keeps_on_action(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An outcome outside `unsure.outcomes` keeps its `on:` action even
+        at low confidence (kills an `in_filter = True` mutant)."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace(
+                "  violation: block\n", "  violation: block\n  clean: warn\n"
+            ),
+        )
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=self._low_confidence_decide_fn(0.1, outcome="clean"),
+                event_logger=logger,
+            )
+        finally:
+            logger.close()
+
+        time.sleep(0.05)
+        rows = [
+            json.loads(line)
+            for line in (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        ]
+        row = [r for r in rows if r["rule"] == "unsure-gate"][0]
+        assert row["action"] == "warn"
+        assert row["unsure"] is False
 
 
 class TestUnsureGateEscalateHop:

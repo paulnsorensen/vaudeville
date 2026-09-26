@@ -428,6 +428,16 @@ class TestUnsureGateLoadValidation:
             parse_rule(self._rule(model="openai:gpt-5"))
         assert "typesafe" in str(exc_info.value)
 
+    def test_unsure_requires_typesafe_model_rejected_when_inherited_default(self) -> None:
+        """An absent `model:` (inherited config default) is rejected the
+        same as an explicit non-typesafe model: `unsure:` requires the
+        rule's own model to be explicit typesafe."""
+        rule = self._rule()
+        del rule["model"]
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(rule)
+        assert "typesafe" in str(exc_info.value)
+
     def test_unsure_below_out_of_range_zero_rejected(self) -> None:
         with pytest.raises(ValidationError, match="jev-judge") as exc_info:
             parse_rule(

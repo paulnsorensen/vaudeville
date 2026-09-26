@@ -377,6 +377,39 @@ class TestReferenceValidation:
         assert rule_a.on["violation"].action == "escalate"
         assert rule_b.on["violation"].action == "allow"
 
+    def test_dangling_unsure_action_becomes_allow_and_logged(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A dangling `unsure.action` reference becomes allow; the rule
+        and its `on:` mapping stay."""
+        with caplog.at_level("WARNING"):
+            ruleset = self._load(
+                tmp_path,
+                monkeypatch,
+                [
+                    dict(
+                        DECIDE_RULE,
+                        name="a",
+                        model="typesafe:jev-1.13",
+                        unsure={
+                            "below": 0.5,
+                            "action": {"action": "escalate", "rule": "missing"},
+                        },
+                    ),
+                ],
+            )
+        rules = ruleset.by_name()
+        rule_a = rules["a"]
+        assert isinstance(rule_a, DecideRule)
+        assert rule_a.unsure is not None
+        assert rule_a.unsure.action.action == "allow"
+        assert rule_a.on["violation"].action == "block"
+        assert "'a'" in caplog.text
+        assert "missing" in caplog.text
+
 
 class TestObsoleteContextKey:
     def test_rule_with_context_key_skipped_and_logged(

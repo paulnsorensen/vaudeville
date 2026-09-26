@@ -221,6 +221,7 @@ def _show_json(rule: Rule, path: Path) -> None:
         data["on"] = {k: v.model_dump(exclude_none=True) for k, v in rule.on.items()}
         data["reasons"] = rule.reasons
         data["test_case_count"] = len(rule.test_cases)
+        data["unsure"] = rule.unsure.model_dump(exclude_none=True) if rule.unsure else None
     else:
         data["target"] = rule.target
     print(json.dumps(data, indent=2))

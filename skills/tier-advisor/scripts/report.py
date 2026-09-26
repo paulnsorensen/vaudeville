@@ -67,9 +67,10 @@ def _classify_warn(rule: dict, tier_thresholds: dict) -> tuple[str, str]:
         )
 
     t = tier_thresholds["warn_to_block"]
-    # A null p50 (every case's confidence is missing, e.g. an unsure gate
-    # that never dispatched an on: action) makes the check not applicable;
-    # it does not block promotion.
+    # A null p50 (every case's confidence is missing: the model reported no
+    # confidence, e.g. a non-typesafe model, missing provider_details, or a
+    # no-text/decide-error record) makes the check not applicable; it does
+    # not block promotion.
     p50_ok = p50 is None or p50 >= t["min_p50_confidence"]
     if (
         total >= t["min_evals"]

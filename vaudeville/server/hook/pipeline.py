@@ -284,8 +284,8 @@ def _evaluate_rule(
     action_name: ActionName = action_obj.action if action_obj is not None else "allow"
     message = _message_for(rule, result, action_name)
 
-    action_obj, action_name, message, unsure_downgrade = _apply_unsure_gate(
-        rule, result, action_obj, action_name, message
+    action_obj, action_name, message, unsure, unsure_below, confidence_missing = (
+        _apply_unsure_gate(rule, result, action_obj, action_name, message)
     )
 
     updated_input: dict[str, object] | None = None
@@ -345,9 +345,7 @@ def _evaluate_rule(
         command = action_obj.command if action_obj is not None else None
 
     effective_name, downgrade = apply_tier_ceiling(action_name, rule.tier)
-    extra_downgrades = [
-        d for d in (unsure_downgrade, escalate_ceiling_reason, rewrite_downgrade) if d
-    ]
+    extra_downgrades = [d for d in (escalate_ceiling_reason, rewrite_downgrade) if d]
     if extra_downgrades:
         downgrade = (
             f"{';'.join(extra_downgrades)};{downgrade}"
@@ -363,6 +361,9 @@ def _evaluate_rule(
         updated_input=updated_input,
         command=command,
         downgrade=downgrade,
+        unsure=unsure,
+        unsure_below=unsure_below,
+        confidence_missing=confidence_missing,
         verdict=result.outcome or "",
         confidence=result.confidence,
         latency_ms=latency_ms,
@@ -384,29 +385,32 @@ def _apply_unsure_gate(
     action_obj: Action | None,
     action_name: ActionName,
     message: str,
-) -> tuple[Action | None, ActionName, str, str | None]:
+) -> tuple[Action | None, ActionName, str, bool, float | None, bool]:
     """Substitute `unsure.action` for the `on:` action under low confidence.
 
     Runs in top-level rule evaluation only (never inside `_do_escalate`,
     AC-9), before the tier ceiling and precedence merge. A None confidence
-    keeps the `on:` action and reports `confidence-missing` (AC-8); a
+    keeps the `on:` action and reports `confidence_missing` (AC-8); a
     confidence at or above `below` also keeps the `on:` action (AC-7).
+
+    Returns `(action_obj, action_name, message, unsure, unsure_below,
+    confidence_missing)`.
     """
     gate = rule.unsure
     if gate is None:
-        return action_obj, action_name, message, None
+        return action_obj, action_name, message, False, None, False
 
     confidence = result.confidence
     if confidence is None:
-        return action_obj, action_name, message, "confidence-missing"
+        return action_obj, action_name, message, False, None, True
 
     in_filter = gate.outcomes is None or result.outcome in gate.outcomes
     if not (in_filter and confidence < gate.below):
-        return action_obj, action_name, message, None
+        return action_obj, action_name, message, False, None, False
 
     gated_action_name: ActionName = gate.action.action
     gated_message = _message_for(rule, result, gated_action_name)
-    return gate.action, gated_action_name, gated_message, f"unsure:below={gate.below}"
+    return gate.action, gated_action_name, gated_message, True, gate.below, False
 
 
 def _message_for(rule: DecideRule, result: DecideResult, action_name: ActionName) -> str:
@@ -680,6 +684,9 @@ def _log_evaluated(
             action=item.action_name,
             model=item.model,
             downgrade=downgrade,
+            unsure=item.unsure,
+            unsure_below=item.unsure_below,
+            confidence_missing=item.confidence_missing,
             kind=kind,
         )
     )

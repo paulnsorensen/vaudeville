@@ -120,6 +120,11 @@ class DecideRule(BaseModel):
         if not (0 < gate.below <= 1):
             raise ValueError(f"rule {self.name!r}: unsure.below {gate.below!r} must be in (0, 1]")
         if gate.outcomes is not None:
+            if not gate.outcomes:
+                raise ValueError(
+                    f"rule {self.name!r}: unsure.outcomes must be non-empty when set "
+                    "(omit it to gate every outcome)"
+                )
             outcomes = set(self.outcomes)
             for entry in gate.outcomes:
                 if entry not in outcomes:

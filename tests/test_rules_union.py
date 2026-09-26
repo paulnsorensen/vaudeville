@@ -475,6 +475,34 @@ class TestUnsureGateLoadValidation:
             )
         assert "unknown-outcome" in str(exc_info.value)
 
+    def test_unsure_empty_outcome_filter_rejected(self) -> None:
+        """An empty filter would gate no outcome, so the gate is inert."""
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(
+                self._rule(
+                    unsure={
+                        "below": 0.5,
+                        "action": {"action": "escalate", "rule": "human-review"},
+                        "outcomes": [],
+                    }
+                )
+            )
+        assert "unsure.outcomes must be non-empty" in str(exc_info.value)
+
+    def test_unsure_valid_outcome_filter_loads(self) -> None:
+        rule = parse_rule(
+            self._rule(
+                unsure={
+                    "below": 0.5,
+                    "action": {"action": "escalate", "rule": "human-review"},
+                    "outcomes": ["violation"],
+                }
+            )
+        )
+        assert isinstance(rule, DecideRule)
+        assert rule.unsure is not None
+        assert rule.unsure.outcomes == ["violation"]
+
     def test_unsure_valid_typesafe_rule_loads(self) -> None:
         rule = parse_rule(self._rule())
         assert isinstance(rule, DecideRule)

@@ -56,9 +56,9 @@ def print_results(results: EvalResults, *, file: TextIO | None = None) -> bool:
     out = file if file is not None else sys.stdout
     prec_pct = results.precision * 100
     rec_pct = results.recall * 100
-    prec_ok = prec_pct >= 95.0
-    rec_ok = rec_pct >= 80.0
-    passed = prec_ok and rec_ok
+    prec_ok = results.precision >= _PRECISION_GATE
+    rec_ok = results.recall >= _RECALL_GATE
+    passed = _passes_gate(results)
     status = "PASS" if passed else "FAIL"
 
     def _marker(ok: bool) -> str:

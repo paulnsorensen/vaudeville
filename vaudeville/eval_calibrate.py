@@ -8,10 +8,17 @@ wires into `PrecisionRecallEvaluator`. Reports ROC AUC, KS, Brier, ECE over
 
 from __future__ import annotations
 
-from bisect import bisect_right
+import math
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
+from pydantic_evals.evaluators import (
+    KolmogorovSmirnovEvaluator,
+    ReportEvaluatorContext,
+    ROCAUCEvaluator,
+)
+from pydantic_evals.reporting import EvaluationReport, ReportCase
+from pydantic_evals.reporting.analyses import ReportAnalysis, ScalarResult
 
 if TYPE_CHECKING:
     from .eval import CaseResult
@@ -21,14 +28,14 @@ __all__ = ["Calibration", "ThresholdPoint", "calibrate", "format_calibration"]
 _MIN_FULL_SAMPLE = 30
 _TARGET_PRECISION = 0.95
 _ECE_BINS = 10
-_SWEEP_THRESHOLDS = [round(i * 0.05, 2) for i in range(20)]  # 0.00 .. 0.95
+_SWEEP_THRESHOLDS = [round(i * 0.05, 2) for i in range(1, 20)] + [0.96, 0.97, 0.98, 0.99]
 
 
 class ThresholdPoint(BaseModel):
     """Precision and unsure rate if `unsure.below` were set to `threshold`."""
 
     threshold: float
-    precision: float
+    precision: float | None
     unsure_rate: float
 
 
@@ -59,37 +66,50 @@ def _scored(case_results: list[CaseResult]) -> list[tuple[float, bool]]:
     ]
 
 
-def _trapezoidal_auc(points: list[tuple[float, float]]) -> float:
-    area = 0.0
-    for (x0, y0), (x1, y1) in zip(points, points[1:], strict=False):
-        area += (x1 - x0) * (y0 + y1) / 2
-    return area
+def _report_context(scored: list[tuple[float, bool]]) -> ReportEvaluatorContext[None, bool, None]:
+    cases = [
+        ReportCase[None, bool, None](
+            name=str(i),
+            inputs=None,
+            metadata=None,
+            expected_output=correct,
+            output=correct,
+            metrics={"confidence": score},
+            attributes={},
+            scores={},
+            labels={},
+            assertions={},
+            task_duration=0.0,
+            total_duration=0.0,
+        )
+        for i, (score, correct) in enumerate(scored)
+    ]
+    report = EvaluationReport[None, bool, None](name="calibration", cases=cases)
+    return ReportEvaluatorContext(name="calibration", report=report, experiment_metadata=None)
+
+
+def _scalar(analyses: list[ReportAnalysis]) -> float | None:
+    result = analyses[-1]
+    if not isinstance(result, ScalarResult):
+        return None
+    value = float(result.value)
+    return None if math.isnan(value) else value
 
 
 def _roc_auc(scored: list[tuple[float, bool]]) -> float | None:
-    positives = sum(1 for _, correct in scored if correct)
-    negatives = len(scored) - positives
-    if positives == 0 or negatives == 0:
-        return None
-    thresholds = sorted({score for score, _ in scored}, reverse=True)
-    points = [(0.0, 0.0)]
-    for threshold in thresholds:
-        tp = sum(1 for s, correct in scored if s >= threshold and correct)
-        fp = sum(1 for s, correct in scored if s >= threshold and not correct)
-        points.append((fp / negatives, tp / positives))
-    points.sort()
-    return _trapezoidal_auc(points)
+    ctx = _report_context(scored)
+    evaluator = ROCAUCEvaluator(
+        score_key="confidence", score_from="metrics", positive_from="expected_output"
+    )
+    return _scalar(evaluator.evaluate(ctx))
 
 
 def _ks(scored: list[tuple[float, bool]]) -> float | None:
-    pos = sorted(s for s, correct in scored if correct)
-    neg = sorted(s for s, correct in scored if not correct)
-    if not pos or not neg:
-        return None
-    all_scores = sorted({s for s, _ in scored})
-    return max(
-        abs(bisect_right(pos, s) / len(pos) - bisect_right(neg, s) / len(neg)) for s in all_scores
+    ctx = _report_context(scored)
+    evaluator = KolmogorovSmirnovEvaluator(
+        score_key="confidence", score_from="metrics", positive_from="expected_output"
     )
+    return _scalar(evaluator.evaluate(ctx))
 
 
 def _brier(scored: list[tuple[float, bool]]) -> float:
@@ -116,7 +136,7 @@ def _sweep(scored: list[tuple[float, bool]]) -> list[ThresholdPoint]:
     for threshold in _SWEEP_THRESHOLDS:
         confident = [correct for s, correct in scored if s >= threshold]
         precision = (
-            sum(1 for correct in confident if correct) / len(confident) if confident else 1.0
+            sum(1 for correct in confident if correct) / len(confident) if confident else None
         )
         unsure_rate = 1 - len(confident) / total
         points.append(
@@ -125,17 +145,16 @@ def _sweep(scored: list[tuple[float, bool]]) -> list[ThresholdPoint]:
     return points
 
 
-def _recommended(sweep: list[ThresholdPoint]) -> tuple[float, float]:
+def _recommended(sweep: list[ThresholdPoint]) -> tuple[float, float] | None:
     """Lowest swept threshold whose confident cases reach the target precision.
 
-    Falls back to the highest swept threshold (mark everything unsure) when
-    no threshold clears the bar.
+    An empty confident set never counts as reaching the target. Returns
+    None when no swept threshold reaches it.
     """
     for point in sweep:
-        if point.precision >= _TARGET_PRECISION:
+        if point.precision is not None and point.precision >= _TARGET_PRECISION:
             return point.threshold, point.unsure_rate
-    last = sweep[-1]
-    return last.threshold, last.unsure_rate
+    return None
 
 
 def calibrate(case_results: list[CaseResult]) -> Calibration:
@@ -146,8 +165,10 @@ def calibrate(case_results: list[CaseResult]) -> Calibration:
         return Calibration(status="n/a", n=n)
 
     sweep = _sweep(scored)
-    recommended_below, unsure_rate = _recommended(sweep)
-    status: Literal["ok", "low-sample"] = "ok" if n >= _MIN_FULL_SAMPLE else "low-sample"
+    recommended = _recommended(sweep)
+    recommended_below = recommended[0] if recommended is not None else None
+    unsure_rate = recommended[1] if recommended is not None else None
+    status: Literal["ok", "low-sample"] = "ok" if len(scored) >= _MIN_FULL_SAMPLE else "low-sample"
     return Calibration(
         status=status,
         n=n,
@@ -183,12 +204,16 @@ def format_calibration(rule_name: str, calibration: Calibration) -> str:
     lines.append(f"ECE:     {calibration.ece:.4f}")
     lines.append("Threshold sweep:")
     for point in calibration.sweep:
+        precision_str = f"{point.precision:.3f}" if point.precision is not None else "n/a"
         lines.append(
-            f"  below={point.threshold:.2f} precision={point.precision:.3f}"
+            f"  below={point.threshold:.2f} precision={precision_str}"
             f" unsure_rate={point.unsure_rate:.3f}"
         )
-    lines.append(
-        f"Recommended unsure.below={calibration.recommended_below:.2f}"
-        f" (unsure rate {calibration.unsure_rate:.3f})"
-    )
+    if calibration.recommended_below is not None:
+        lines.append(
+            f"Recommended unsure.below={calibration.recommended_below:.2f}"
+            f" (unsure rate {calibration.unsure_rate:.3f})"
+        )
+    else:
+        lines.append(f"No threshold reached the target precision ({_TARGET_PRECISION:.2f})")
     return "\n".join(lines)

@@ -90,7 +90,14 @@ test_cases:                  # eval fixtures for `uv run python -m vaudeville.ev
     outcome: violation
   - text: "example clean text"
     outcome: clean
+unsure:                      # optional low-confidence gate; requires model: typesafe:*
+  below: 0.7                 # substitute action fires when confidence < below, in (0, 1]
+  action: warn                # action to substitute for the on: action
+  outcomes: [violation]       # optional non-empty subset of outcomes to gate; omit to gate all
 ```
+
+A null confidence (the model reports none) never triggers `unsure:`; the
+rule keeps its `on:` action.
 
 A `type: rewrite` rule replaces `outcomes`/`on`/`reasons` with `target` (a
 list of `tool_input.*` field paths to rewrite) and has no `test_cases`.

@@ -14,6 +14,7 @@ import logging
 import os
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import TypeVar
 
 from vaudeville.core import prepare_text, truncate_for_event
@@ -284,6 +285,14 @@ def _evaluate_rule(
     action_name: ActionName = action_obj.action if action_obj is not None else "allow"
     message = _message_for(rule, result, action_name)
 
+    gated = _apply_unsure_gate(rule, result, action_obj, action_name, message)
+    action_obj = gated.action_obj
+    action_name = gated.action_name
+    message = gated.message
+    unsure = gated.unsure
+    unsure_below = gated.unsure_below
+    confidence_missing = gated.confidence_missing
+
     updated_input: dict[str, object] | None = None
     context_text: str | None = None
     command: str | None = None
@@ -357,8 +366,11 @@ def _evaluate_rule(
         updated_input=updated_input,
         command=command,
         downgrade=downgrade,
+        unsure=unsure,
+        unsure_below=unsure_below,
+        confidence_missing=confidence_missing,
         verdict=result.outcome or "",
-        confidence=result.confidence or 0.0,
+        confidence=result.confidence,
         latency_ms=latency_ms,
         reason=result.reason or "",
         tier=rule.tier,
@@ -370,6 +382,51 @@ def _evaluate_rule(
         _log_evaluated(logger_fn, item, downgrade=downgrade)
 
     return item
+
+
+@dataclass(frozen=True)
+class _UnsureOutcome:
+    """Result of `_apply_unsure_gate`: the action to dispatch and its gate flags."""
+
+    action_obj: Action | None
+    action_name: ActionName
+    message: str
+    unsure: bool = False
+    unsure_below: float | None = None
+    confidence_missing: bool = False
+
+
+def _apply_unsure_gate(
+    rule: DecideRule,
+    result: DecideResult,
+    action_obj: Action | None,
+    action_name: ActionName,
+    message: str,
+) -> _UnsureOutcome:
+    """Substitute `unsure.action` for the `on:` action under low confidence.
+
+    Runs in top-level rule evaluation only (never inside `_do_escalate`,
+    AC-9), before the tier ceiling and precedence merge. A None confidence
+    keeps the `on:` action and reports `confidence_missing` (AC-8); a
+    confidence at or above `below` also keeps the `on:` action (AC-7).
+    """
+    gate = rule.unsure
+    if gate is None:
+        return _UnsureOutcome(action_obj, action_name, message)
+
+    confidence = result.confidence
+    if confidence is None:
+        return _UnsureOutcome(action_obj, action_name, message, confidence_missing=True)
+
+    in_filter = gate.outcomes is None or result.outcome in gate.outcomes
+    if not (in_filter and confidence < gate.below):
+        return _UnsureOutcome(action_obj, action_name, message)
+
+    gated_action_name: ActionName = gate.action.action
+    gated_message = _message_for(rule, result, gated_action_name)
+    return _UnsureOutcome(
+        gate.action, gated_action_name, gated_message, unsure=True, unsure_below=gate.below
+    )
 
 
 def _message_for(rule: DecideRule, result: DecideResult, action_name: ActionName) -> str:
@@ -643,6 +700,9 @@ def _log_evaluated(
             action=item.action_name,
             model=item.model,
             downgrade=downgrade,
+            unsure=item.unsure,
+            unsure_below=item.unsure_below,
+            confidence_missing=item.confidence_missing,
             kind=kind,
         )
     )
@@ -679,7 +739,7 @@ def _log_decision(
         message="",
         downgrade=downgrade,
         verdict=result.outcome or "",
-        confidence=result.confidence or 0.0,
+        confidence=result.confidence,
         latency_ms=latency_ms,
         reason=result.reason or "",
         tier=rule.tier,

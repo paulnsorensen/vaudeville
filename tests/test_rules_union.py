@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from vaudeville.rules import DecideRule, RewriteRule, parse_rule
+from vaudeville.rules import DecideRule, RewriteRule, UnsureGate, parse_rule
 
 
 class TestUnionDiscrimination:
@@ -400,3 +400,124 @@ class TestTargetHasLeafAllSegments:
                     "target": ["tool_input.options.command.0"],
                 }
             )
+
+
+class TestUnsureGateLoadValidation:
+    """AC-6: unsure: is rejected at load unless the rule declares an
+    explicit typesafe: model, below is in (0, 1], and any outcomes filter
+    entry is itself one of the rule's outcomes."""
+
+    def _rule(self, **overrides: object) -> dict[str, object]:
+        base: dict[str, object] = {
+            "type": "decide",
+            "name": "jev-judge",
+            "event": "Stop",
+            "model": "typesafe:jev-1.13",
+            "prompt": "p",
+            "outcomes": ["violation", "clean"],
+            "unsure": {
+                "below": 0.5,
+                "action": {"action": "escalate", "rule": "human-review"},
+            },
+        }
+        base.update(overrides)
+        return base
+
+    def test_unsure_requires_typesafe_model_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(self._rule(model="openai:gpt-5"))
+        assert "typesafe" in str(exc_info.value)
+
+    def test_unsure_requires_typesafe_model_rejected_when_inherited_default(self) -> None:
+        """An absent `model:` (inherited config default) is rejected the
+        same as an explicit non-typesafe model: `unsure:` requires the
+        rule's own model to be explicit typesafe."""
+        rule = self._rule()
+        del rule["model"]
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(rule)
+        assert "typesafe" in str(exc_info.value)
+
+    def test_unsure_below_out_of_range_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(
+                self._rule(
+                    unsure={
+                        "below": 0,
+                        "action": {"action": "escalate", "rule": "human-review"},
+                    }
+                )
+            )
+        assert "below" in str(exc_info.value)
+
+    def test_unsure_below_out_of_range_above_one_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(
+                self._rule(
+                    unsure={
+                        "below": 1.5,
+                        "action": {"action": "escalate", "rule": "human-review"},
+                    }
+                )
+            )
+        assert "below" in str(exc_info.value)
+
+    def test_unsure_unknown_outcome_filter_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(
+                self._rule(
+                    unsure={
+                        "below": 0.5,
+                        "action": {"action": "escalate", "rule": "human-review"},
+                        "outcomes": ["unknown-outcome"],
+                    }
+                )
+            )
+        assert "unknown-outcome" in str(exc_info.value)
+
+    def test_unsure_empty_outcome_filter_rejected(self) -> None:
+        """An empty filter would gate no outcome, so the gate is inert."""
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(
+                self._rule(
+                    unsure={
+                        "below": 0.5,
+                        "action": {"action": "escalate", "rule": "human-review"},
+                        "outcomes": [],
+                    }
+                )
+            )
+        assert "unsure.outcomes must be non-empty" in str(exc_info.value)
+
+    def test_unsure_valid_outcome_filter_loads(self) -> None:
+        rule = parse_rule(
+            self._rule(
+                unsure={
+                    "below": 0.5,
+                    "action": {"action": "escalate", "rule": "human-review"},
+                    "outcomes": ["violation"],
+                }
+            )
+        )
+        assert isinstance(rule, DecideRule)
+        assert rule.unsure is not None
+        assert rule.unsure.outcomes == ["violation"]
+
+    def test_unsure_self_escalate_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(
+                self._rule(
+                    unsure={
+                        "below": 0.5,
+                        "action": {"action": "escalate", "rule": "jev-judge"},
+                    }
+                )
+            )
+        assert "escalate to itself" in str(exc_info.value)
+
+    def test_unsure_valid_typesafe_rule_loads(self) -> None:
+        rule = parse_rule(self._rule())
+        assert isinstance(rule, DecideRule)
+        assert isinstance(rule.unsure, UnsureGate)
+        assert rule.unsure.below == 0.5
+        assert rule.unsure.action.action == "escalate"

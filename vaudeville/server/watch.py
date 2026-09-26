@@ -70,6 +70,15 @@ def _to_float(value: object) -> float:
         return 0.0
 
 
+def _confidence_cell(confidence: object) -> Text:
+    """Render a null confidence (the model reported no confidence: a
+    non-typesafe model, missing provider_details, or a no-text/decide-error
+    record) as a dim placeholder instead of a misleading 0.00."""
+    if confidence is None:
+        return Text("-", style="dim")
+    return _confidence_text(_to_float(confidence))
+
+
 def _sanitize_display(value: object) -> Text:
     """Return *value* as single-line Text, with newlines flattened to spaces."""
     text = ("" if value is None else str(value)).replace("\n", " ").replace("\r", " ").strip()
@@ -109,7 +118,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int, int]) -> 
             evt.get("rule", "<unknown>"),
             _tier_text(evt.get("tier", "block")),
             _verdict_text(evt.get("verdict", "?"), evt.get("action")),
-            _confidence_text(_to_float(evt.get("confidence", 0))),
+            _confidence_cell(evt.get("confidence")),
             _latency_text(_to_float(evt.get("latency_ms", 0))),
             _sanitize_display(evt.get("action", "")),
             _sanitize_display(evt.get("downgrade", "")),

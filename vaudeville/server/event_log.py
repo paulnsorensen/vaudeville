@@ -30,7 +30,7 @@ _BLOCKING_ACTIONS = frozenset({"block", "ask"})
 class ClassificationEvent:
     rule: str
     verdict: str
-    confidence: float
+    confidence: float | None
     latency_ms: float
     prompt_chars: int
     reason: str = ""
@@ -40,6 +40,9 @@ class ClassificationEvent:
     action: str | None = None
     model: str | None = None
     downgrade: str | None = None
+    unsure: bool = False
+    unsure_below: float | None = None
+    confidence_missing: bool = False
     kind: str | None = None
 
 
@@ -103,7 +106,7 @@ class EventLogger:
             "ts": ts,
             "rule": event.rule,
             "verdict": event.verdict,
-            "confidence": round(event.confidence, 4),
+            "confidence": (round(event.confidence, 4) if event.confidence is not None else None),
             "latency_ms": round(event.latency_ms, 1),
             "prompt_chars": event.prompt_chars,
             "tier": event.tier,
@@ -113,6 +116,9 @@ class EventLogger:
             "action": event.action,
             "model": event.model,
             "downgrade": event.downgrade,
+            "unsure": event.unsure,
+            "unsure_below": event.unsure_below,
+            "confidence_missing": event.confidence_missing,
         }
         if event.kind is not None:
             common["kind"] = event.kind

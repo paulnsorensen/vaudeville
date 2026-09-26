@@ -27,6 +27,7 @@ from vaudeville.server.agents.delimit import HOOK_DATA_END, HOOK_DATA_START
 from vaudeville.server.event_log import EventLogger
 from vaudeville.server.hook import handle_hook_request
 from vaudeville.server.hook import pipeline as pipeline_module
+from vaudeville.server.hook.pipeline import DecideFn
 from vaudeville.server.log_config import LogConfig
 from vaudeville.server.user_config import UserConfig
 
@@ -1054,3 +1055,325 @@ class TestRunFailureKeepsBlock:
 
         assert recorder.call_count == 2
         assert "deny" in str(result["stdout"])
+
+
+UNSURE_RULE_YAML = """
+type: decide
+name: unsure-gate
+event: PreToolUse
+matcher: Write
+model: typesafe:jev-1.13
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+unsure:
+  below: 0.7
+  action: warn
+  outcomes: [violation]
+"""
+
+
+class TestUnsureGate:
+    """AC-7, AC-8: a low-confidence decide result substitutes `unsure.action`
+    for the `on:` action, under the tier ceiling, and logs the gate's own
+    telemetry; a None confidence keeps `on:` and logs confidence-missing."""
+
+    def _low_confidence_decide_fn(
+        self, confidence: float | None, outcome: str = "violation"
+    ) -> DecideFn:
+        def decide_fn(rule: DecideRule, config: UserConfig, text: str) -> DecideResult:
+            del rule, config, text
+            return DecideResult(outcome=outcome, confidence=confidence)
+
+        return decide_fn
+
+    def test_unsure_filtered_outcome_below_dispatches_unsure_action(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "unsure-gate", UNSURE_RULE_YAML)
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=self._low_confidence_decide_fn(0.5),
+                event_logger=logger,
+            )
+        finally:
+            logger.close()
+
+        assert "deny" not in str(result["stdout"])
+        time.sleep(0.05)
+        rows = [
+            json.loads(line)
+            for line in (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        ]
+        row = [r for r in rows if r["rule"] == "unsure-gate"][0]
+        assert row["action"] == "warn"
+        assert row["confidence"] == 0.5
+        assert row["unsure"] is True
+        assert row["unsure_below"] == 0.7
+        assert not (row["downgrade"] or "").startswith("unsure")
+
+    def test_unsure_unfiltered_below_dispatches_unsure_action(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An absent `outcomes` filter applies the gate to any outcome."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace("  outcomes: [violation]\n", ""),
+        )
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=self._low_confidence_decide_fn(0.5),
+                event_logger=logger,
+            )
+        finally:
+            logger.close()
+
+        time.sleep(0.05)
+        rows = [
+            json.loads(line)
+            for line in (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        ]
+        row = [r for r in rows if r["rule"] == "unsure-gate"][0]
+        assert row["action"] == "warn"
+
+    def test_unsure_at_threshold_keeps_on_action(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Strictly below triggers the gate; at threshold keeps `on:`."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "unsure-gate", UNSURE_RULE_YAML)
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=self._low_confidence_decide_fn(0.7),
+                event_logger=logger,
+            )
+        finally:
+            logger.close()
+
+        assert "deny" in str(result["stdout"])
+        time.sleep(0.05)
+        rows = [
+            json.loads(line)
+            for line in (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        ]
+        row = [r for r in rows if r["rule"] == "unsure-gate"][0]
+        assert row["action"] == "block"
+        assert row["unsure"] is False
+
+    @pytest.mark.parametrize(
+        ("tier", "expected_action"),
+        [("warn", "warn"), ("shadow", "allow")],
+    )
+    def test_unsure_tier_ceiling_still_caps_substituted_action(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        tier: str,
+        expected_action: str,
+    ) -> None:
+        """A tier-capped rule caps its gate's `block` substitute."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace("tier: block", f"tier: {tier}").replace(
+                "  action: warn", "  action: block"
+            ),
+        )
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=self._low_confidence_decide_fn(0.5),
+                event_logger=logger,
+            )
+        finally:
+            logger.close()
+
+        assert "permissionDecision" not in str(result["stdout"])
+        time.sleep(0.05)
+        rows = [
+            json.loads(line)
+            for line in (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        ]
+        row = [r for r in rows if r["rule"] == "unsure-gate"][0]
+        assert row["action"] == expected_action
+        assert f"tier:{tier}" in row["downgrade"]
+        assert row["unsure"] is True
+        assert row["unsure_below"] == 0.7
+
+    def test_unsure_confidence_missing_keeps_on_action(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "unsure-gate", UNSURE_RULE_YAML)
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            result = handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=self._low_confidence_decide_fn(None),
+                event_logger=logger,
+            )
+        finally:
+            logger.close()
+
+        assert "deny" in str(result["stdout"])
+        time.sleep(0.05)
+        rows = [
+            json.loads(line)
+            for line in (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        ]
+        row = [r for r in rows if r["rule"] == "unsure-gate"][0]
+        assert row["action"] == "block"
+        assert row["confidence"] is None
+        assert row["confidence_missing"] is True
+        assert not row["downgrade"]
+
+    def test_unsure_outcome_outside_filter_keeps_on_action(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An outcome outside `unsure.outcomes` keeps its `on:` action even
+        at low confidence (kills an `in_filter = True` mutant)."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace(
+                "  violation: block\n", "  violation: block\n  clean: warn\n"
+            ),
+        )
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            handle_hook_request(
+                _request(tmp_path),
+                config=_CONFIG,
+                decide_fn=self._low_confidence_decide_fn(0.1, outcome="clean"),
+                event_logger=logger,
+            )
+        finally:
+            logger.close()
+
+        time.sleep(0.05)
+        rows = [
+            json.loads(line)
+            for line in (logs_dir / "events.jsonl").read_text().strip().splitlines()
+        ]
+        row = [r for r in rows if r["rule"] == "unsure-gate"][0]
+        assert row["action"] == "warn"
+        assert row["unsure"] is False
+
+    def test_unsure_gate_add_context_action_reaches_output(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A gated `add-context` action carries its text into the response."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace(
+                "  action: warn", '  action: {action: add-context, text: "gated context"}'
+            ),
+        )
+
+        result = handle_hook_request(
+            _request(tmp_path),
+            config=_CONFIG,
+            decide_fn=self._low_confidence_decide_fn(0.5),
+        )
+
+        assert "gated context" in str(result["stdout"])
+
+    def test_unsure_gate_run_action_reaches_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A gated `run` action dispatches its named command."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace(
+                "  action: warn", "  action: {action: run, command: notify-target}"
+            ),
+        )
+        run_recorder = patch_run_command(monkeypatch)
+
+        handle_hook_request(
+            _request(tmp_path),
+            config=_CONFIG,
+            decide_fn=self._low_confidence_decide_fn(0.5),
+        )
+
+        assert run_recorder.calls == ["notify-target"]
+
+    def test_unsure_gate_reasons_message_uses_message_for(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A gated `block`/`warn` substitute still maps `reason:` through
+        `rule.reasons`, instead of showing the raw reason key."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace("  action: warn", "  action: block").replace(
+                'prompt: Classify.\noutcomes: [violation, clean]\n"on":',
+                "prompt: Classify.\noutcomes: [violation, clean]\n"
+                'reasons:\n  secret-leak: leaked a secret\n"on":',
+            ),
+        )
+
+        def decide_fn(rule: DecideRule, config: UserConfig, text: str) -> DecideResult:
+            del rule, config, text
+            return DecideResult(outcome="violation", reason="secret-leak", confidence=0.5)
+
+        result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=decide_fn)
+
+        assert "leaked a secret" in str(result["stdout"])
+
+
+class TestNullConfidenceLogging:
+    """A null confidence is written as JSON null through the pipeline, never 0.0."""
+
+    def test_null_confidence_writes_json_null(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-git-gate", DECIDE_RULE_YAML)
+
+        def decide_fn(rule: DecideRule, config: UserConfig, text: str) -> DecideResult:
+            del rule, config, text
+            return DecideResult(outcome="violation", confidence=None)
+
+        logs_dir = tmp_path / "logs"
+        logger = EventLogger(config=LogConfig(), logs_dir=str(logs_dir))
+        try:
+            handle_hook_request(
+                _request(tmp_path), config=_CONFIG, decide_fn=decide_fn, event_logger=logger
+            )
+        finally:
+            logger.close()
+
+        time.sleep(0.05)
+        raw = (logs_dir / "events.jsonl").read_text().strip().splitlines()[-1]
+        assert '"confidence": null' in raw

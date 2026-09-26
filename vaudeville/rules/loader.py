@@ -218,17 +218,19 @@ _REF_TYPES: dict[str, type[DecideRule] | type[RewriteRule]] = {
 }
 
 
+def _is_dangling(action: Action, rules: dict[str, DecideRule | RewriteRule]) -> bool:
+    """True if *action* references a rule that does not resolve to the
+    expected type for its `escalate`/`rewrite` action."""
+    expected = _REF_TYPES.get(action.action)
+    if expected is None or action.rule is None:
+        return False
+    return not isinstance(rules.get(action.rule), expected)
+
+
 def _dangling_outcomes(rule: DecideRule, rules: dict[str, DecideRule | RewriteRule]) -> list[str]:
     """Outcome names whose action references a rule that does not resolve
     to the expected type."""
-    dangling: list[str] = []
-    for outcome, action in rule.on.items():
-        expected = _REF_TYPES.get(action.action)
-        if expected is None or action.rule is None:
-            continue
-        if not isinstance(rules.get(action.rule), expected):
-            dangling.append(outcome)
-    return dangling
+    return [outcome for outcome, action in rule.on.items() if _is_dangling(action, rules)]
 
 
 def _drop_dangling_refs(
@@ -239,14 +241,17 @@ def _drop_dangling_refs(
     (for example `block`, `ask`) keep working. The name is kept for
     an existing test seam even though the function no longer drops the
     rule. Rule identities never change, so one pass is enough: no rule
-    disappears to leave another reference dangling."""
+    disappears to leave another reference dangling. `unsure.action` is
+    checked the same way as an `on:` outcome."""
     fixed: dict[str, DecideRule | RewriteRule] = {}
     for name, rule in rules.items():
         if not isinstance(rule, DecideRule):
             fixed[name] = rule
             continue
         dangling = _dangling_outcomes(rule, rules)
-        if not dangling:
+        gate = rule.unsure
+        unsure_dangling = gate is not None and _is_dangling(gate.action, rules)
+        if not dangling and not unsure_dangling:
             fixed[name] = rule
             continue
         new_on = dict(rule.on)
@@ -261,5 +266,15 @@ def _drop_dangling_refs(
                 action.rule,
             )
             new_on[outcome] = Action(action="allow")
-        fixed[name] = rule.model_copy(update={"on": new_on})
+        update: dict[str, object] = {"on": new_on}
+        if unsure_dangling and gate is not None:
+            logger.warning(
+                "[vaudeville] Rule %r unsure.action: reference %s -> %r does "
+                "not resolve to a rule of the right type; using allow",
+                name,
+                gate.action.action,
+                gate.action.rule,
+            )
+            update["unsure"] = gate.model_copy(update={"action": Action(action="allow")})
+        fixed[name] = rule.model_copy(update=update)
     return fixed

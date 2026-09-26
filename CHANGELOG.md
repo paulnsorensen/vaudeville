@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Changed
+- Dataset-based rule evaluation now builds and scores inline test cases through pydantic-evals
 - Rules are now typed `decide`/`rewrite` YAML (`type`, `outcomes`, `on`, `reasons`, `target`) validated by pydantic, replacing the untyped `labels`/`message`/`threshold` format
 - Classification runs through pydantic-ai against a configurable hosted model provider (set in `~/.vaudeville/config`), replacing local Phi-4-mini inference
 - `/vaudeville:setup` now runs a single `uv sync` and writes `~/.vaudeville/config` instead of selecting an MLX/GGUF backend

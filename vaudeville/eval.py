@@ -9,6 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from pydantic_ai.models import Model
+from pydantic_evals import Case, Dataset, increment_eval_metric
+from pydantic_evals.evaluators import (
+    ConfusionMatrixEvaluator,
+    Evaluator,
+    EvaluatorContext,
+    PrecisionRecallEvaluator,
+)
+from pydantic_evals.reporting import EvaluationReport
 
 from .rules import DecideRule, DecideTestCase, RewriteRule
 from .server.agents.decide import decide
@@ -16,11 +24,25 @@ from .server.user_config import UserConfig
 
 __all__ = [
     "CaseResult",
+    "DecideOutcome",
     "EvalResults",
+    "build_dataset",
     "classify_case",
     "evaluate_rule",
     "load_test_cases",
+    "run_dataset",
 ]
+
+
+@dataclass
+class DecideOutcome:
+    """A `decide` prediction, carried through a pydantic-evals `Case`/`ReportCase`."""
+
+    outcome: str | None
+    confidence: float | None = None
+
+    def __str__(self) -> str:
+        return str(self.outcome)
 
 
 @dataclass
@@ -127,6 +149,35 @@ def _update_results(
         )
 
 
+def _record_case(
+    results: EvalResults,
+    rule: DecideRule,
+    rule_name: str,
+    case_id: int,
+    case_text: str,
+    expected: str,
+    predicted_outcome: str | None,
+    confidence: float | None,
+) -> CaseResult:
+    """Score one case against `results` and build its `CaseResult`.
+
+    Shared by `classify_case` (live decide calls) and `evaluate_rule`
+    (Dataset-scored calls) so the two paths cannot drift.
+    """
+    _update_results(results, rule, expected, predicted_outcome, case_text)
+    if confidence is not None:
+        results.confidences.append(confidence)
+
+    return CaseResult(
+        rule=rule_name,
+        case_id=case_id,
+        text=case_text,
+        expected=expected,
+        predicted=predicted_outcome,
+        confidence=confidence,
+    )
+
+
 def classify_case(
     case: DecideTestCase,
     rule: DecideRule,
@@ -141,20 +192,103 @@ def classify_case(
     A fail-open `DecideResult.outcome is None` counts as predicted-negative.
     """
     result = decide(rule, config, case.text, model_override=model_override)
-    predicted = result.outcome
-
-    _update_results(results, rule, case.outcome, predicted, case.text)
-    if result.confidence is not None:
-        results.confidences.append(result.confidence)
-
-    return CaseResult(
-        rule=rule.name,
-        case_id=case_id,
-        text=case.text,
-        expected=case.outcome,
-        predicted=predicted,
-        confidence=result.confidence,
+    return _record_case(
+        results,
+        rule,
+        rule.name,
+        case_id,
+        case.text,
+        case.outcome,
+        result.outcome,
+        result.confidence,
     )
+
+
+@dataclass(repr=False)
+class _OutcomeMatch(Evaluator[str, DecideOutcome, None]):
+    """Bool assertion: predicted outcome equals the expected outcome.
+
+    `DecideOutcome` is a dataclass with no `__bool__`, so
+    `positive_from="expected_output"` would count every case as positive.
+    This assertion gives `PrecisionRecallEvaluator` a real positive signal.
+    """
+
+    def evaluate(self, ctx: EvaluatorContext[str, DecideOutcome, None]) -> bool:
+        return (
+            ctx.expected_output is not None and ctx.output.outcome == ctx.expected_output.outcome
+        )
+
+    def get_default_evaluation_name(self) -> str:
+        return "outcome_match"
+
+
+def build_dataset(rule: DecideRule) -> Dataset[str, DecideOutcome, None]:
+    """Build a `Dataset` from `rule`'s inline test cases.
+
+    Each case's `inputs` is the case text and `expected_output` carries the
+    expected outcome. `_OutcomeMatch` runs as a case evaluator so
+    `PrecisionRecallEvaluator` can score confidence against real positives.
+    `ConfusionMatrixEvaluator`/`PrecisionRecallEvaluator` run as report
+    evaluators once the dataset is scored.
+    """
+    cases = [
+        Case(
+            name=str(i),
+            inputs=case.text,
+            expected_output=DecideOutcome(outcome=case.outcome),
+        )
+        for i, case in enumerate(rule.test_cases)
+    ]
+    return Dataset(
+        name=rule.name,
+        cases=cases,
+        evaluators=[_OutcomeMatch()],
+        report_evaluators=[
+            ConfusionMatrixEvaluator(),
+            PrecisionRecallEvaluator(
+                score_key="confidence",
+                score_from="metrics",
+                positive_from="assertions",
+                positive_key="outcome_match",
+            ),
+        ],
+    )
+
+
+def run_dataset(
+    dataset: Dataset[str, DecideOutcome, None],
+    rule: DecideRule,
+    config: UserConfig,
+    *,
+    model_override: Model | None = None,
+) -> EvaluationReport[str, DecideOutcome, None]:
+    """Score `dataset` by running `decide` for `rule` over each case's text.
+
+    Runs deterministically: no progress bar, one case at a time.
+    """
+
+    first_failure: Exception | None = None
+
+    def _task(text: str) -> DecideOutcome:
+        nonlocal first_failure
+        if first_failure is not None:
+            raise RuntimeError("skipped after first failure") from None
+        try:
+            result = decide(rule, config, text, model_override=model_override)
+        except Exception as exc:
+            first_failure = exc
+            raise
+        if result.confidence is not None:
+            increment_eval_metric("confidence", result.confidence)
+        return DecideOutcome(outcome=result.outcome, confidence=result.confidence)
+
+    report = dataset.evaluate_sync(_task, progress=False, max_concurrency=1)
+    if report.failures:
+        failure = report.failures[0]
+        raise RuntimeError(
+            f"eval case {failure.name} failed: {failure.error_message}\n{failure.error_stacktrace}"
+        )
+    return report
 
 
 def evaluate_rule(
@@ -169,11 +303,27 @@ def evaluate_rule(
     if not isinstance(rule, DecideRule):
         raise ValueError(f"Rule not found: {rule_name}")
 
+    rule_for_eval = rule.model_copy(update={"test_cases": cases})
+    dataset = build_dataset(rule_for_eval)
+    report = run_dataset(dataset, rule_for_eval, config, model_override=model_override)
+    case_by_name = {report_case.name: report_case for report_case in report.cases}
+
     results = EvalResults(rule=rule_name)
     case_results: list[CaseResult] = []
     for i, case in enumerate(cases):
-        cr = classify_case(case, rule, config, results, case_id=i, model_override=model_override)
-        case_results.append(cr)
+        predicted = case_by_name[str(i)].output
+        case_results.append(
+            _record_case(
+                results,
+                rule_for_eval,
+                rule_for_eval.name,
+                i,
+                case.text,
+                case.outcome,
+                predicted.outcome,
+                predicted.confidence,
+            )
+        )
     return results, case_results
 
 

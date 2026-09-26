@@ -8,6 +8,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from vaudeville.eval_report import RunSummary
 from vaudeville.orchestrator._phase import Thresholds
 
 
@@ -77,17 +78,25 @@ def capture_eval_log(rule_name: str, project_root: str) -> str:
 
 
 def _eval_rule(rule_name: str, project_root: str) -> Thresholds | None:
-    out = capture_eval_log(rule_name, project_root)
-    if not out:
+    """Run the eval harness for one rule and parse its JSON run summary."""
+    try:
+        out = subprocess.run(
+            ["uv", "run", "python", "-m", "vaudeville.eval_cli", "--rule", rule_name, "--json"],
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+            check=False,
+        ).stdout
+    except FileNotFoundError:
         return None
     try:
-        return Thresholds(
-            p_min=float(re.search(r"precision=([\d.]+)", out).group(1)),  # type: ignore[union-attr]
-            r_min=float(re.search(r"recall=([\d.]+)", out).group(1)),  # type: ignore[union-attr]
-            f1_min=float(re.search(r"f1=([\d.]+)", out).group(1)),  # type: ignore[union-attr]
-        )
-    except (AttributeError, ValueError):
+        summary = RunSummary.model_validate_json(out)
+    except ValueError:
         return None
+    for rule in summary.rules:
+        if rule.rule == rule_name:
+            return Thresholds(p_min=rule.precision, r_min=rule.recall, f1_min=rule.f1)
+    return None
 
 
 def abandon_with_metrics(

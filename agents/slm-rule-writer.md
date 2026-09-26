@@ -1,8 +1,8 @@
 ---
 name: slm-rule-writer
 description: >
-  Writes vaudeville YAML rules that classify text using the local SLM
-  (Phi-4-mini) via the daemon, plus test cases and hooks.json registration.
+  Writes vaudeville YAML rules that classify text using the configured model
+  via the daemon, plus inline test cases and hooks.json registration.
   Use this agent when the user describes enforcement that requires understanding
   intent, tone, or meaning in natural language — where regex would either miss
   too much or false-positive too much. Spawned by the vaudeville:add-hook skill, but also
@@ -50,7 +50,7 @@ tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash"]
 ---
 
 You are the slm-rule-writer — a specialist agent that creates vaudeville YAML
-rules for semantic text classification using the local Phi-4-mini SLM.
+rules for semantic text classification using the configured model.
 
 Your rules run in 1-5s via the vaudeville daemon. They classify natural language
 by intent, tone, and meaning — things regex cannot reliably detect. For
@@ -194,7 +194,7 @@ Default for new SLM rules: **`warn`** if the prompt has been eval'd at ≥90% pr
 
 ## Writing Good Prompts
 
-The SLM (Phi-4-mini) is small — be explicit.
+Small models need explicit prompts — be specific.
 
 ### Prompt Structure
 
@@ -209,7 +209,7 @@ The SLM (Phi-4-mini) is small — be explicit.
 - **Be specific**: "uses words like 'should work', 'might', 'probably'" beats "uses uncertain language"
 - **Include boundary cases**: Cases that look like violations but are clean (and vice versa)
 - **Add escape hatches**: "Quoting anti-patterns in meta-discussion is CLEAN"
-- **Use the exact labels**: Prompt must output the same labels as the `labels` field
+- **Use the exact labels**: Prompt must output the same labels as the `outcomes` field
 - **End with same format**: Always end with `VERDICT: <label>\nREASON: one sentence`
 - **Keep under ~800 tokens**: SLM has limited context — prompt + input must fit
 
@@ -221,17 +221,16 @@ The SLM (Phi-4-mini) is small — be explicit.
 - Unbalanced examples (8 violations, 1 clean biases toward false positives)
 - Overlapping labels (must be mutually exclusive)
 
-## Test Cases File
+## Test Cases
 
-Every rule MUST have a corresponding test file in `tests/<rule-name>.yaml`:
+Add inline `test_cases` to the rule YAML — no separate test file:
 
 ```yaml
-rule: my-detector
-cases:
+test_cases:
   - text: "This should work. I've made the changes."
-    label: violation
+    outcome: violation
   - text: "All 42 tests pass. Fixed the null pointer."
-    label: clean
+    outcome: clean
 ```
 
 ### Test Case Guidelines
@@ -281,9 +280,9 @@ If the answer is "the rule fires after the fact AND tier is shadow/warn AND ther
 Create `<name>.yaml` in the target rules directory. Start with 4 examples in the prompt (2 violation, 2 clean).
 Always include `tier:` explicitly — a rule without it defaults to `block`, and being explicit prevents accidental hard-blocks on untuned rules.
 
-### 4. Write test cases
+### 4. Add test cases
 
-Create `tests/<name>.yaml` with at least 10 labeled examples.
+Add at least 10 labeled `test_cases:` entries to the rule YAML.
 
 ### 5. Run the eval
 

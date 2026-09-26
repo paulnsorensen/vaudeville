@@ -135,15 +135,33 @@ class TestOrchestrateGenerate:
 
         assert rc == 0
 
-    def test_eval_rule_parses_metrics_from_stdout(self) -> None:
-        """_eval_rule parses precision/recall/f1 regex matches from subprocess stdout."""
+    def test_eval_rule_parses_run_summary(self) -> None:
+        """_eval_rule parses the rule's precision/recall/f1 from --json stdout."""
+        from vaudeville.eval_report import RunSummary
         from vaudeville.orchestrator._abandon import _eval_rule
 
+        summary = RunSummary.model_validate(
+            {
+                "passed": True,
+                "rules": [
+                    {
+                        "rule": "rule",
+                        "n": 10,
+                        "tp": 8,
+                        "fp": 0,
+                        "tn": 2,
+                        "fn": 0,
+                        "precision": 0.92,
+                        "recall": 0.81,
+                        "f1": 0.86,
+                        "passed": True,
+                        "calibration": {"status": "n/a", "n": 0},
+                    }
+                ],
+            }
+        )
         fake = subprocess.CompletedProcess(
-            args=["uv"],
-            returncode=0,
-            stdout="metrics: precision=0.92 recall=0.81 f1=0.86",
-            stderr="",
+            args=["uv"], returncode=0, stdout=summary.to_json(), stderr=""
         )
         with patch("subprocess.run", return_value=fake):
             result = _eval_rule("rule", "/proj")
@@ -152,12 +170,24 @@ class TestOrchestrateGenerate:
         assert result.r_min == 0.81
         assert result.f1_min == 0.86
 
-    def test_eval_rule_returns_none_when_metrics_missing(self) -> None:
-        """Missing precision/recall/f1 tokens → None (no crash)."""
+    def test_eval_rule_invalid_json_returns_none(self) -> None:
+        """Non-JSON stdout → None (no crash)."""
         from vaudeville.orchestrator._abandon import _eval_rule
 
         fake = subprocess.CompletedProcess(
-            args=["uv"], returncode=1, stdout="no metrics here", stderr="boom"
+            args=["uv"], returncode=1, stdout="not json at all", stderr="boom"
+        )
+        with patch("subprocess.run", return_value=fake):
+            assert _eval_rule("rule", "/proj") is None
+
+    def test_eval_rule_missing_rule_returns_none(self) -> None:
+        """Valid RunSummary JSON without the requested rule → None."""
+        from vaudeville.eval_report import RunSummary
+        from vaudeville.orchestrator._abandon import _eval_rule
+
+        summary = RunSummary.model_validate({"passed": True, "rules": []})
+        fake = subprocess.CompletedProcess(
+            args=["uv"], returncode=0, stdout=summary.to_json(), stderr=""
         )
         with patch("subprocess.run", return_value=fake):
             assert _eval_rule("rule", "/proj") is None

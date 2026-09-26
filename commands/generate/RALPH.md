@@ -25,6 +25,7 @@ Do NOT tune. Do NOT eval. The orchestrator handles evaluation and routes each ru
 ## Rule YAML format
 
 ```yaml
+type: decide                   # decide (this generator only writes decide rules)
 name: my-detector              # Unique identifier (kebab-case)
 event: Stop                    # Hook event: Stop, PostToolUse, PreToolUse, UserPromptSubmit
 prompt: |
@@ -45,16 +46,15 @@ prompt: |
 
   VERDICT: violation or clean
   REASON: one sentence
-context:
-  - field: last_assistant_message
-message: "Quality violation: {reason}"
-threshold: 0.5
-tier: shadow
+outcomes: [violation, clean]   # labels the model may return
+"on":
+  violation: warn               # or block if --mode live
+tier: shadow                    # or warn if --mode live
 test_cases:
   - text: "Example violation text"
-    label: violation
+    outcome: violation
   - text: "Example clean text"
-    label: clean
+    outcome: clean
 ```
 
 Write all 3 rule files. Do not print to stdout — the orchestrator reads the files directly.

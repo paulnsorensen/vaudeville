@@ -64,6 +64,7 @@ Guidelines:
 - Each item must specify: what to change AND why (one sentence)
 - Prefer specific, falsifiable changes over vague direction
 - Include both prompt-diff items (criteria/examples) AND new test case additions where the eval exposed a boundary gap
+- Consider an `unsure:` escalation gate as a tuning lever: on a `model: typesafe:*` rule, `unsure: {below: <confidence in (0,1]>, action: <Action>}` (optionally scoped to specific `outcomes:`) routes low-confidence calls to a safer action instead of the rule's normal `on:` mapping
 - If the prior plan covered most good options and metrics barely moved, note this and focus on fundamentally different approaches
 - If nothing clearly warrants change (thresholds already met or no clear signal), write a single line: `EMPTY_PLAN`
 

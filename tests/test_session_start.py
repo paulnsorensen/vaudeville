@@ -361,9 +361,7 @@ class TestVersionStamp:
         assert result.returncode == 0, result.stderr.decode()
         assert "Version mismatch" in result.stderr.decode()
 
-    def test_missing_manifest_stamps_unknown_and_fails_open(
-        self, session_env: SessionEnv
-    ) -> None:
+    def test_missing_manifest_stamps_unknown_and_fails_open(self, session_env: SessionEnv) -> None:
         """No plugin.json under the plugin root: the stamp is `unknown` and
         the script still exits 0 (the manifest read must not trip `set -e`)."""
         _skip_if_unsupported()

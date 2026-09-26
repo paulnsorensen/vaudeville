@@ -212,6 +212,16 @@ class TestMinimumConfidentCases:
         assert result.recommended_below == 0.25
         assert result.unsure_rate == 0.5
 
+    def test_unsure_rate_counts_only_low_confidence_scored_cases(self) -> None:
+        cases = [_case(0, 0.9, correct=True), _case(1, 0.9, correct=True)]
+        cases += [_case(i, 0.2, correct=False) for i in range(2, 4)]
+        cases += [_case(i, None, correct=True) for i in range(4, 6)]
+
+        result = calibrate(cases)
+
+        assert result.recommended_below == 0.25
+        assert result.unsure_rate == pytest.approx(1 / 3)
+
 
 class TestUnfilteredGateNote:
     def test_recommendation_states_it_assumes_an_unfiltered_gate(self) -> None:

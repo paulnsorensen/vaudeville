@@ -11,10 +11,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Rules are now typed `decide`/`rewrite` YAML (`type`, `outcomes`, `on`, `reasons`, `target`) validated by pydantic, replacing the untyped `labels`/`message`/`threshold` format
 - Classification runs through pydantic-ai against a configurable hosted model provider (set in `~/.vaudeville/config`), replacing local Phi-4-mini inference
 - `/vaudeville:setup` now runs a single `uv sync` and writes `~/.vaudeville/config` instead of selecting an MLX/GGUF backend
+- `--json` emits rule summaries, and `--calibrate --rule` emits confidence reports.
 
 ### Removed
 - MLX backend, GGUF backend, and the `vaudeville setup` model-download step
 - The old `labels`/`message`/`threshold` rule fields
+- `--cross-validate` and `just eval-cv` are no longer available.
 
 ### Upgrade Note
 Old-format rules (`labels`/`message`/`threshold`, no `type:`) fail the typed

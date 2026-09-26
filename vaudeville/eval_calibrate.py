@@ -53,8 +53,7 @@ class Calibration(BaseModel):
     `n` counts every case; `scored` counts the cases with a confidence (0 in
     a summary that predates the field).
     `status` is `"n/a"` when no case carries a confidence, `"low-sample"`
-    under 30 scored cases (the numbers are still reported, but noisy), else
-    `"ok"`.
+    under 30 scored cases (the report includes noisy values), else `"ok"`.
     """
 
     status: Literal["ok", "low-sample", "n/a"]
@@ -143,15 +142,14 @@ def _ece(scored: list[tuple[float, bool]], *, bins: int = _ECE_BINS) -> float:
     return ece
 
 
-def _sweep(scored: list[tuple[float, bool]]) -> list[ThresholdPoint]:
-    total = len(scored)
+def _sweep(scored: list[tuple[float, bool]], total: int) -> list[ThresholdPoint]:
     points: list[ThresholdPoint] = []
     for threshold in _SWEEP_THRESHOLDS:
         confident = [correct for s, correct in scored if s >= threshold]
         precision = (
             sum(1 for correct in confident if correct) / len(confident) if confident else None
         )
-        unsure_rate = 1 - len(confident) / total
+        unsure_rate = (len(scored) - len(confident)) / total
         points.append(
             ThresholdPoint(
                 threshold=threshold,
@@ -186,7 +184,7 @@ def calibrate(case_results: list[CaseResult]) -> Calibration:
     if not scored:
         return Calibration(status="n/a", n=n, scored=0)
 
-    sweep = _sweep(scored)
+    sweep = _sweep(scored, n)
     recommended = _recommended(sweep)
     recommended_below = recommended[0] if recommended is not None else None
     unsure_rate = recommended[1] if recommended is not None else None

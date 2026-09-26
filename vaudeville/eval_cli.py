@@ -71,6 +71,8 @@ def main(*, model_override: Model | None = None) -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    if args.calibrate and not args.rule:
+        parser.error("--calibrate requires --rule")
     if args.calibrate and args.json:
         parser.error("--calibrate is not compatible with --json")
 
@@ -86,8 +88,6 @@ def main(*, model_override: Model | None = None) -> None:
     config = load_user_config()
 
     if args.calibrate:
-        if not args.rule:
-            parser.error("--calibrate requires --rule")
         _run_calibrate(test_suites, rules, config, model_override=model_override)
         sys.exit(0)
 

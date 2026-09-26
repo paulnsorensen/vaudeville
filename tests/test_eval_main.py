@@ -170,10 +170,19 @@ class TestMain:
     def test_calibrate_without_rule_is_a_usage_error(self) -> None:
         with (
             patch("sys.argv", ["eval", "--calibrate"]),
-            patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
-            patch("vaudeville.eval_cli.load_test_cases", return_value={}),
+            patch(
+                "vaudeville.eval_cli.load_rules_layered",
+                side_effect=AssertionError("rules must not load"),
+            ),
+            patch(
+                "vaudeville.eval_cli.load_test_cases",
+                side_effect=AssertionError("test cases must not load"),
+            ),
+            patch(
+                "vaudeville.eval_cli.load_user_config",
+                side_effect=AssertionError("config must not load"),
+            ),
         ):
-            mock_layered.return_value.by_name.return_value = {}
             from vaudeville.eval_cli import main
 
             with pytest.raises(SystemExit) as exc_info:
@@ -214,7 +223,7 @@ class TestMain:
                 main()
         assert exc_info.value.code == 0
         out = capsys.readouterr().out
-        assert "Calibration: git-gate" in out
+        assert out.count("Calibration: git-gate") == 1
         assert "low-sample" in out
 
     def test_calibrate_full_sample_reports_all_metrics(
@@ -343,6 +352,63 @@ class TestJsonRunSummary:
         assert rule_summary["f1"] == 1.0
         assert rule_summary["passed"] is True
         assert rule_summary["calibration"]["status"] == "low-sample"
+
+    def test_json_run_summary_reports_each_rule_and_aggregate_failure(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from vaudeville.server.agents.decide import DecideResult
+
+        passing_rule = _rule()
+        failing_rule = parse_rule({**_RULE_DICT, "name": "other-gate"})
+        assert isinstance(failing_rule, DecideRule)
+        suites = {
+            "git-gate": [
+                DecideTestCase(text="violation case", outcome="violation"),
+                DecideTestCase(text="clean case", outcome="clean"),
+            ],
+            "other-gate": [
+                DecideTestCase(text="violation case", outcome="violation"),
+                DecideTestCase(text="clean case", outcome="clean"),
+            ],
+        }
+
+        def fake_decide(
+            rule: DecideRule, config: UserConfig, text: str, *, model_override: object = None
+        ) -> DecideResult:
+            del config, model_override
+            outcome = "violation" if "violation" in text else "clean"
+            if rule.name == "other-gate" and outcome == "violation":
+                outcome = "clean"
+            return DecideResult(outcome=outcome, confidence=0.8)
+
+        with (
+            patch("sys.argv", ["eval", "--json"]),
+            patch("vaudeville.eval_cli.load_rules_layered") as mock_layered,
+            patch("vaudeville.eval_cli.load_test_cases", return_value=suites),
+            patch(
+                "vaudeville.eval_cli.load_user_config",
+                return_value=UserConfig(default_model="test-model"),
+            ),
+            patch("vaudeville.eval.decide", side_effect=fake_decide),
+        ):
+            mock_layered.return_value.by_name.return_value = {
+                "git-gate": passing_rule,
+                "other-gate": failing_rule,
+            }
+            from vaudeville.eval_cli import main
+
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 1
+        record = json.loads(capsys.readouterr().out)
+        summaries = {summary["rule"]: summary for summary in record["rules"]}
+        assert set(summaries) == {"git-gate", "other-gate"}
+        assert summaries["git-gate"]["n"] == 2
+        assert summaries["git-gate"]["passed"] is True
+        assert summaries["other-gate"]["n"] == 2
+        assert summaries["other-gate"]["passed"] is False
+        assert record["passed"] is False
 
     def test_json_n_counts_every_case_including_non_positive_mislabel(
         self, capsys: pytest.CaptureFixture[str]

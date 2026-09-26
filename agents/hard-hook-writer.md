@@ -54,7 +54,7 @@ JS/Python/Bash hook scripts for Claude Code.
 
 Your hooks run in <100ms. They enforce structural rules: command patterns, file
 paths, JSON field checks, automated formatting, context injection. They do NOT
-classify natural language — that's the vaudeville:slm-rule-writer's job.
+classify natural language — use `vaudeville:add-hook` for semantic rules.
 
 ## Hook Locations
 
@@ -273,7 +273,7 @@ Always explain what the hook does, which event it targets, and how to test it.
 
 ## What This Agent Does NOT Do
 
-- Classify natural language intent, tone, or meaning (use vaudeville:slm-rule-writer)
+- Classify natural language intent, tone, or meaning (use `vaudeville:add-hook`)
 - Create vaudeville YAML rules or run the eval harness
 - Modify existing hooks without explicit user approval
 - Debug hook execution failures (troubleshoot manually via session logs)

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,11 +15,9 @@ from typing import Any
 import argcomplete
 from rich.console import Console
 
-from vaudeville import orchestrator
 from vaudeville._stats_rendering import print_stats_human
 from vaudeville.cli_rules import attach_rule_parsers, dispatch_rule_command
 from vaudeville.core.paths import find_project_root as _core_find_project_root
-from vaudeville.orchestrator import RalphError, Thresholds
 from vaudeville.rules import load_rules_layered
 
 _EVENTS_LOG = str(Path.home() / ".vaudeville" / "logs" / "events.jsonl")
@@ -60,94 +57,6 @@ def _find_project_root() -> str:
     return _core_find_project_root() or str(Path.cwd())
 
 
-def _strict_project_root() -> str | None:
-    return _core_find_project_root()
-
-
-def _resolve_rules_dir(scope: str, strict_root: str | None) -> str:
-    if scope == "global":
-        return str(Path.home() / ".vaudeville" / "rules")
-    if strict_root is None:
-        print("error: --scope project requires a git project root", file=sys.stderr)
-        sys.exit(2)
-    return str(Path(strict_root) / ".vaudeville" / "rules")
-
-
-def _find_commands_dir() -> str:
-    """Return commands/ root, honoring VAUDEVILLE_COMMANDS_DIR if set."""
-    override = os.environ.get("VAUDEVILLE_COMMANDS_DIR")
-    if override:
-        return override
-    return str(Path(_find_project_root()) / "commands")
-
-
-def _threshold_float(value: str) -> float:
-    v = float(value)
-    if not (0.0 <= v <= 1.0):
-        raise argparse.ArgumentTypeError(f"must be between 0.0 and 1.0, got {v}")
-    return v
-
-
-def cmd_tune(args: argparse.Namespace) -> int:
-    """Tune a rule via the multi-phase design→tune→judge pipeline."""
-    import contextlib
-
-    from vaudeville.orchestrator_tui import OrchestratorTUI
-
-    strict_root = _strict_project_root()
-    project_root = strict_root or str(Path.cwd())
-    commands_dir = _find_commands_dir()
-    rules_dir = _resolve_rules_dir(args.scope, strict_root)
-    thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
-    tui: OrchestratorTUI | None = OrchestratorTUI() if sys.stdout.isatty() else None
-    try:
-        with tui or contextlib.nullcontext():
-            return orchestrator.orchestrate_tune(
-                rule_name=args.rule,
-                thresholds=thresholds,
-                rounds=args.rounds,
-                tuner_iters=args.tuner_iters,
-                project_root=project_root,
-                commands_dir=commands_dir,
-                rules_dir=rules_dir,
-                tui=tui,
-            )
-    except RalphError as e:
-        print(str(e), file=sys.stderr)
-        return 2
-
-
-def cmd_generate(args: argparse.Namespace) -> int:
-    """Generate new rules via the multi-phase design→tune→judge pipeline."""
-    import contextlib
-
-    from vaudeville.orchestrator_tui import OrchestratorTUI
-
-    strict_root = _strict_project_root()
-    project_root = strict_root or str(Path.cwd())
-    commands_dir = _find_commands_dir()
-    rules_dir = _resolve_rules_dir(args.scope, strict_root)
-    mode = "live" if args.live else "shadow"
-    thresholds = Thresholds(p_min=args.p_min, r_min=args.r_min, f1_min=args.f1_min)
-    tui: OrchestratorTUI | None = OrchestratorTUI() if sys.stdout.isatty() else None
-    try:
-        with tui or contextlib.nullcontext():
-            return orchestrator.orchestrate_generate(
-                instructions=args.instructions,
-                thresholds=thresholds,
-                rounds=args.rounds,
-                tuner_iters=args.tuner_iters,
-                mode=mode,
-                project_root=project_root,
-                commands_dir=commands_dir,
-                rules_dir=rules_dir,
-                tui=tui,
-            )
-    except RalphError as e:
-        print(str(e), file=sys.stderr)
-        return 2
-
-
 def _print_stats_human(result: dict[str, Any], console: Console | None = None) -> None:
     print_stats_human(result, console if console is not None else _console)
 
@@ -160,85 +69,11 @@ def _add_log_path_arg(p: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_pipeline_args(p: argparse.ArgumentParser) -> None:
-    """Add threshold + orchestration args shared by tune and generate."""
-    p.add_argument(
-        "--p-min",
-        type=_threshold_float,
-        default=0.95,
-        help="Minimum precision threshold (default: 0.95)",
-    )
-    p.add_argument(
-        "--r-min",
-        type=_threshold_float,
-        default=0.80,
-        help="Minimum recall threshold (default: 0.80)",
-    )
-    p.add_argument(
-        "--f1-min",
-        type=_threshold_float,
-        default=0.85,
-        help="Minimum F1 threshold (default: 0.85)",
-    )
-    p.add_argument(
-        "--rounds",
-        type=int,
-        default=3,
-        help="Maximum orchestration rounds (default: 3)",
-    )
-    p.add_argument(
-        "--tuner-iters",
-        type=int,
-        default=10,
-        help="Ralph iterations for tune phase (default: 10)",
-    )
-    p.add_argument(
-        "--scope",
-        choices=("project", "global"),
-        default="global",
-        help="Where the rule lives: project (.vaudeville/rules/) or "
-        "global (~/.vaudeville/rules/) [default: global]",
-    )
-
-
-def _build_tune_parser(sub: Any) -> None:
-    p = sub.add_parser(
-        "tune",
-        help="Tune a rule to meet precision/recall/f1 thresholds (autonomous agent)",
-    )
-    p.add_argument("rule", help="Rule name to tune")
-    _add_pipeline_args(p)
-
-
-def _build_generate_parser(sub: Any) -> None:
-    p = sub.add_parser(
-        "generate",
-        help="Generate a new rule from instructions (autonomous agent)",
-    )
-    p.add_argument(
-        "instructions",
-        nargs="?",
-        default=None,
-        help="Description of what the rule should detect "
-        "(omit to use session-analytics or curated bundle)",
-    )
-    p.add_argument(
-        "--live",
-        action="store_true",
-        help="Run generation in live mode instead of shadow mode",
-    )
-    _add_pipeline_args(p)
-
-
 def _dispatch(args: argparse.Namespace) -> None:
     if args.command == "watch":
         cmd_watch(args)
     elif args.command == "stats":
         cmd_stats(args)
-    elif args.command == "tune":
-        sys.exit(cmd_tune(args))
-    elif args.command == "generate":
-        sys.exit(cmd_generate(args))
     elif dispatch_rule_command(args):
         pass
 
@@ -256,9 +91,6 @@ def main() -> None:
     stats_parser = sub.add_parser("stats", help="Show classification statistics")
     stats_parser.add_argument("--json", action="store_true", help="Output raw JSON")
     _add_log_path_arg(stats_parser)
-
-    _build_tune_parser(sub)
-    _build_generate_parser(sub)
 
     attach_rule_parsers(sub)
 

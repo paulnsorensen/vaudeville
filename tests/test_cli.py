@@ -124,29 +124,15 @@ class TestMain:
 
         mock_agg.assert_called_once()
 
-    def test_tune_command_dispatches(self) -> None:
-        with (
-            patch("sys.argv", ["vaudeville", "tune", "no-hedging"]),
-            patch("vaudeville.orchestrator.orchestrate_tune", return_value=0) as mock_tune,
-        ):
+    @pytest.mark.parametrize("command", ["tune", "generate"])
+    def test_removed_loop_commands_are_not_registered(self, command: str) -> None:
+        with patch("sys.argv", ["vaudeville", command]):
             from vaudeville.__main__ import main
 
-            with pytest.raises(SystemExit, match="0"):
+            with pytest.raises(SystemExit) as exc_info:
                 main()
 
-        mock_tune.assert_called_once()
-
-    def test_generate_command_dispatches(self) -> None:
-        with (
-            patch("sys.argv", ["vaudeville", "generate", "describe rule"]),
-            patch("vaudeville.orchestrator.orchestrate_generate", return_value=0) as mock_gen,
-        ):
-            from vaudeville.__main__ import main
-
-            with pytest.raises(SystemExit, match="0"):
-                main()
-
-        mock_gen.assert_called_once()
+        assert exc_info.value.code == 2
 
     def test_argcomplete_autocomplete_invoked(self) -> None:
         empty: dict[str, object] = {"total": 0}

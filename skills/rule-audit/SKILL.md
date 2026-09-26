@@ -56,7 +56,7 @@ What's the highest tier where this rule changes behavior usefully?
 ### 3. Model ceiling
 
 Search the YAML for `STUCK-AT-MODEL-CEILING` comments. If present:
-- Phi-4-mini cannot tune past the documented F1.
+- The rule's model cannot tune past the documented F1.
 - If the documented precision can clear the promotion threshold (≥70% for warn, ≥85% for block), the rule is shippable but capped.
 - If precision is below the warn threshold, the rule is a permanent shadow — recommend converting to a hard hook (regex/JS) or deletion.
 

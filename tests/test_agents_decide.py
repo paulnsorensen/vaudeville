@@ -9,6 +9,7 @@ AC-18: hook text reaches the model as escaped, delimited data.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
@@ -23,6 +24,7 @@ from vaudeville.server.agents.model_resolution import (
     MODEL_REQUEST_TIMEOUT_SECONDS,
     resolve_model,
 )
+from vaudeville.server.agents.output_types import build_decide_output_type
 from vaudeville.server.user_config import ProviderConfig, UserConfig
 
 DECIDE_RULE = {
@@ -59,17 +61,33 @@ class TestBuildDecideAgent:
     def test_output_type_from_outcomes_restricts_output(self) -> None:
         rule = parse_rule(DECIDE_RULE)
         assert isinstance(rule, DecideRule)
-        recorder = _RecordingModel('{"outcome": "violation", "confidence": 0.8}')
+        recorder = _RecordingModel('{"outcome": "violation"}')
 
         agent = build_decide_agent(rule, recorder.model)
         result = agent.run_sync("some transcript text")
 
         assert recorder.call_count == 1
         assert result.output.outcome == "violation"
-        assert result.output.confidence == 0.8
         output_type = type(result.output)
         with pytest.raises(Exception):
             output_type(outcome="not-an-outcome")
+
+    @pytest.mark.parametrize(
+        "rule_dict",
+        [
+            DECIDE_RULE,
+            {**DECIDE_RULE, "reasons": {"secret-leak": "leaked a secret", "other": "other"}},
+            {**DECIDE_RULE, "reason": "text"},
+        ],
+    )
+    def test_output_type_has_no_confidence_field(self, rule_dict: dict[str, Any]) -> None:
+        """AC-5: no decide output type carries a self-reported confidence field."""
+        rule = parse_rule(rule_dict)
+        assert isinstance(rule, DecideRule)
+
+        output_type = build_decide_output_type(rule)
+
+        assert "confidence" not in output_type.model_fields
 
     def test_output_type_includes_reason_when_rule_declares_reasons(self) -> None:
         rule = parse_rule(
@@ -116,7 +134,7 @@ class TestAnthropicModelConstruction:
 class TestResolveModel:
     def test_typesafe_model_built_and_never_called(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("TYPESAFE_API_KEY", "fake-key")
-        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13"})
+        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13.0"})
         assert isinstance(rule, DecideRule)
         config = UserConfig(
             providers={"typesafe": ProviderConfig(key_env="TYPESAFE_API_KEY")},
@@ -145,7 +163,7 @@ class TestResolveModel:
         """F7: the model uses the key under `key_env`, not the provider default."""
         monkeypatch.setenv("TYPESAFE_API_KEY", "default-var-key")
         monkeypatch.setenv("MY_TYPESAFE_KEY", "configured-key")
-        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13"})
+        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13.0"})
         assert isinstance(rule, DecideRule)
         config = UserConfig(
             providers={"typesafe": ProviderConfig(key_env="MY_TYPESAFE_KEY")},
@@ -165,7 +183,7 @@ class TestResolveModel:
             raise RuntimeError("secret-key-value rejected")
 
         monkeypatch.setattr(model_resolution, "infer_model", _raise)
-        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13"})
+        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13.0"})
         assert isinstance(rule, DecideRule)
         config = UserConfig(
             providers={"typesafe": ProviderConfig(key_env="MY_TYPESAFE_KEY")},
@@ -220,13 +238,13 @@ class TestDecideFailOpen:
         rule = parse_rule({**DECIDE_RULE, "model": "anthropic:claude-haiku-4-5"})
         assert isinstance(rule, DecideRule)
         config = UserConfig(providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")})
-        recorder = _RecordingModel('{"outcome": "clean", "confidence": 0.5}')
+        recorder = _RecordingModel('{"outcome": "clean"}')
 
         result = decide(rule, config, "some transcript text", model_override=recorder.model)
 
         assert recorder.call_count == 1
         assert result.outcome == "clean"
-        assert result.confidence == 0.5
+        assert result.confidence is None
 
     def test_missing_key_allows_with_one_notice_per_provider(
         self,
@@ -261,6 +279,95 @@ class TestDecideFailOpen:
 
         assert recorder.call_count == 0
         assert result == ALLOW
+
+
+class TestDecideConfidenceFromProviderDetails:
+    """AC-4/AC-5: decide() reads confidence from provider_details, fail-open."""
+
+    def _rule_and_config(self) -> tuple[DecideRule, UserConfig]:
+        rule = parse_rule({**DECIDE_RULE, "model": "anthropic:claude-haiku-4-5"})
+        assert isinstance(rule, DecideRule)
+        config = UserConfig(providers={"anthropic": ProviderConfig(key_env="ANTHROPIC_API_KEY")})
+        return rule, config
+
+    def _function_model(self, provider_details: Any) -> FunctionModel:
+        def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            del messages, info
+            return ModelResponse(
+                parts=[TextPart('{"outcome": "violation"}')],
+                provider_details=provider_details,
+            )
+
+        return FunctionModel(respond)
+
+    def test_decide_confidence_from_provider_details_probabilities(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        rule, config = self._rule_and_config()
+        model = self._function_model(
+            {
+                "probabilities": {"outcome": {"violation": 0.73, "clean": 0.27}},
+                "confidence": {"outcome": 0.2},
+                "scores": {"outcome": {"violation": 1.0, "clean": 0.0}},
+            }
+        )
+
+        result = decide(rule, config, "text", model_override=model)
+
+        assert result.confidence == 0.73
+
+    def test_decide_confidence_provider_details_confidence_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        rule, config = self._rule_and_config()
+        model = self._function_model(
+            {
+                "probabilities": {"outcome": {"clean": 0.58}},
+                "confidence": {"outcome": 0.42},
+                "scores": {"outcome": {"clean": 1.0}},
+            }
+        )
+
+        result = decide(rule, config, "text", model_override=model)
+
+        assert result.confidence == 0.42
+
+    def test_decide_confidence_provider_details_absent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        rule, config = self._rule_and_config()
+        model = self._function_model(None)
+
+        result = decide(rule, config, "text", model_override=model)
+
+        assert result.confidence is None
+
+    @pytest.mark.parametrize(
+        "provider_details",
+        [
+            "not-a-dict",
+            {"probabilities": "not-a-dict"},
+            {"probabilities": {"outcome": "not-a-dict"}},
+            {"probabilities": {"outcome": {"violation": "not-a-number"}}},
+            {"probabilities": {"outcome": {"violation": 1.5}}},
+            {"probabilities": {"outcome": {"violation": True}}},
+            {"confidence": {"outcome": None}},
+            {"confidence": "not-a-dict"},
+        ],
+    )
+    def test_decide_confidence_provider_details_malformed(
+        self, monkeypatch: pytest.MonkeyPatch, provider_details: Any
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        rule, config = self._rule_and_config()
+        model = self._function_model(provider_details)
+
+        result = decide(rule, config, "text", model_override=model)
+
+        assert result.confidence is None
 
 
 class TestDataDelimiting:

@@ -104,14 +104,14 @@ Before writing a YAML, run the impact filter:
 3. **What's the highest reachable tier where this changes behavior?** If even `tier: block` can't fix the violation usefully (e.g., "you said 'Great question!'" — can't unsay it), don't write the rule.
 4. **Is the pattern structural?** Terminal regex like "Shall I…?" should be a hard hook (≤100ms) instead of an SLM rule (1-5s).
 
-Use `vaudeville:add-hook` (which routes to `vaudeville:slm-rule-writer` for semantic rules or `vaudeville:hard-hook-writer` for structural ones) — both apply this filter automatically.
+Use `vaudeville:add-hook` to write a semantic rule or route a structural hook. Apply this filter before writing either one.
 
 ## Tooling
 
 | When you want to… | Use |
 |-------------------|-----|
 | Add a new rule | `vaudeville:add-hook` |
-| Tune an existing rule against test cases | `vaudeville tune <name>` (or `/tune`) |
+| Tune an existing rule against test cases | Edit the rule, then run `uv run python -m vaudeville.eval --rule <name>` |
 | Check eval accuracy | `uv run python -m vaudeville.eval --rule <name>` |
 | Promote/demote based on runtime data | `/tier-advisor` then `/rule-admin` |
 | Audit rule design (find useless rules) | `/rule-audit` |

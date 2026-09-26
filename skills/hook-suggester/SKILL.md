@@ -105,12 +105,9 @@ skill. It handles the SLM-vs-JS routing decision automatically:
 Skill(skill: "vaudeville:add-hook", args: "<description of what to enforce>")
 ```
 
-`vaudeville:add-hook` will analyze the description and route to either:
-- **vaudeville:slm-rule-writer** agent — for semantic/intent checks (hedging, dismissal, deferral, etc.)
-- **vaudeville:hard-hook-writer** agent — for structural pattern checks (command guards, file guards, etc.)
-
-Do NOT invoke these agents directly from this skill — always go through
-`vaudeville:add-hook` so routing logic stays centralized.
+`vaudeville:add-hook` writes semantic rules directly. It routes structural
+checks to `vaudeville:hard-hook-writer`. Use the skill so one impact filter
+covers both mechanisms.
 
 ## Example Session
 

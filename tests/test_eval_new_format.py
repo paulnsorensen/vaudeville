@@ -20,6 +20,10 @@ from vaudeville.server.user_config import ProviderConfig, UserConfig
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLES_RULES_DIR = os.path.join(PROJECT_ROOT, "examples", "rules")
 
+# Live smoke test opt-in: set VAUDEVILLE_LIVE=1 as well as this key to run
+# a real Jev call. One constant so the skipif and the config never drift.
+_TYPESAFE_KEY_ENV = "TYPESAFE_API_KEY"
+
 _RULE = {
     "type": "decide",
     "name": "git-gate",
@@ -70,7 +74,7 @@ class TestNewFormatClassifyCase:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
         rule = parse_rule(_RULE)
         assert isinstance(rule, DecideRule)
-        model = _function_model('{"outcome": "violation", "confidence": 0.9}')
+        model = _function_model('{"outcome": "violation"}')
         results = EvalResults(rule="git-gate")
         from vaudeville.rules import DecideTestCase
 
@@ -170,3 +174,53 @@ class TestLoadTestCases:
         suites = load_test_cases({rule.name: rule})
 
         assert suites == {}
+
+
+class TestReportCaseConfidenceFromProviderDetails:
+    """AC-11: Dataset.evaluate_sync surfaces each case's confidence."""
+
+    def test_report_case_confidence_from_provider_details(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+        rule = parse_rule(_RULE)
+        assert isinstance(rule, DecideRule)
+        from vaudeville.rules import DecideTestCase
+
+        def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            del messages, info
+            return ModelResponse(
+                parts=[TextPart('{"outcome": "violation"}')],
+                provider_details={
+                    "probabilities": {"outcome": {"violation": 0.83, "clean": 0.17}}
+                },
+            )
+
+        model = FunctionModel(respond)
+        cases = [DecideTestCase(text="should I commit?", outcome="violation")]
+
+        results, case_results = evaluate_rule(
+            rule.name, cases, {rule.name: rule}, _config(), model_override=model
+        )
+
+        assert case_results[0].confidence == 0.83
+        assert results.confidences == [0.83]
+
+    @pytest.mark.skipif(
+        os.environ.get("VAUDEVILLE_LIVE") != "1" or not os.environ.get(_TYPESAFE_KEY_ENV),
+        reason="set VAUDEVILLE_LIVE=1 and TYPESAFE_API_KEY to run the live typesafe smoke test",
+    )
+    def test_live_typesafe_smoke(self) -> None:
+        rule = parse_rule({**_RULE, "model": "typesafe:jev-1.13.0"})
+        assert isinstance(rule, DecideRule)
+        from vaudeville.rules import DecideTestCase
+
+        config = UserConfig(providers={"typesafe": ProviderConfig(key_env=_TYPESAFE_KEY_ENV)})
+        cases = [DecideTestCase(text="should I commit?", outcome="violation")]
+
+        results, case_results = evaluate_rule(rule.name, cases, {rule.name: rule}, config)
+
+        assert results.total == 1
+        assert len(case_results) == 1
+        assert case_results[0].confidence is not None
+        assert 0.0 <= case_results[0].confidence <= 1.0

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from vaudeville.server.harness import get_adapter
 from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
+from vaudeville.server.harness.codex import CodexAdapter
 
 
 class TestGetAdapter:
     def test_known_harness_returns_adapter(self) -> None:
         adapter = get_adapter("claude-code")
         assert isinstance(adapter, ClaudeCodeAdapter)
+
+    def test_codex_harness_returns_adapter(self) -> None:
+        adapter = get_adapter("codex")
+        assert isinstance(adapter, CodexAdapter)
 
     def test_unknown_harness_returns_none(self) -> None:
         assert get_adapter("nope") is None

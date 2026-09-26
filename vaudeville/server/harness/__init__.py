@@ -59,8 +59,9 @@ class Adapter(Protocol):
 
 def _build_registry() -> dict[str, Adapter]:
     from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
+    from vaudeville.server.harness.codex import CodexAdapter
 
-    return {"claude-code": ClaudeCodeAdapter()}
+    return {"claude-code": ClaudeCodeAdapter(), "codex": CodexAdapter()}
 
 
 _REGISTRY: dict[str, Adapter] = _build_registry()

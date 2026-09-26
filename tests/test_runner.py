@@ -57,6 +57,34 @@ def test_hook_request_shape() -> None:
     )
 
 
+def test_hook_request_shape_codex_harness() -> None:
+    hook_input = {
+        "hook_event_name": "PreToolUse",
+        "cwd": "/some/project",
+        "tool_name": "apply_patch",
+    }
+    mock_client = MagicMock()
+    mock_client.hook.return_value = {"stdout": "", "exit_code": 0}
+
+    with (
+        patch.object(sys, "argv", ["runner.py", "--harness", "codex"]),
+        patch("sys.stdin", io.StringIO(json.dumps(hook_input))),
+        patch("runner.VaudevilleClient", return_value=mock_client),
+        pytest.raises(SystemExit),
+    ):
+        runner._run()
+
+    mock_client.hook.assert_called_once_with(
+        {
+            "op": "hook",
+            "harness": "codex",
+            "event": "PreToolUse",
+            "cwd": "/some/project",
+            "payload": hook_input,
+        }
+    )
+
+
 def test_stdout_and_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
     hook_input = {"hook_event_name": "Stop", "cwd": "/p"}
     mock_client = MagicMock()

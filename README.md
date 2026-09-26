@@ -43,6 +43,16 @@ This creates `~/.vaudeville/config` with a `default_model`, `providers` (API key
 
 3. Try it: ask Claude to make a small change and watch it finish. If it ends with "Should I commit and push?" instead of just doing it, `git-gate` warns. Reply to a PR comment with "I'll address this in a follow-up PR" and `deferral-detector` blocks the comment.
 
+## Codex CLI Install
+
+Vaudeville also ships as a [Codex CLI](https://developers.openai.com/codex) plugin. Add the repo as a marketplace, then install:
+
+```
+codex /plugins
+```
+
+Open the plugin browser, add `paulnsorensen/vaudeville` as a marketplace source, and install `vaudeville` from it. Codex CLI runs the same daemon and rules as Claude Code — the `codex` harness adapter maps Codex's hook events and tool names (`apply_patch` → `Edit`) onto the same rule vocabulary. On `SessionStart`, `hooks/session-start.sh` launches the daemon exactly as it does under Claude Code.
+
 ## Uninstall
 
 `/plugin remove vaudeville` removes the plugin files but does not clean up the standalone `vaudeville` CLI shim or the `argcomplete` helper that `/vaudeville:setup` installed into uv's tool bin (often `~/.local/bin`). To remove them:

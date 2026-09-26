@@ -115,6 +115,19 @@ def test_parity_with_prior_harness_confusion_counts(monkeypatch: pytest.MonkeyPa
     assert len(case_results) == 4
 
 
+def test_evaluate_rule_case_result_uses_declared_rule_name() -> None:
+    rule = parse_rule(_RULE)
+    assert isinstance(rule, DecideRule)
+    cases = [DecideTestCase(text="one", outcome="clean")]
+
+    results, case_results = evaluate_rule(
+        "lookup-alias", cases, {"lookup-alias": rule}, UserConfig()
+    )
+
+    assert results.rule == "lookup-alias"
+    assert case_results[0].rule == rule.name
+
+
 def test_parity_with_prior_harness_fail_open_none_counts_as_tn() -> None:
     rule = parse_rule(_RULE)
     assert isinstance(rule, DecideRule)
@@ -227,8 +240,17 @@ def test_precision_recall_uses_outcome_match_not_always_positive(
 
     report = run_dataset(dataset, rule, _config())
 
+    assert [case.assertions["outcome_match"].value for case in report.cases] == [
+        True,
+        False,
+        False,
+        True,
+    ]
     pr_auc = next(a for a in report.analyses if a.type == "scalar" and "AUC" in a.title)
-    assert pr_auc.value < 1.0
+    assert pr_auc.value == pytest.approx(19 / 24)
+    confusion = next(a for a in report.analyses if a.type == "confusion_matrix")
+    assert confusion.class_labels == ["clean", "violation"]
+    assert confusion.matrix == [[1, 1], [1, 1]]
 
 
 def test_run_dataset_raises_on_task_failure_with_original_message(
@@ -250,6 +272,40 @@ def test_run_dataset_raises_on_task_failure_with_original_message(
 
     monkeypatch.setattr("vaudeville.eval.decide", fake_decide)
 
-    with pytest.raises(RuntimeError, match="upstream 503") as exc_info:
+    with pytest.raises(
+        RuntimeError, match=r"eval case 0 failed: ConnectionError: upstream 503"
+    ) as exc_info:
         run_dataset(dataset, rule, _config())
+    assert "eval case 0 failed" in str(exc_info.value)
+    assert "upstream 503" in str(exc_info.value)
     assert "ConnectionError" in str(exc_info.value)
+
+
+def test_run_dataset_stops_model_calls_after_first_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    rule = parse_rule(_RULE)
+    assert isinstance(rule, DecideRule)
+    rule = rule.model_copy(
+        update={
+            "test_cases": [
+                DecideTestCase(text="one", outcome="violation"),
+                DecideTestCase(text="two", outcome="clean"),
+            ]
+        }
+    )
+    dataset = build_dataset(rule)
+
+    def fake_decide(
+        rule: DecideRule, config: UserConfig, text: str, *, model_override: object = None
+    ) -> DecideResult:
+        del rule, config, model_override
+        calls.append(text)
+        raise ConnectionError("upstream 503")
+
+    monkeypatch.setattr("vaudeville.eval.decide", fake_decide)
+
+    with pytest.raises(RuntimeError, match=r"eval case 0 failed: ConnectionError: upstream 503"):
+        run_dataset(dataset, rule, _config())
+    assert calls == ["one"]

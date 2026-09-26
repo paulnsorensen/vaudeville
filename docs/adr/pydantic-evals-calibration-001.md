@@ -10,6 +10,8 @@ Rule YAML keeps its inline `test_cases:` list of `{text, outcome}`.
 The eval builds a `pydantic_evals.Dataset` from those cases at run time and scores it with `Dataset.evaluate_sync`.
 Report evaluators are set in code, the same for every rule.
 
+Implementation note: `Dataset.evaluate_sync` collects case failures in its report. The eval remains serial and skips later model calls after the first failure.
+
 ## Alternatives
 
 - A separate `<rule>.cases.yaml` in the native pydantic-evals format. It allows per-rule evaluators in the file. It breaks every existing user and project rule, splits a rule into two files, and moves the outcome check across files, the cache key, and the tuner rollback.

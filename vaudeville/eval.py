@@ -267,8 +267,17 @@ def run_dataset(
     Runs deterministically: no progress bar, one case at a time.
     """
 
+    first_failure: Exception | None = None
+
     def _task(text: str) -> DecideOutcome:
-        result = decide(rule, config, text, model_override=model_override)
+        nonlocal first_failure
+        if first_failure is not None:
+            raise first_failure
+        try:
+            result = decide(rule, config, text, model_override=model_override)
+        except Exception as exc:
+            first_failure = exc
+            raise
         if result.confidence is not None:
             increment_eval_metric("confidence", result.confidence)
         return DecideOutcome(outcome=result.outcome, confidence=result.confidence)
@@ -307,7 +316,7 @@ def evaluate_rule(
             _record_case(
                 results,
                 rule_for_eval,
-                rule_name,
+                rule_for_eval.name,
                 i,
                 case.text,
                 case.outcome,

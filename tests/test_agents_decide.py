@@ -134,7 +134,7 @@ class TestAnthropicModelConstruction:
 class TestResolveModel:
     def test_typesafe_model_built_and_never_called(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("TYPESAFE_API_KEY", "fake-key")
-        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13"})
+        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13.0"})
         assert isinstance(rule, DecideRule)
         config = UserConfig(
             providers={"typesafe": ProviderConfig(key_env="TYPESAFE_API_KEY")},
@@ -163,7 +163,7 @@ class TestResolveModel:
         """F7: the model uses the key under `key_env`, not the provider default."""
         monkeypatch.setenv("TYPESAFE_API_KEY", "default-var-key")
         monkeypatch.setenv("MY_TYPESAFE_KEY", "configured-key")
-        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13"})
+        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13.0"})
         assert isinstance(rule, DecideRule)
         config = UserConfig(
             providers={"typesafe": ProviderConfig(key_env="MY_TYPESAFE_KEY")},
@@ -183,7 +183,7 @@ class TestResolveModel:
             raise RuntimeError("secret-key-value rejected")
 
         monkeypatch.setattr(model_resolution, "infer_model", _raise)
-        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13"})
+        rule = parse_rule({**DECIDE_RULE, "model": "typesafe:jev-1.13.0"})
         assert isinstance(rule, DecideRule)
         config = UserConfig(
             providers={"typesafe": ProviderConfig(key_env="MY_TYPESAFE_KEY")},

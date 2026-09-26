@@ -211,7 +211,7 @@ class TestReportCaseConfidenceFromProviderDetails:
         reason="set VAUDEVILLE_LIVE=1 and TYPESAFE_API_KEY to run the live typesafe smoke test",
     )
     def test_live_typesafe_smoke(self) -> None:
-        rule = parse_rule({**_RULE, "model": "typesafe:jev-1.13"})
+        rule = parse_rule({**_RULE, "model": "typesafe:jev-1.13.0"})
         assert isinstance(rule, DecideRule)
         from vaudeville.rules import DecideTestCase
 

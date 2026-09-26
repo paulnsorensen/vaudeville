@@ -18,7 +18,4 @@ htmlcov/
 .claude/
 *.duckdb
 tests/eval-history.jsonl
-ralphs/
-commands/tune/state/
-tune-results.tsv
 .vaudeville/logs/

@@ -54,7 +54,7 @@ The plan is a markdown checklist. Each item is one mechanical change the Tuner c
 ```markdown
 # Tune plan: {{ args.rule_name }}
 
-- [ ] <specific change: add example / modify criterion / adjust threshold>
+- [ ] <specific change: add example / modify criterion / adjust an `on:` action / add an `unsure:` gate>
 - [ ] <specific change>
 ...
 ```

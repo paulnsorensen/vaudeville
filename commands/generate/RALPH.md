@@ -41,9 +41,6 @@ prompt: |
   VERDICT: violation
   REASON: <why>
 
-  Now classify:
-  {text}
-
   VERDICT: violation or clean
   REASON: one sentence
 outcomes: [violation, clean]   # labels the model may return

@@ -35,7 +35,7 @@ uv run python -m vaudeville tune <rule> [flags]
 The command launches a ralphify autonomous agent that iteratively:
 1. Evaluates the current rule against test cases
 2. Analyzes misclassified cases
-3. Improves the prompt (examples, criteria, threshold)
+3. Improves the prompt (examples, criteria, `on:` actions, `unsure:` gate)
 4. Re-evaluates until thresholds are met
 
 The loop exits early when all thresholds are met via the `<promise>THRESHOLDS_MET</promise>` completion signal.

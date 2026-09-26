@@ -8,7 +8,6 @@ import re
 import subprocess
 from pathlib import Path
 
-from vaudeville.eval_report import RunSummary
 from vaudeville.orchestrator._phase import Thresholds
 
 
@@ -56,17 +55,24 @@ def _extract_abandon_reason(judge_stdout: str) -> str:
     return "\n".join(lines[:last_judge_idx]).strip()[-2000:]
 
 
-def capture_eval_log(rule_name: str, project_root: str) -> str:
-    safe_name = Path(rule_name).name
+def _run_eval_cli(rule_name: str, project_root: str, *extra: str) -> str | None:
+    """Invoke the eval CLI for `rule_name`; return None when `uv` is missing."""
     try:
-        out = subprocess.run(
-            ["uv", "run", "python", "-m", "vaudeville.eval_cli", "--rule", rule_name],
+        return subprocess.run(
+            ["uv", "run", "python", "-m", "vaudeville.eval_cli", "--rule", rule_name, *extra],
             capture_output=True,
             text=True,
             cwd=project_root,
             check=False,
         ).stdout
     except FileNotFoundError:
+        return None
+
+
+def capture_eval_log(rule_name: str, project_root: str) -> str:
+    safe_name = Path(rule_name).name
+    out = _run_eval_cli(rule_name, project_root)
+    if out is None:
         return ""
     log_dir = Path(project_root) / ".vaudeville" / "logs"
     try:
@@ -77,25 +83,47 @@ def capture_eval_log(rule_name: str, project_root: str) -> str:
     return out
 
 
+def _numeric(value: object) -> float | None:
+    """Return `value` as a float, or None for bool, non-numeric, or missing."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _rule_thresholds(entry: object, rule_name: str) -> Thresholds | None:
+    """Return `Thresholds` from one `rules[]` entry, or None on any bad shape."""
+    if not isinstance(entry, dict) or entry.get("rule") != rule_name:
+        return None
+    p_min = _numeric(entry.get("precision"))
+    r_min = _numeric(entry.get("recall"))
+    f1_min = _numeric(entry.get("f1"))
+    if p_min is None or r_min is None or f1_min is None:
+        return None
+    return Thresholds(p_min=p_min, r_min=r_min, f1_min=f1_min)
+
+
 def _eval_rule(rule_name: str, project_root: str) -> Thresholds | None:
-    """Run the eval harness for one rule and parse its JSON run summary."""
-    try:
-        out = subprocess.run(
-            ["uv", "run", "python", "-m", "vaudeville.eval_cli", "--rule", rule_name, "--json"],
-            capture_output=True,
-            text=True,
-            cwd=project_root,
-            check=False,
-        ).stdout
-    except FileNotFoundError:
+    """Run the eval harness for one rule and parse its JSON run summary.
+
+    Parses only the four fields needed (`rule`, `precision`, `recall`,
+    `f1`); any other shape, including foreign or missing JSON, gives None.
+    """
+    out = _run_eval_cli(rule_name, project_root, "--json")
+    if out is None:
         return None
     try:
-        summary = RunSummary.model_validate_json(out)
-    except ValueError:
+        payload = json.loads(out)
+    except (json.JSONDecodeError, TypeError):
         return None
-    for rule in summary.rules:
-        if rule.rule == rule_name:
-            return Thresholds(p_min=rule.precision, r_min=rule.recall, f1_min=rule.f1)
+    if not isinstance(payload, dict):
+        return None
+    rules = payload.get("rules")
+    if not isinstance(rules, list):
+        return None
+    for entry in rules:
+        thresholds = _rule_thresholds(entry, rule_name)
+        if thresholds is not None:
+            return thresholds
     return None
 
 

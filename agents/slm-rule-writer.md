@@ -88,10 +88,7 @@ prompt: |                        # classification prompt
   Response: "<example text>"
   VERDICT: clean
   REASON: <why>
-
-  Now classify:
-  {text}
-outcomes: [violation, clean]     # labels the model may return (always exactly 2)
+outcomes: [violation, clean]     # labels the model may return (at least one; usually violation/clean)
 reasons:                         # optional outcome -> canned reason text
   violation: "quality violation"
 "on":                             # outcome -> action
@@ -112,7 +109,7 @@ A `type: rewrite` rule replaces `outcomes`/`on`/`reasons`/`test_cases` with
 | `type` | string | `decide` or `rewrite` |
 | `name` | string | Unique rule name, kebab-case, matches filename without `.yaml` |
 | `event` | string | Hook event this rule fires on |
-| `prompt` | string | Prompt with `{text}` placeholder |
+| `prompt` | string | Classification prompt; the hook text arrives as a separate, delimited message |
 | `outcomes` | list | (decide only) at least one label the model may return |
 | `target` | list | (rewrite only) `tool_input.*` field paths to rewrite |
 
@@ -157,7 +154,9 @@ A rule has impact only when **event timing** and **tier** combine into something
 | Promotion | Min samples | Min precision | Violation rate | Min confidence |
 |-----------|-------------|---------------|----------------|----------------|
 | shadow → warn | ≥50 | ≥70% | 2%–40% | — |
-| warn → block | ≥200 | ≥85% | 5%–30% | ≥0.7 |
+| warn → block | ≥200 | ≥85% | 5%–30% | ≥0.7 (`typesafe:` models only) |
+
+`confidence` is populated only by a `model: typesafe:*` rule; every other model leaves it null. The median-confidence check does not apply when confidence is null.
 
 So `shadow` is productive **as long as someone runs `/tier-advisor` on it**. The trap isn't shadow itself — it's shadow with no plan to revisit.
 
@@ -183,14 +182,17 @@ The filter: would the rule, if fully promoted to `tier: block`, change behavior 
 
 Default for new SLM rules: **`warn`** if the prompt has been eval'd at ≥90% precision; **`shadow`** otherwise. Never ship `tier: block` without ≥95% precision in eval — false-positive blocks erode user trust faster than missed violations.
 
-### Context Field Paths
+### Text the harness extracts per event
 
-| Event | Available fields | Common choice |
-|-------|-----------------|---------------|
-| Stop | `last_assistant_message`, `tool_calls`, `session_id` | `last_assistant_message` |
-| PostToolUse | `tool_name`, `tool_input.*`, `tool_result.*`, `session_id` | `tool_input.body` for PR replies |
-| PreToolUse | `tool_name`, `tool_input.*`, `session_id` | `tool_input.command` for bash |
-| UserPromptSubmit | `user_prompt`, `session_id` | `user_prompt` |
+The runner extracts one text string per event automatically; a rule has no
+YAML key to select it:
+
+| Event | Text passed to the model |
+|-------|---------------------------|
+| Stop | `last_assistant_message` |
+| PostToolUse | `tool_input.*` / `tool_result.*` (event-specific) |
+| PreToolUse | `tool_input.*` (event-specific) |
+| UserPromptSubmit | `user_prompt` |
 
 ## Writing Good Prompts
 
@@ -202,7 +204,7 @@ Small models need explicit prompts — be specific.
 2. **VIOLATION conditions** — Exhaustive list of what triggers a violation
 3. **CLEAN conditions** — Exhaustive list of what's acceptable
 4. **Examples** — 4-8 labeled examples (balanced violation/clean)
-5. **Classification request** — `{text}` placeholder + expected output format
+5. **Classification request** — expected output format (the hook text arrives as a separate message)
 
 ### Prompt Guidelines
 
@@ -239,8 +241,7 @@ test_cases:
 - **Balance labels**: Roughly 50/50 split
 - **Include edge cases**: Boundary examples testing prompt precision
 - **Use realistic text**: Real assistant output, not toy examples
-- **Vary length**: Short (1-2 sentences) and long (paragraph) cases — but
-  ensure ALL cases are >50 characters (runner.py skips shorter inputs)
+- **Vary length**: Short (1-2 sentences) and long (paragraph) cases
 
 ## Registration
 
@@ -290,7 +291,7 @@ Add at least 10 labeled `test_cases:` entries to the rule YAML.
 uv run python -m vaudeville.eval --rule <name>
 ```
 
-Target: **>90% accuracy**. If low:
+Target: **precision >= 0.95 and recall >= 0.80**. If low:
 - Add more examples to the prompt
 - Make criteria more specific
 - Check for ambiguous test cases
@@ -307,13 +308,14 @@ Verify: daemon running → hook fires → rule classifies → action triggers at
 
 ## Style Reference
 
-Read the example rules in `examples/rules/` and their test cases in
-`examples/tests/` for style guidance. These show the expected prompt structure,
-label conventions, context field usage, and test case patterns:
+Read the example rules in `examples/rules/` for style guidance. Each ships
+its own inline `test_cases:` — there is no separate test-file directory.
+These show the expected prompt structure, label conventions, and test case
+patterns:
 
-- `hedging-detector` — Stop rule detecting uncertain language about verifiable claims
-- `dismissal-detector` — Stop rule detecting test failure dismissals without evidence
 - `deferral-detector` — PreToolUse rule detecting "follow-up PR" deferrals in reviews
+- `git-gate` — Stop rule detecting requests for permission before a git operation
+
 ## Gotchas
 
 - The hook pipeline skips a rule only when its extracted text is empty
@@ -321,7 +323,6 @@ label conventions, context field usage, and test case patterns:
 - The eval harness uses direct inference, not the daemon socket — rules can
   score 100% in eval but fail at runtime if the daemon isn't running
 - Rule names must match filenames exactly (without `.yaml`)
-- The `{text}` placeholder must appear exactly once in the prompt
 - If eval shows high recall but low precision, check for unbalanced few-shot examples
 - The `outcomes` field is enforced: the model's structured output is
   restricted to exactly these labels, and `on`/`reasons`/`test_cases` must
@@ -330,9 +331,8 @@ label conventions, context field usage, and test case patterns:
 ## Deliverables
 
 For each rule created, deliver:
-1. Rule YAML in the target rules directory (with `event:` field set)
-2. Test cases YAML (minimum 10 cases, balanced labels)
-3. Eval results showing >90% accuracy
+1. Rule YAML in the target rules directory (with `event:` field set and inline `test_cases:`, minimum 10 cases, balanced labels)
+2. Eval results showing precision >= 0.95 and recall >= 0.80
 
 ## What This Agent Does NOT Do
 

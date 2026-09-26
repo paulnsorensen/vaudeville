@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -198,6 +199,75 @@ class TestOrchestrateGenerate:
 
         with patch("subprocess.run", side_effect=FileNotFoundError("uv not found")):
             assert _eval_rule("rule", "/proj") is None
+
+    def test_eval_rule_invokes_json_flag(self) -> None:
+        """_eval_rule always passes --json to the eval CLI argv."""
+        from vaudeville.orchestrator._abandon import _eval_rule
+
+        fake = subprocess.CompletedProcess(
+            args=["uv"], returncode=0, stdout='{"rules": []}', stderr=""
+        )
+        with patch("subprocess.run", return_value=fake) as mock_run:
+            _eval_rule("rule", "/proj")
+        assert "--json" in mock_run.call_args.args[0]
+
+    @pytest.mark.parametrize("returncode", [0, 1])
+    def test_eval_rule_parses_regardless_of_exit_code(self, returncode: int) -> None:
+        """A failing rule (exit 1) with valid JSON still parses."""
+        from vaudeville.orchestrator._abandon import _eval_rule
+
+        stdout = json.dumps(
+            {"rules": [{"rule": "rule", "precision": 0.5, "recall": 0.6, "f1": 0.55}]}
+        )
+        fake = subprocess.CompletedProcess(
+            args=["uv"], returncode=returncode, stdout=stdout, stderr=""
+        )
+        with patch("subprocess.run", return_value=fake):
+            result = _eval_rule("rule", "/proj")
+        assert result is not None
+        assert result.p_min == 0.5
+
+    @pytest.mark.parametrize(
+        "stdout",
+        [
+            '{"foo": 1}',
+            "[]",
+            "null",
+            "",
+            'noise\n{"rules": [{"rule": "rule", "precision": 0.9, "recall": 0.9, "f1": 0.9}]}',
+        ],
+    )
+    def test_eval_rule_returns_none_on_foreign_or_noisy_stdout(self, stdout: str) -> None:
+        """Foreign JSON, empty stdout, and noise before JSON all return None."""
+        from vaudeville.orchestrator._abandon import _eval_rule
+
+        fake = subprocess.CompletedProcess(args=["uv"], returncode=0, stdout=stdout, stderr="")
+        with patch("subprocess.run", return_value=fake):
+            assert _eval_rule("rule", "/proj") is None
+
+    def test_eval_rule_rejects_bool_metric_values(self) -> None:
+        """A bool precision (int subtype in Python) is rejected, not coerced."""
+        from vaudeville.orchestrator._abandon import _eval_rule
+
+        stdout = json.dumps(
+            {"rules": [{"rule": "rule", "precision": True, "recall": 0.6, "f1": 0.5}]}
+        )
+        fake = subprocess.CompletedProcess(args=["uv"], returncode=0, stdout=stdout, stderr="")
+        with patch("subprocess.run", return_value=fake):
+            assert _eval_rule("rule", "/proj") is None
+
+    def test_eval_rule_partial_rule_shape_parses(self) -> None:
+        """A rule entry with only rule/precision/recall/f1 still parses."""
+        from vaudeville.orchestrator._abandon import _eval_rule
+
+        stdout = json.dumps(
+            {"rules": [{"rule": "rule", "precision": 0.9, "recall": 0.8, "f1": 0.85}]}
+        )
+        fake = subprocess.CompletedProcess(args=["uv"], returncode=0, stdout=stdout, stderr="")
+        with patch("subprocess.run", return_value=fake):
+            result = _eval_rule("rule", "/proj")
+        assert result is not None
+        assert result.f1_min == 0.85
 
     def test_extract_abandon_reason_strips_signal_line(self) -> None:
         """_extract_abandon_reason returns prose above JUDGE_* signal line."""

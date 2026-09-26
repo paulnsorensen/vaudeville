@@ -107,17 +107,13 @@ install-cli:
 eval:
     uv run python -m vaudeville.eval
 
-# Run eval with cross-validation
-eval-cv:
-    uv run python -m vaudeville.eval --cross-validate
-
 # Run eval for a specific rule (e.g., `just eval-rule violation-detector`)
 eval-rule rule:
     uv run python -m vaudeville.eval --rule {{rule}}
 
 # Calibrate threshold for a rule (e.g., `just eval-calibrate violation-detector`)
 eval-calibrate rule:
-    VAUDEVILLE_SKIP=1 uv run python -m vaudeville.eval --calibrate {{rule}}
+    VAUDEVILLE_SKIP=1 uv run python -m vaudeville.eval --calibrate --rule {{rule}}
 
 # Clean build and test artifacts
 clean:

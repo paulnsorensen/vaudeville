@@ -153,6 +153,29 @@ class TestAnalyze:
         assert analyze_mod._add_minutes("10:55", 10) == "11:05"
         assert analyze_mod._add_minutes("10:00", 5) == "10:05"
 
+    def test_build_analysis_tolerates_null_confidence(self, analyze_mod: Any) -> None:
+        """A rule whose every row has a null confidence (unsure gate present,
+        no on: dispatch) must not raise on `round(None, 3)`."""
+        metrics = [
+            {
+                "rule": "unsure-gate",
+                "total_evals": 5,
+                "violations": 2,
+                "cleans": 3,
+                "avg_confidence": None,
+                "p50_confidence": None,
+                "first_seen": "2026-04-01T00:00:00Z",
+                "last_seen": "2026-04-02T00:00:00Z",
+            }
+        ]
+        with (
+            patch.object(analyze_mod, "compute_rule_metrics", return_value=metrics),
+            patch.object(analyze_mod, "compute_agreement_proxy", return_value={}),
+        ):
+            results = analyze_mod.build_analysis()
+        assert results[0]["avg_confidence"] is None
+        assert results[0]["p50_confidence"] is None
+
 
 class TestKeywordMatching:
     """Word-boundary matching prevents short keywords from matching inside words."""
@@ -271,6 +294,20 @@ class TestReport:
                     violation_rate=0.15,
                     agreement_rate=0.90,
                     p50_confidence=0.80,
+                )
+            )
+        assert rec == "promote-to-block"
+
+    def test_classify_warn_to_block_with_null_p50_confidence(self, report_mod: Any) -> None:
+        """A null p50_confidence (unsure gate, no on: dispatch) skips the
+        median-confidence check rather than blocking promotion on it."""
+        with patch.object(report_mod, "get_current_tier", return_value="warn"):
+            rec, _ = report_mod.classify(
+                self._make_rule(
+                    total_evals=250,
+                    violation_rate=0.15,
+                    agreement_rate=0.90,
+                    p50_confidence=None,
                 )
             )
         assert rec == "promote-to-block"

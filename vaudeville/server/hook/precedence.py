@@ -33,7 +33,7 @@ class EvaluatedAction:
     command: str | None = None
     downgrade: str | None = None
     verdict: str = ""
-    confidence: float = 0.0
+    confidence: float | None = None
     latency_ms: float = 0.0
     reason: str = ""
     tier: str = "block"

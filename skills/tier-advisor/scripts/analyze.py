@@ -229,8 +229,12 @@ def build_analysis() -> list[dict]:
                 "violations": violations,
                 "cleans": m["cleans"],
                 "violation_rate": round(violation_rate, 4),
-                "avg_confidence": round(m["avg_confidence"], 3),
-                "p50_confidence": round(m["p50_confidence"], 3),
+                "avg_confidence": (
+                    round(m["avg_confidence"], 3) if m["avg_confidence"] is not None else None
+                ),
+                "p50_confidence": (
+                    round(m["p50_confidence"], 3) if m["p50_confidence"] is not None else None
+                ),
                 "first_seen": m["first_seen"],
                 "last_seen": m["last_seen"],
                 "agreement_rate": (

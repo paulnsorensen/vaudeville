@@ -44,6 +44,19 @@ class DecideTestCase(BaseModel):
     outcome: str
 
 
+class UnsureGate(BaseModel):
+    """Substitutes `action` for the `on:` action when a decide result's
+    confidence falls below `below` (AC-6, AC-7). `outcomes`, when set,
+    restricts the gate to those outcomes; absent, it applies to any.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    below: float
+    action: Action
+    outcomes: list[str] | None = None
+
+
 class DecideRule(BaseModel):
     """A rule that asks a model to pick one of `outcomes` and maps it to an action."""
 
@@ -62,6 +75,7 @@ class DecideRule(BaseModel):
     tier: Tier = "block"
     draft: bool = False
     test_cases: list[DecideTestCase] = Field(default_factory=list)
+    unsure: UnsureGate | None = None
 
     @field_validator("tier", mode="before")
     @classmethod
@@ -91,6 +105,28 @@ class DecideRule(BaseModel):
                     f"rule {self.name!r}: test case outcome {case.outcome!r} is not in "
                     f"outcomes {self.outcomes}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_unsure(self) -> DecideRule:
+        gate = self.unsure
+        if gate is None:
+            return self
+        if not (self.model and self.model.startswith("typesafe:")):
+            raise ValueError(
+                f"rule {self.name!r}: unsure: requires an explicit model: typesafe:* "
+                f"(got model={self.model!r})"
+            )
+        if not (0 < gate.below <= 1):
+            raise ValueError(f"rule {self.name!r}: unsure.below {gate.below!r} must be in (0, 1]")
+        if gate.outcomes is not None:
+            outcomes = set(self.outcomes)
+            for entry in gate.outcomes:
+                if entry not in outcomes:
+                    raise ValueError(
+                        f"rule {self.name!r}: unsure.outcomes entry {entry!r} is not in "
+                        f"outcomes {self.outcomes}"
+                    )
         return self
 
 

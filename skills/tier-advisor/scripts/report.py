@@ -51,7 +51,7 @@ def _classify_warn(rule: dict, tier_thresholds: dict) -> tuple[str, str]:
     """Classify a rule currently at warn tier."""
     vr = rule["violation_rate"]
     agreement = rule.get("agreement_rate")
-    p50 = rule.get("p50_confidence", 0.0)
+    p50 = rule.get("p50_confidence")
     total = rule["total_evals"]
 
     t = tier_thresholds["demote_warn_to_shadow"]
@@ -67,15 +67,20 @@ def _classify_warn(rule: dict, tier_thresholds: dict) -> tuple[str, str]:
         )
 
     t = tier_thresholds["warn_to_block"]
+    # A null p50 (every case's confidence is missing, e.g. an unsure gate
+    # that never dispatched an on: action) makes the check not applicable;
+    # it does not block promotion.
+    p50_ok = p50 is None or p50 >= t["min_p50_confidence"]
     if (
         total >= t["min_evals"]
         and (agreement is not None and agreement >= t["min_agreement"])
         and t["violation_rate_min"] <= vr <= t["violation_rate_max"]
-        and p50 >= t["min_p50_confidence"]
+        and p50_ok
     ):
+        p50_str = f"{p50:.2f}" if p50 is not None else "n/a"
         return "promote-to-block", (
             f"{total} evals, {agreement:.0%} agreement, "
-            f"{vr:.0%} violation rate, p50 confidence {p50:.2f}."
+            f"{vr:.0%} violation rate, p50 confidence {p50_str}."
         )
 
     return "hold-at-warn", f"{total} evals, {vr:.0%} violation rate."

@@ -35,6 +35,7 @@ from .models import (
     Rule,
     RuleSet,
     Tier,
+    UnsureGate,
     parse_rule,
 )
 from .policy import (
@@ -57,6 +58,7 @@ __all__ = [
     "Rule",
     "RuleSet",
     "Tier",
+    "UnsureGate",
     "VALID_TIERS",
     "parse_rule",
     "load_layered",

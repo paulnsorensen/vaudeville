@@ -12,6 +12,7 @@ import pytest
 from vaudeville.server.watch import (
     _MAX_ROWS,
     _build_table,
+    _confidence_cell,
     _parse_ts_display,
     _sanitize_display,
     watch,
@@ -132,7 +133,7 @@ def test_confidence_text_low() -> None:
 def _make_event(
     rule: str = "test-rule",
     verdict: str = "clean",
-    confidence: float = 0.95,
+    confidence: float | None = 0.95,
     latency_ms: float = 42.0,
     ts: str = "2024-01-15T10:30:45+00:00",
     action: str | None = None,
@@ -428,3 +429,24 @@ def test_read_new_events_derives_violations_from_action() -> None:
     assert total_seen == 2
     assert violations == 1
     assert dropped == 0
+
+
+def test_confidence_cell_none_renders_dim_dash() -> None:
+    text = _confidence_cell(None)
+    assert text.plain == "-"
+    assert "dim" in str(text.style)
+
+
+def test_confidence_cell_number_renders_confidence_text() -> None:
+    text = _confidence_cell(0.95)
+    assert text.plain == "0.95"
+
+
+def test_build_table_null_confidence_renders_dim_dash() -> None:
+    """A null confidence (unsure gate, no on: dispatch) renders `-`, not 0.00."""
+    events = [_make_event(confidence=None)]
+    table = _build_table(events, (1, 0, 0))
+    col_names = [str(c.header) for c in table.columns]
+    idx = col_names.index("Confidence")
+    cell = table.columns[idx]._cells[0]
+    assert cell.plain == "-"  # type: ignore[union-attr]

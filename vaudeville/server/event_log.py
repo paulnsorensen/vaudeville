@@ -30,7 +30,7 @@ _BLOCKING_ACTIONS = frozenset({"block", "ask"})
 class ClassificationEvent:
     rule: str
     verdict: str
-    confidence: float
+    confidence: float | None
     latency_ms: float
     prompt_chars: int
     reason: str = ""
@@ -103,7 +103,7 @@ class EventLogger:
             "ts": ts,
             "rule": event.rule,
             "verdict": event.verdict,
-            "confidence": round(event.confidence, 4),
+            "confidence": (round(event.confidence, 4) if event.confidence is not None else None),
             "latency_ms": round(event.latency_ms, 1),
             "prompt_chars": event.prompt_chars,
             "tier": event.tier,

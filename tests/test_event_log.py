@@ -428,3 +428,26 @@ def test_dropped_kind_excluded_from_violations(tmp_path: pathlib.Path) -> None:
         assert not violations_path.exists() or not violations_path.read_text().strip()
     finally:
         logger.close()
+
+
+def test_null_confidence_logs_json_null(tmp_path: pathlib.Path) -> None:
+    """A None confidence is written as JSON null, never coerced to 0.0."""
+    logger = EventLogger(config=LogConfig(), logs_dir=str(tmp_path))
+    try:
+        logger.log_event(
+            ClassificationEvent(
+                rule="unsure-gate",
+                verdict="violation",
+                confidence=None,
+                latency_ms=10.0,
+                prompt_chars=50,
+            )
+        )
+        time.sleep(0.05)
+
+        raw = (tmp_path / "events.jsonl").read_text().strip().splitlines()[-1]
+        assert '"confidence": null' in raw
+        events = _read_jsonl(tmp_path / "events.jsonl")
+        assert events[0]["confidence"] is None
+    finally:
+        logger.close()

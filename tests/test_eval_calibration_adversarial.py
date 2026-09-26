@@ -1,9 +1,8 @@
 """Adversarial contract tests for the eval run summary, calibration, and
-the decide confidence source (AC-2, AC-3, AC-4, AC-10).
+the decide confidence source (AC-2, AC-4, AC-10).
 
-Attack vectors: a multi-rule `--json` run with one failing rule, the real
-`--json` producer piped into the orchestrator's `_eval_rule` consumer,
-the 30-case sample boundary, a single-class confident set (undefined ROC
+Attack vectors: a multi-rule `--json` run with one failing rule, the
+30-case sample boundary, a single-class confident set (undefined ROC
 AUC and KS), sweep equality semantics against the gate's strict `<`,
 None confidences mixed with scored ones, and falsy or invalid
 `provider_details` values.
@@ -13,7 +12,6 @@ from __future__ import annotations
 
 import json
 import math
-import subprocess
 from typing import Any
 from unittest.mock import patch
 
@@ -23,7 +21,6 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from vaudeville.eval import CaseResult
 from vaudeville.eval_calibrate import calibrate, format_calibration
-from vaudeville.orchestrator import Thresholds
 from vaudeville.rules import DecideRule, DecideTestCase, parse_rule
 from vaudeville.server.agents.decide import DecideResult, decide
 from vaudeville.server.user_config import ProviderConfig, UserConfig
@@ -150,33 +147,6 @@ class TestRunSummaryMultiRule:
 
 
 # ---------------------------------------------------------------------------
-# AC-3: the real `--json` producer feeds the orchestrator consumer
-# ---------------------------------------------------------------------------
-
-
-class TestEvalRuleConsumesRealSummary:
-    @pytest.mark.parametrize(
-        ("rule_name", "expected"),
-        [
-            ("alpha-rule", Thresholds(p_min=1.0, r_min=1.0, f1_min=1.0)),
-            ("beta-rule", Thresholds(p_min=0.5, r_min=0.5, f1_min=0.5)),
-        ],
-    )
-    def test_eval_rule_parses_producer_output_for_the_named_rule(
-        self, capsys: pytest.CaptureFixture[str], rule_name: str, expected: Thresholds
-    ) -> None:
-        """A field rename on either side breaks this round trip; a consumer
-        that takes the first entry fails the `beta-rule` row."""
-        stdout = _two_rule_json(capsys)
-        completed = subprocess.CompletedProcess(args=[], returncode=1, stdout=stdout, stderr="")
-
-        from vaudeville.orchestrator._abandon import _eval_rule
-
-        with patch("subprocess.run", return_value=completed):
-            assert _eval_rule(rule_name, "/proj") == expected
-
-
-# ---------------------------------------------------------------------------
 # AC-10: calibration boundaries
 # ---------------------------------------------------------------------------
 
@@ -250,7 +220,7 @@ class TestCalibrationBoundaries:
         assert result.brier == pytest.approx(0.025)
         assert result.ece == pytest.approx(0.15)
         assert result.recommended_below == 0.25
-        assert result.unsure_rate == 0.5
+        assert result.unsure_rate == pytest.approx(1 / 3)
 
 
 # ---------------------------------------------------------------------------

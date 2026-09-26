@@ -118,7 +118,7 @@ def _build_table(events: list[dict[str, Any]], totals: tuple[int, int, int]) -> 
             evt.get("rule", "<unknown>"),
             _tier_text(evt.get("tier", "block")),
             _verdict_text(evt.get("verdict", "?"), evt.get("action")),
-            _confidence_cell(evt.get("confidence", 0)),
+            _confidence_cell(evt.get("confidence")),
             _latency_text(_to_float(evt.get("latency_ms", 0))),
             _sanitize_display(evt.get("action", "")),
             _sanitize_display(evt.get("downgrade", "")),

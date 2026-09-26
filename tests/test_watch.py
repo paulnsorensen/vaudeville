@@ -450,3 +450,14 @@ def test_build_table_null_confidence_renders_dim_dash() -> None:
     idx = col_names.index("Confidence")
     cell = table.columns[idx]._cells[0]
     assert cell.plain == "-"  # type: ignore[union-attr]
+
+
+def test_build_table_missing_confidence_key_renders_dim_dash() -> None:
+    """An event row with no `confidence` key at all renders `-`, not 0.00."""
+    event = _make_event()
+    del event["confidence"]
+    table = _build_table([event], (1, 0, 0))
+    col_names = [str(c.header) for c in table.columns]
+    idx = col_names.index("Confidence")
+    cell = table.columns[idx]._cells[0]
+    assert cell.plain == "-"  # type: ignore[union-attr]

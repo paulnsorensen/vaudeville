@@ -115,7 +115,7 @@ Both commands accept `--log-path` to point at a non-default events file.
 
 ### Log Location
 
-- `~/.vaudeville/logs/events.jsonl` — every classification (ts, rule, verdict, confidence, latency_ms, tier, reason, input_snippet)
+- `~/.vaudeville/logs/events.jsonl` — every classification (ts, rule, verdict, confidence, latency_ms, tier, reason, input_snippet, unsure, unsure_below, confidence_missing). `confidence` is null when the model reports none.
 - `~/.vaudeville/logs/violations.jsonl` — subset where `verdict == "violation"`
 - `~/.vaudeville/logs/config.yaml` — retention settings (auto-created with defaults on first run)
 
@@ -164,7 +164,7 @@ Check `~/.vaudeville/config` exists and has a valid `default_model` and provider
 Verify rules are in `~/.vaudeville/rules/` and have valid YAML. Check the daemon socket exists: `ls /tmp/vaudeville-*/vaudeville.sock`.
 
 **False positives?**
-Tighten the rule's `prompt` with clearer VIOLATION/CLEAN conditions and more balanced examples, or drop its `tier` (e.g. `warn` → `shadow`) until it is retuned. There is no separate confidence threshold field; the model's outcome choice is the verdict.
+Tighten the rule's `prompt` with clearer VIOLATION/CLEAN conditions and more balanced examples, or drop its `tier` (e.g. `warn` → `shadow`) until it is retuned. To act on low confidence instead of the outcome alone, add an optional `unsure:` gate (requires an explicit `model: typesafe:*`); see `examples/README.md` for its fields.
 
 ## License
 

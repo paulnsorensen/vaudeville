@@ -120,6 +120,19 @@ class TestUnsureLoadEdges:
             )
         assert "'vio'" in str(exc_info.value)
 
+    def test_below_bool_rejected(self) -> None:
+        """A YAML `true` must not silently pass as 1.0."""
+        with pytest.raises(ValidationError) as exc_info:
+            parse_rule(_gated(unsure={"below": True, "action": "warn"}))
+        assert "bool" in str(exc_info.value)
+
+    def test_below_int_one_is_accepted(self) -> None:
+        """An int is not a bool; 1 still means the closed upper bound."""
+        rule = parse_rule(_gated(unsure={"below": 1, "action": "warn"}))
+        assert isinstance(rule, DecideRule)
+        assert rule.unsure is not None
+        assert rule.unsure.below == 1.0
+
     def test_unknown_unsure_key_rejected(self) -> None:
         """A typo such as `threshold:` must not load as a gate with defaults."""
         with pytest.raises(ValidationError):

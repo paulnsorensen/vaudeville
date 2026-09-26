@@ -503,6 +503,18 @@ class TestUnsureGateLoadValidation:
         assert rule.unsure is not None
         assert rule.unsure.outcomes == ["violation"]
 
+    def test_unsure_self_escalate_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="jev-judge") as exc_info:
+            parse_rule(
+                self._rule(
+                    unsure={
+                        "below": 0.5,
+                        "action": {"action": "escalate", "rule": "jev-judge"},
+                    }
+                )
+            )
+        assert "escalate to itself" in str(exc_info.value)
+
     def test_unsure_valid_typesafe_rule_loads(self) -> None:
         rule = parse_rule(self._rule())
         assert isinstance(rule, DecideRule)

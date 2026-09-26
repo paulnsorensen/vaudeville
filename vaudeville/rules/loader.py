@@ -249,7 +249,8 @@ def _drop_dangling_refs(
             fixed[name] = rule
             continue
         dangling = _dangling_outcomes(rule, rules)
-        unsure_dangling = rule.unsure is not None and _is_dangling(rule.unsure.action, rules)
+        gate = rule.unsure
+        unsure_dangling = gate is not None and _is_dangling(gate.action, rules)
         if not dangling and not unsure_dangling:
             fixed[name] = rule
             continue
@@ -266,9 +267,7 @@ def _drop_dangling_refs(
             )
             new_on[outcome] = Action(action="allow")
         update: dict[str, object] = {"on": new_on}
-        if unsure_dangling:
-            gate = rule.unsure
-            assert gate is not None
+        if unsure_dangling and gate is not None:
             logger.warning(
                 "[vaudeville] Rule %r unsure.action: reference %s -> %r does "
                 "not resolve to a rule of the right type; using allow",

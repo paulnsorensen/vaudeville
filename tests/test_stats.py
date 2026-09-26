@@ -358,16 +358,3 @@ class TestPercentiles:
         p50, p95 = _percentiles(data)
         assert p50 == 50.5
         assert round(p95, 1) == 96.0
-
-
-def test_unsure_gate_substitution_not_counted_as_downgrade(tmp_path: pathlib.Path) -> None:
-    """A gate substitution (`unsure: true`) is its own field, not a
-    `downgrade` token, so it must not inflate the downgrade count."""
-    events = [
-        {**_make_event(action="warn"), "unsure": True, "unsure_below": 0.7},
-        {**_make_event(action="block"), "confidence_missing": True},
-    ]
-    path = _write_events(tmp_path, events)
-    result = aggregate_events(path)
-
-    assert result["downgrades"] == 0

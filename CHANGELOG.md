@@ -6,7 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Decide rules can declare an optional `unsure:` gate (`below`, `action`, `outcomes?`) that substitutes an action when a `typesafe:*` model's confidence falls below a threshold
+
 ### Changed
+- `events.jsonl` `confidence` is now nullable (null when the model reports none), and gains `unsure`, `unsure_below`, and `confidence_missing` fields
 - Dataset-based rule evaluation now builds and scores inline test cases through pydantic-evals
 - Rules are now typed `decide`/`rewrite` YAML (`type`, `outcomes`, `on`, `reasons`, `target`) validated by pydantic, replacing the untyped `labels`/`message`/`threshold` format
 - Classification runs through pydantic-ai against a configurable hosted model provider (set in `~/.vaudeville/config`), replacing local Phi-4-mini inference

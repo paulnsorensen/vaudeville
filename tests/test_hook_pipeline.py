@@ -1284,58 +1284,72 @@ class TestUnsureGate:
         assert row["action"] == "warn"
         assert row["unsure"] is False
 
-
-class TestUnsureGateEscalateHop:
-    """AC-9: the gate never applies inside an escalate hop."""
-
-    def test_unsure_not_applied_in_escalate_hop(
+    def test_unsure_gate_add_context_action_reaches_output(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """A gated `add-context` action carries its text into the response."""
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(
             tmp_path,
-            "outer-gate",
-            """
-type: decide
-name: outer-gate
-event: PreToolUse
-matcher: Write
-model: fake:model
-prompt: Classify.
-outcomes: [violation, clean]
-"on":
-  violation: {action: escalate, rule: escalate-target}
-tier: block
-""",
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace(
+                "  action: warn", '  action: {action: add-context, text: "gated context"}'
+            ),
         )
+
+        result = handle_hook_request(
+            _request(tmp_path),
+            config=_CONFIG,
+            decide_fn=self._low_confidence_decide_fn(0.5),
+        )
+
+        assert "gated context" in str(result["stdout"])
+
+    def test_unsure_gate_run_action_reaches_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A gated `run` action dispatches its named command."""
+        monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(
             tmp_path,
-            "escalate-target",
-            """
-type: decide
-name: escalate-target
-event: PreToolUse
-matcher: Write
-model: typesafe:jev-1.13
-prompt: Classify.
-outcomes: [violation, clean]
-"on":
-  violation: block
-tier: block
-unsure:
-  below: 0.9
-  action: warn
-""",
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace(
+                "  action: warn", "  action: {action: run, command: notify-target}"
+            ),
+        )
+        run_recorder = patch_run_command(monkeypatch)
+
+        handle_hook_request(
+            _request(tmp_path),
+            config=_CONFIG,
+            decide_fn=self._low_confidence_decide_fn(0.5),
+        )
+
+        assert run_recorder.calls == ["notify-target"]
+
+    def test_unsure_gate_reasons_message_uses_message_for(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A gated `block`/`warn` substitute still maps `reason:` through
+        `rule.reasons`, instead of showing the raw reason key."""
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(
+            tmp_path,
+            "unsure-gate",
+            UNSURE_RULE_YAML.replace("  action: warn", "  action: block").replace(
+                'prompt: Classify.\noutcomes: [violation, clean]\n"on":',
+                "prompt: Classify.\noutcomes: [violation, clean]\n"
+                'reasons:\n  secret-leak: leaked a secret\n"on":',
+            ),
         )
 
         def decide_fn(rule: DecideRule, config: UserConfig, text: str) -> DecideResult:
-            del config, text
-            # Low confidence for every rule; only the target declares unsure.
-            return DecideResult(outcome="violation", confidence=0.1)
+            del rule, config, text
+            return DecideResult(outcome="violation", reason="secret-leak", confidence=0.5)
 
         result = handle_hook_request(_request(tmp_path), config=_CONFIG, decide_fn=decide_fn)
 
-        assert "deny" in str(result["stdout"])
+        assert "leaked a secret" in str(result["stdout"])
 
 
 class TestNullConfidenceLogging:

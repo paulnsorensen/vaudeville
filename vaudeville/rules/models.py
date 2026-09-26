@@ -56,6 +56,13 @@ class UnsureGate(BaseModel):
     action: Action
     outcomes: list[str] | None = None
 
+    @field_validator("below", mode="before")
+    @classmethod
+    def _reject_bool_below(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError(f"unsure.below {value!r} must be a number, not a bool")
+        return value
+
 
 class DecideRule(BaseModel):
     """A rule that asks a model to pick one of `outcomes` and maps it to an action."""
@@ -119,6 +126,8 @@ class DecideRule(BaseModel):
             )
         if not (0 < gate.below <= 1):
             raise ValueError(f"rule {self.name!r}: unsure.below {gate.below!r} must be in (0, 1]")
+        if gate.action.action == "escalate" and gate.action.rule == self.name:
+            raise ValueError(f"rule {self.name!r}: unsure.action cannot escalate to itself")
         if gate.outcomes is not None:
             if not gate.outcomes:
                 raise ValueError(

@@ -80,3 +80,7 @@ tell them to use `/rule-admin` to promote, demote, or edit rule tiers.
 | warn → block | ≥200 | ≥85% | 5%–30% | ≥0.7 |
 | warn → shadow | any | <50% | >60% | — |
 | delete candidate | shadow ≥14d | no improvement | — | — |
+
+A null p50 confidence (the rule reports no confidence, for example a
+non-typesafe model) does not block a warn → block promotion; the other
+columns still apply.

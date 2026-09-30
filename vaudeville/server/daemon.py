@@ -201,6 +201,8 @@ class VaudevilleDaemon:
                 data = json.load(f)
         except (OSError, ValueError):
             return "unknown"
+        if not isinstance(data, dict):
+            return "unknown"
         version = data.get("version")
         return version if isinstance(version, str) and version else "unknown"
 

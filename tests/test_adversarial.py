@@ -434,6 +434,24 @@ class TestGitNotAvailable:
         content = Path(version_file).open().read().strip()
         assert content == "unknown"
 
+    @pytest.mark.parametrize("manifest", ["null", "[]", '"0.1.0"'])
+    def test_read_manifest_version_unknown_for_non_object_manifest(
+        self, tmp_path: Path, manifest: str
+    ) -> None:
+        """Valid JSON that is not an object → 'unknown', not AttributeError."""
+        (tmp_path / ".claude-plugin").mkdir()
+        (tmp_path / ".claude-plugin" / "plugin.json").write_text(manifest)
+        daemon = VaudevilleDaemon(
+            DaemonConfig(
+                str(tmp_path / "d.sock"),
+                str(tmp_path / "d.pid"),
+                str(tmp_path),
+                str(tmp_path / "d.version"),
+            ),
+        )
+
+        assert daemon._read_manifest_version() == "unknown"
+
 
 # ---------------------------------------------------------------------------
 # Attack 4: Request arrives while daemon is shutting down

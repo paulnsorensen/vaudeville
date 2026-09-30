@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from vaudeville.rules import Action, ActionName
 from vaudeville.server.harness import Outcome, RenderResult
 from vaudeville.server.harness.pi import PiAdapter
@@ -248,3 +250,46 @@ class TestContextBesidePrimary:
         """An add-context primary already carries its own text; no duplication."""
         result = PiAdapter().render(_outcome("add-context", "PreToolUse", context="branch: main"))
         assert _stdout_json(result) == {"action": "context", "message": "branch: main"}
+
+
+@pytest.mark.parametrize(
+    ("tool_input", "expected"),
+    [
+        ({"path": "a.py", "old_string": "safe", "new_string": "unsafe"}, "unsafe"),
+        ({"edits": [{"path": "a.py", "diff": "+unsafe"}]}, "+unsafe"),
+        ({"path": "a.py", "input": "1:ab|unsafe"}, "1:ab|unsafe"),
+        (
+            {"path": "a.py", "input": "<<<<<<< SEARCH\nsafe\n=======\nunsafe\n>>>>>>> REPLACE"},
+            "<<<<<<< SEARCH\nsafe\n=======\nunsafe\n>>>>>>> REPLACE",
+        ),
+    ],
+)
+def test_native_omp_edit_text(tool_input: dict[str, object], expected: str) -> None:
+    event = PiAdapter().normalize({"type": "tool_call", "toolName": "edit", "input": tool_input})
+    assert event.text == expected
+    assert event.tool_input == tool_input
+
+
+@pytest.mark.parametrize(
+    "content", ["fatal: denied", "", [], [{"type": "text", "text": "fatal: denied"}]]
+)
+def test_result_text_never_uses_tool_input(content: object) -> None:
+    tool_input = {"command": "git status"}
+    event = PiAdapter().normalize(
+        {"type": "tool_result", "toolName": "bash", "input": tool_input, "content": content}
+    )
+    assert event.text == ("fatal: denied" if content else "")
+    assert event.tool_input == tool_input
+
+
+@pytest.mark.parametrize("event", ["PostToolUse", "SessionStart", "unknown"])
+def test_unsupported_block_degrades(event: str) -> None:
+    result = PiAdapter().render(_outcome("block", event, message="denied"))
+    assert _stdout_json(result) == {"action": "warn", "message": "denied"}
+    assert result["downgrades"] == [{"from": "block", "to": "warn", "event": event}]
+
+
+def test_user_input_block_stays_block() -> None:
+    result = PiAdapter().render(_outcome("block", "UserPromptSubmit", message="denied"))
+    assert _stdout_json(result) == {"action": "block", "reason": "denied"}
+    assert result["downgrades"] == []

@@ -43,11 +43,8 @@ _TOOL_NAME_MAP: dict[str, str] = {
     "read": "Read",
 }
 
-# Field names checked, in order, for classifiable text on a tool call/result.
-# Pi's built-in schemas (earendil-works/pi `src/core/tools/*.ts`): bash
-# `{command}`, write `{path, content}`, edit `{path, edits: [{oldText,
-# newText}]}`. `tool_input` stays native, so rewrite rules name native fields.
-_TOOL_INPUT_TEXT_FIELDS = ("command", "content", "prompt", "body")
+# Native input stays unchanged so rewrite rules use each host's field names.
+_TOOL_INPUT_TEXT_FIELDS = ("command", "content", "prompt", "body", "new_string", "input")
 
 # `block` on a Stop-mapped event means "force one more turn", not "block a
 # tool call" — Pi/omp have no tool-block channel at the end of a run, only
@@ -82,10 +79,12 @@ def _message_text(message: object) -> str:
 
 
 def _edits_text(edits: object) -> str:
-    """Joined `newText` of a Pi `edit` tool's `edits` list."""
+    """Extract Pi replacement text and OMP patch text."""
     if not isinstance(edits, list):
         return ""
-    texts = [edit.get("newText") for edit in edits if isinstance(edit, dict)]
+    texts = [
+        edit.get(key) for edit in edits if isinstance(edit, dict) for key in ("newText", "diff")
+    ]
     return "\n".join(text for text in texts if isinstance(text, str) and text)
 
 
@@ -96,6 +95,8 @@ def _derive_text(native_event: str, raw: Mapping[str, object]) -> str:
         return text if isinstance(text, str) else ""
     if native_event in ("agent_before_settle", "agent_end"):
         return _message_text(raw.get("message"))
+    if native_event == "tool_result":
+        return _content_text(raw.get("content"))
     tool_input = raw.get("input")
     if isinstance(tool_input, dict):
         for key in _TOOL_INPUT_TEXT_FIELDS:
@@ -186,7 +187,9 @@ class PiAdapter:
     def _render_block(self, outcome: Outcome) -> _Rendered:
         if outcome.event in _CONTINUE_EVENTS:
             return _json({"action": "continue", "message": outcome.message}), None
-        return _json({"action": "block", "reason": outcome.message}), None
+        if outcome.event in {"PreToolUse", "UserPromptSubmit"}:
+            return _json({"action": "block", "reason": outcome.message}), None
+        return self._degrade(outcome, "block")
 
     def _render_rewrite(self, outcome: Outcome) -> _Rendered:
         if outcome.event in _REWRITE_EVENTS and outcome.updated_input is not None:

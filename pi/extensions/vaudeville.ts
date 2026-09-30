@@ -17,6 +17,7 @@
 
 import * as net from "node:net";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---- Local structural types (no hard import of a harness package) --------
 
@@ -101,8 +102,16 @@ function sendHook(
       resolve(value);
     };
 
+    let request: string;
     let socket: net.Socket;
     try {
+      request = JSON.stringify({
+        op: "hook",
+        harness: "pi",
+        event: nativeEvent,
+        cwd,
+        payload: { ...payload, cwd },
+      }) + "\n";
       socket = net.createConnection({ path: socketPath() });
     } catch {
       finish(null);
@@ -116,14 +125,7 @@ function sendHook(
 
     let buffer = "";
     socket.on("connect", () => {
-      const request = {
-        op: "hook",
-        harness: "pi",
-        event: nativeEvent,
-        cwd,
-        payload: { ...payload, cwd },
-      };
-      socket.write(`${JSON.stringify(request)}\n`);
+      socket.write(request);
     });
     socket.on("data", (chunk: Buffer) => {
       buffer += chunk.toString("utf8");
@@ -159,12 +161,26 @@ function sendHook(
 
 // ---- Handlers --------------------------------------------------------------
 
-async function handleToolCall(event: any, ctx: any): Promise<unknown> {
+function deliverContext(pi: ExtensionAPI, verdict: Verdict): void {
+  const content = [
+    verdict.action === "context" ? verdict.message : undefined,
+    verdict.context,
+  ].filter(Boolean).join("\n\n");
+  if (content) {
+    pi.sendMessage(
+      { customType: CUSTOM_TYPE, content, display: false },
+      { deliverAs: "nextTurn", triggerTurn: false },
+    );
+  }
+}
+
+async function handleToolCall(pi: ExtensionAPI, event: any, ctx: any): Promise<unknown> {
   try {
     const verdict = await sendHook("tool_call", ctx?.cwd ?? "", event);
     if (!verdict) {
       return;
     }
+    deliverContext(pi, verdict);
     if (verdict.action === "block") {
       return { block: true, reason: verdict.reason ?? "blocked by vaudeville" };
     }
@@ -176,8 +192,8 @@ async function handleToolCall(event: any, ctx: any): Promise<unknown> {
       }
       return { input: verdict.input };
     }
-    if (verdict.action === "warn" || verdict.action === "context") {
-      ctx?.ui?.notify?.(verdict.message ?? verdict.context ?? "", "warning");
+    if (verdict.action === "warn") {
+      ctx?.ui?.notify?.(verdict.message ?? "", "warning");
     }
     return;
   } catch {
@@ -185,15 +201,16 @@ async function handleToolCall(event: any, ctx: any): Promise<unknown> {
   }
 }
 
-async function handleToolResult(event: any, ctx: any): Promise<unknown> {
+async function handleToolResult(pi: ExtensionAPI, event: any, ctx: any): Promise<unknown> {
   try {
     // PostToolUse has no block/rewrite channel here; only surface warn/context.
     const verdict = await sendHook("tool_result", ctx?.cwd ?? "", event);
     if (!verdict) {
       return;
     }
-    if (verdict.action === "warn" || verdict.action === "context") {
-      ctx?.ui?.notify?.(verdict.message ?? verdict.context ?? "", "warning");
+    deliverContext(pi, verdict);
+    if (verdict.action === "warn") {
+      ctx?.ui?.notify?.(verdict.message ?? "", "warning");
     }
     return;
   } catch {
@@ -201,12 +218,13 @@ async function handleToolResult(event: any, ctx: any): Promise<unknown> {
   }
 }
 
-async function handleInput(event: any, ctx: any): Promise<unknown> {
+async function handleInput(pi: ExtensionAPI, event: any, ctx: any): Promise<unknown> {
   try {
     const verdict = await sendHook("input", ctx?.cwd ?? "", event);
     if (!verdict) {
       return { action: "continue" };
     }
+    deliverContext(pi, verdict);
     if (verdict.action === "block") {
       ctx?.ui?.notify?.(verdict.reason ?? "blocked by vaudeville", "warning");
       // Pi reads `action`; oh-my-pi reads `handled` / `text`.
@@ -215,8 +233,8 @@ async function handleInput(event: any, ctx: any): Promise<unknown> {
     if (verdict.action === "rewrite" && typeof verdict.input?.text === "string") {
       return { action: "transform", text: verdict.input.text };
     }
-    if (verdict.action === "warn" || verdict.action === "context") {
-      ctx?.ui?.notify?.(verdict.message ?? verdict.context ?? "", "warning");
+    if (verdict.action === "warn") {
+      ctx?.ui?.notify?.(verdict.message ?? "", "warning");
     }
     return { action: "continue" };
   } catch {
@@ -226,12 +244,9 @@ async function handleInput(event: any, ctx: any): Promise<unknown> {
 
 // ---- Stop (end of an agent run) -------------------------------------------
 //
-// Pi fires `agent_before_settle` (can return `{entries, continue}`) and then
-// `agent_end`. oh-my-pi has no `agent_before_settle`; it fires `agent_end`
-// with `willContinue`. Neither end event carries the final assistant text,
-// so `turn_end` (both hosts) records it. Pi evaluates Stop at
-// `agent_before_settle` and skips the `agent_end` that follows; oh-my-pi
-// evaluates Stop at `agent_end`.
+// Pi emits agent_end before agent_before_settle; only settlement evaluates Stop.
+// OMP has no settlement event. Its producer always sets an own willContinue
+// property, including undefined on completion. Pi's producer omits this property.
 
 // Cap on forced continuations in a row, reset by user input. Stops a Stop
 // rule that never passes from looping the agent forever.
@@ -241,15 +256,15 @@ const CUSTOM_TYPE = "vaudeville";
 
 interface StopState {
   lastMessage: unknown;
-  settleEvaluated: boolean;
   continues: number;
 }
 
 function newStopState(): StopState {
-  return { lastMessage: undefined, settleEvaluated: false, continues: 0 };
+  return { lastMessage: undefined, continues: 0 };
 }
 
 async function stopVerdict(
+  pi: ExtensionAPI,
   state: StopState,
   nativeEvent: string,
   ctx: any,
@@ -264,13 +279,14 @@ async function stopVerdict(
   if (!verdict) {
     return null;
   }
+  deliverContext(pi, verdict);
   if (verdict.action === "continue") {
     const message = verdict.message || verdict.reason || "Continue: a vaudeville rule did not pass.";
     state.continues += 1;
     return message;
   }
-  if (verdict.action === "warn" || verdict.action === "context") {
-    ctx?.ui?.notify?.(verdict.message ?? verdict.context ?? "", "warning");
+  if (verdict.action === "warn") {
+    ctx?.ui?.notify?.(verdict.message ?? "", "warning");
   }
   return null;
 }
@@ -287,14 +303,13 @@ function handleTurnEnd(state: StopState) {
   };
 }
 
-function handleBeforeSettle(state: StopState) {
+function handleBeforeSettle(pi: ExtensionAPI, state: StopState) {
   return async (event: any, ctx: any): Promise<unknown> => {
     try {
-      state.settleEvaluated = true;
       if (event?.outcome !== undefined && event.outcome !== "completed") {
         return;
       }
-      const message = await stopVerdict(state, "agent_before_settle", ctx);
+      const message = await stopVerdict(pi, state, "agent_before_settle", ctx);
       if (message === null) {
         return;
       }
@@ -311,14 +326,15 @@ function handleBeforeSettle(state: StopState) {
 function handleAgentEnd(pi: ExtensionAPI, state: StopState) {
   return async (event: any, ctx: any): Promise<void> => {
     try {
-      if (state.settleEvaluated) {
-        state.settleEvaluated = false;
+      if (!Object.hasOwn(event, "willContinue") || event.willContinue) {
         return;
       }
-      if (event?.willContinue) {
+      const messageEvent = event.messages?.findLast((message: any) => message.role === "assistant");
+      if (messageEvent?.stopReason === "aborted" || messageEvent?.stopReason === "error") {
         return;
       }
-      const message = await stopVerdict(state, "agent_end", ctx);
+      state.lastMessage = messageEvent;
+      const message = await stopVerdict(pi, state, "agent_end", ctx);
       if (message === null) {
         return;
       }
@@ -346,7 +362,7 @@ function shQuote(value: string): string {
 }
 
 function packageRoot(): string {
-  return path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
 function handleSessionStart(pi: ExtensionAPI) {
@@ -370,11 +386,11 @@ function handleSessionStart(pi: ExtensionAPI) {
 
 export default function vaudeville(pi: ExtensionAPI): void {
   pi.on("session_start", handleSessionStart(pi));
-  pi.on("tool_call", handleToolCall);
-  pi.on("tool_result", handleToolResult);
+  pi.on("tool_call", (event, ctx) => handleToolCall(pi, event, ctx));
+  pi.on("tool_result", (event, ctx) => handleToolResult(pi, event, ctx));
   const stop = newStopState();
-  pi.on("input", resetOnInput(stop, handleInput));
+  pi.on("input", resetOnInput(stop, (event, ctx) => handleInput(pi, event, ctx)));
   pi.on("turn_end", handleTurnEnd(stop));
-  pi.on("agent_before_settle", handleBeforeSettle(stop));
+  pi.on("agent_before_settle", handleBeforeSettle(pi, stop));
   pi.on("agent_end", handleAgentEnd(pi, stop));
 }

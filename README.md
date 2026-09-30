@@ -50,6 +50,14 @@ In an oh-my-pi session:
 
 oh-my-pi reads `.claude-plugin/marketplace.json` and loads the extension from `package.json#omp.extensions`. Its Claude-plugin loader reads only `hooks/pre/` and `hooks/post/`, so it does not run `hooks/hooks.json`. The extension is the one enforcement path.
 
+The extension sends rule context to the model on its next turn without starting a new turn. Warnings remain notifications.
+Pi evaluates Stop at `agent_before_settle`. oh-my-pi evaluates terminal `agent_end` events that own the `willContinue` field.
+This distinction follows the native producers: Pi omits that field; oh-my-pi includes it even when its value is undefined.
+Failed or cancelled runs do not trigger continuation. Each user input permits at most three forced continuations.
+Unsupported block channels, including PostToolUse, produce warnings with recorded downgrades.
+
+Extension regression tests require Node.js 22.6 or later. The pytest suite runs them through Node's native TypeScript loader.
+
 ## Quick Start (5 minutes to first hook)
 
 1. Copy the bundled rules to your global rules directory:

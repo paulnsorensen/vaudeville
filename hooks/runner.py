@@ -31,7 +31,7 @@ if PLUGIN_ROOT not in sys.path:
 from vaudeville.core import VaudevilleClient  # noqa: E402
 from vaudeville.core.protocol import GENERIC_ALLOW, HookResponse  # noqa: E402
 
-_ALLOW_OUTPUT: dict[str, HookResponse] = {"claude-code": GENERIC_ALLOW}
+_ALLOW_OUTPUT: dict[str, HookResponse] = {"claude-code": GENERIC_ALLOW, "codex": GENERIC_ALLOW}
 
 
 def _parse_harness(argv: list[str]) -> str:

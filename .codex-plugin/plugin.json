@@ -10,6 +10,7 @@
   "repository": "https://github.com/paulnsorensen/vaudeville",
   "license": "MIT",
   "keywords": ["hooks", "enforcement", "slm", "quality-gates", "semantic", "codex"],
+  "hooks": "./.codex-plugin/hooks.json",
   "interface": {
     "displayName": "Vaudeville",
     "shortDescription": "Semantic hook enforcement for Codex CLI",

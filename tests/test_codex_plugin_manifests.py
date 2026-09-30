@@ -1,15 +1,4 @@
-"""Tests for `.codex-plugin/*.json` and `.agents/plugins/marketplace.json`.
-
-`plugin.json` deliberately omits the `hooks` field: `scripts/validate_plugin.py`
-in `openai/codex` (fetched 2026-09-26,
-`codex-rs/skills/src/assets/samples/plugin-creator/scripts/validate_plugin.py`)
-rejects any top-level key not in its `allowed_keys` set, and `hooks` is not a
-member of that set — confirmed by running the validator locally against a
-draft manifest with and without the field. Codex discovers `hooks.json` at
-the default `.codex-plugin/hooks.json` path without a manifest pointer (the
-spec doc: "skills, hooks, and string-valued mcpServers are supplemented on
-top of default component discovery; they do not replace defaults").
-"""
+"""Tests for `.codex-plugin/*.json` and `.agents/plugins/marketplace.json`."""
 
 from __future__ import annotations
 
@@ -35,10 +24,20 @@ class TestPluginManifest:
         assert isinstance(manifest["version"], str)
         assert isinstance(manifest["description"], str) and manifest["description"]
 
-    def test_does_not_declare_a_hooks_field(self) -> None:
-        """The openai/codex scaffold validator rejects a top-level `hooks` key."""
+    def test_resolves_codex_hooks(self) -> None:
         manifest = _load(PLUGIN_JSON)
-        assert "hooks" not in manifest
+        hooks_path = os.path.realpath(os.path.join(PROJECT_ROOT, manifest["hooks"]))
+        assert hooks_path == os.path.realpath(HOOKS_JSON)
+        hooks = _load(hooks_path)
+        commands = [
+            hook["command"]
+            for entries in hooks["hooks"].values()
+            for entry in entries
+            for hook in entry["hooks"]
+            if "runner.py" in hook["command"]
+        ]
+        assert commands
+        assert all("--harness codex" in command for command in commands)
 
 
 class TestHooksJson:

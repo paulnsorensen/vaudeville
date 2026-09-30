@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from vaudeville.core.protocol import GENERIC_ALLOW
 from vaudeville.rules import Action, ActionName
 from vaudeville.server.harness import Outcome, RenderResult
@@ -161,6 +163,37 @@ class TestRenderMatrix:
         }
         assert result["downgrades"] == []
 
+    @pytest.mark.parametrize("action", ["feedback", "add-context"])
+    def test_user_prompt_submit_context(self, action: ActionName) -> None:
+        result = CodexAdapter().render(_outcome(action, "UserPromptSubmit", message="guidance"))
+        assert _stdout_json(result) == {
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": "guidance",
+            }
+        }
+        assert result["downgrades"] == []
+
+    @pytest.mark.parametrize("event", ["PreToolUse", "UserPromptSubmit"])
+    @pytest.mark.parametrize("action", ["allow", "warn", "feedback"])
+    def test_merged_context(self, event: str, action: ActionName) -> None:
+        result = CodexAdapter().render(
+            _outcome(action, event, message="guidance", context="branch: main")
+        )
+        expected: dict[str, object] = {
+            "hookSpecificOutput": {
+                "hookEventName": event,
+                "additionalContext": (
+                    "guidance\n\nbranch: main" if action == "feedback" else "branch: main"
+                ),
+            }
+        }
+        if action == "warn":
+            expected["systemMessage"] = "guidance"
+        assert _stdout_json(result) == expected
+        assert result["exit_code"] == 0
+        assert result["downgrades"] == []
+
     def test_run(self) -> None:
         adapter = CodexAdapter()
         result = adapter.render(_outcome("run", "PostToolUse"))
@@ -234,3 +267,32 @@ class TestNormalize:
         event = adapter.normalize(raw)
         assert event.text == ""
         assert event.tool_name is None
+
+    @pytest.mark.parametrize("response", ["tool output", "", {"stdout": "done"}, [], {}, 0, False])
+    def test_post_tool_use_classifies_response_before_input(self, response: object) -> None:
+        event = CodexAdapter().normalize(
+            {
+                "hook_event_name": "PostToolUse",
+                "tool_input": {"command": "competing input"},
+                "tool_response": response,
+            }
+        )
+        expected = response if isinstance(response, str) else json.dumps(response)
+        assert event.text == expected
+
+    def test_pre_tool_use_preserves_input_priority(self) -> None:
+        event = CodexAdapter().normalize(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_input": {"command": "input"},
+                "tool_response": "output",
+            }
+        )
+        assert event.text == "input"
+
+    @pytest.mark.parametrize("event_name", ["PreToolUse", "PostToolUse"])
+    def test_response_without_input(self, event_name: str) -> None:
+        event = CodexAdapter().normalize(
+            {"hook_event_name": event_name, "tool_response": "output"}
+        )
+        assert event.text == "output"

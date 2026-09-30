@@ -43,7 +43,7 @@ _TOP_LEVEL_DECISION_EVENTS = frozenset({"UserPromptSubmit", "PostToolUse", "Stop
 
 # hookSpecificOutput.additionalContext is confirmed for these events.
 _ADDITIONAL_CONTEXT_EVENTS = frozenset(
-    {"SessionStart", "SubagentStart", "PreToolUse", "PostToolUse"}
+    {"SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse"}
 )
 
 _TEXT_FIELDS_BY_EVENT: dict[str, tuple[str, ...]] = {
@@ -59,6 +59,9 @@ _TOOL_INPUT_TEXT_FIELDS = ("input", "patch", "command", "content", "new_string",
 
 def _derive_text(event: str, raw: Mapping[str, object]) -> str:
     """Best-effort classifiable text for an event."""
+    if event == "PostToolUse" and "tool_response" in raw:
+        response = raw["tool_response"]
+        return response if isinstance(response, str) else json.dumps(response)
     for field in _TEXT_FIELDS_BY_EVENT.get(event, ()):
         value = raw.get(field)
         if isinstance(value, str) and value:

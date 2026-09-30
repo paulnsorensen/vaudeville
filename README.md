@@ -51,7 +51,13 @@ Vaudeville also ships as a [Codex CLI](https://developers.openai.com/codex) plug
 codex /plugins
 ```
 
-Open the plugin browser, add `paulnsorensen/vaudeville` as a marketplace source, and install `vaudeville` from it. Codex CLI runs the same daemon and rules as Claude Code — the `codex` harness adapter maps Codex's hook events and tool names (`apply_patch` → `Edit`) onto the same rule vocabulary. On `SessionStart`, `hooks/session-start.sh` launches the daemon exactly as it does under Claude Code.
+Open the plugin browser, add `paulnsorensen/vaudeville` as a marketplace source, and install `vaudeville` from it.
+
+Run `/hooks`.
+Review and trust the Vaudeville hooks.
+Start a new Codex session.
+
+Codex CLI runs the same daemon and rules as Claude Code — the `codex` harness adapter maps Codex's hook events and tool names (`apply_patch` → `Edit`) onto the same rule vocabulary. On `SessionStart`, `hooks/session-start.sh` launches the daemon exactly as it does under Claude Code.
 
 ## Uninstall
 

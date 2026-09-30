@@ -303,6 +303,105 @@ class TestNormalize:
         event = adapter.normalize(raw)
         assert event.text == "deferred: revisit auth flow later"
 
+    # Payloads below follow the examples in the Claude Code hooks reference
+    # (https://code.claude.com/docs/en/hooks, read 2026-09-30).
+
+    def test_user_prompt_expansion_uses_expanded_prompt(self) -> None:
+        raw = {
+            "hook_event_name": "UserPromptExpansion",
+            "cwd": "/repo",
+            "command_name": "lint-check",
+            "command_input": "src/",
+            "expanded_prompt": "Run the linter on src/ directory and report issues",
+        }
+        event = ClaudeCodeAdapter().normalize(raw)
+        assert event.text == "Run the linter on src/ directory and report issues"
+
+    def test_pre_model_switch_describes_the_switch(self) -> None:
+        raw = {
+            "hook_event_name": "PreModelSwitch",
+            "cwd": "/repo",
+            "from_model": "claude-opus-5",
+            "to_model": "claude-haiku-3-5",
+            "reason": "user_requested",
+        }
+        event = ClaudeCodeAdapter().normalize(raw)
+        assert event.text == (
+            "Switch model from claude-opus-5 to claude-haiku-3-5 (reason: user_requested)"
+        )
+
+    def test_pre_model_switch_without_reason(self) -> None:
+        raw = {
+            "hook_event_name": "PreModelSwitch",
+            "from_model": "claude-opus-5",
+            "to_model": "claude-sonnet-5",
+        }
+        event = ClaudeCodeAdapter().normalize(raw)
+        assert event.text == "Switch model from claude-opus-5 to claude-sonnet-5"
+
+    def test_pre_model_switch_without_source_or_target(self) -> None:
+        adapter = ClaudeCodeAdapter()
+        to_only = adapter.normalize({"hook_event_name": "PreModelSwitch", "to_model": "m"})
+        no_target = adapter.normalize({"hook_event_name": "PreModelSwitch", "from_model": "m"})
+        assert to_only.text == "Switch model to m"
+        assert no_target.text == ""
+
+    def test_post_tool_batch_lists_each_call_and_result(self) -> None:
+        raw = {
+            "hook_event_name": "PostToolBatch",
+            "cwd": "/repo",
+            "tool_results": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": "File edited successfully",
+                },
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_2",
+                    "content": [{"type": "text", "text": "Build passed"}],
+                },
+            ],
+            "tool_uses": [
+                {
+                    "id": "toolu_1",
+                    "type": "tool_use",
+                    "name": "Edit",
+                    "input": {"file_path": "src/app.ts"},
+                },
+                {
+                    "id": "toolu_2",
+                    "type": "tool_use",
+                    "name": "Bash",
+                    "input": {"command": "npm test"},
+                },
+            ],
+        }
+        event = ClaudeCodeAdapter().normalize(raw)
+        assert event.text == (
+            'Edit: {"file_path": "src/app.ts"}\n'
+            "Bash: npm test\n"
+            "Result: File edited successfully\n"
+            "Result: Build passed"
+        )
+
+    def test_post_tool_batch_skips_malformed_entries(self) -> None:
+        raw = {
+            "hook_event_name": "PostToolBatch",
+            "tool_uses": ["junk", {"name": 3, "input": None}],
+            "tool_results": "not-a-list",
+        }
+        event = ClaudeCodeAdapter().normalize(raw)
+        assert event.text == ""
+
+    def test_post_tool_batch_skips_results_without_text(self) -> None:
+        raw = {
+            "hook_event_name": "PostToolBatch",
+            "tool_results": ["junk", {"content": None}, {"content": [{"type": "image"}]}],
+        }
+        event = ClaudeCodeAdapter().normalize(raw)
+        assert event.text == ""
+
 
 class TestNewlyWiredEvents:
     """PreModelSwitch, PostToolBatch, UserPromptExpansion (AC-7 follow-up)."""

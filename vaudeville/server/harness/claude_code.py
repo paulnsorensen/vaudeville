@@ -60,9 +60,10 @@ _ADDITIONAL_CONTEXT_EVENTS = frozenset(
     }
 )
 
+# Payload fields per the hooks reference (read 2026-09-30).
 _TEXT_FIELDS_BY_EVENT: dict[str, tuple[str, ...]] = {
     "UserPromptSubmit": ("prompt",),
-    "UserPromptExpansion": ("prompt",),
+    "UserPromptExpansion": ("expanded_prompt",),
     "Stop": ("last_assistant_message",),
     "SubagentStop": ("last_assistant_message",),
 }
@@ -70,18 +71,76 @@ _TEXT_FIELDS_BY_EVENT: dict[str, tuple[str, ...]] = {
 _TOOL_INPUT_TEXT_FIELDS = ("command", "content", "new_string", "prompt", "body")
 
 
+def _tool_input_text(tool_input: Mapping[str, object]) -> str:
+    for key in _TOOL_INPUT_TEXT_FIELDS:
+        value = tool_input.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _model_switch_text(raw: Mapping[str, object]) -> str:
+    from_model, to_model = raw.get("from_model"), raw.get("to_model")
+    if not isinstance(to_model, str) or not to_model:
+        return ""
+    source = f" from {from_model}" if isinstance(from_model, str) and from_model else ""
+    text = f"Switch model{source} to {to_model}"
+    reason = raw.get("reason")
+    return f"{text} (reason: {reason})" if isinstance(reason, str) and reason else text
+
+
+def _result_content_text(content: object) -> str:
+    """A tool_result `content` is a string or a list of text blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            block["text"]
+            for block in content
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+        )
+    return ""
+
+
+def _tool_batch_text(raw: Mapping[str, object]) -> str:
+    """One line per call (`Name: input`), then one line per result."""
+    lines: list[str] = []
+    uses = raw.get("tool_uses")
+    for use in uses if isinstance(uses, list) else ():
+        if not isinstance(use, dict):
+            continue
+        name, tool_input = use.get("name"), use.get("input")
+        if not isinstance(name, str) or not isinstance(tool_input, dict):
+            continue
+        lines.append(f"{name}: {_tool_input_text(tool_input) or json.dumps(tool_input)}")
+    results = raw.get("tool_results")
+    for result in results if isinstance(results, list) else ():
+        text = _result_content_text(result.get("content")) if isinstance(result, dict) else ""
+        if text:
+            lines.append(f"Result: {text}")
+    return "\n".join(lines)
+
+
+_TEXT_BUILDERS_BY_EVENT: dict[str, Callable[[Mapping[str, object]], str]] = {
+    "PreModelSwitch": _model_switch_text,
+    "PostToolBatch": _tool_batch_text,
+}
+
+
 def _derive_text(event: str, raw: Mapping[str, object]) -> str:
     """Best-effort classifiable text for an event."""
+    builder = _TEXT_BUILDERS_BY_EVENT.get(event)
+    if builder is not None:
+        return builder(raw)
     for field in _TEXT_FIELDS_BY_EVENT.get(event, ()):
         value = raw.get(field)
         if isinstance(value, str) and value:
             return value
     tool_input = raw.get("tool_input")
     if isinstance(tool_input, dict):
-        for key in _TOOL_INPUT_TEXT_FIELDS:
-            value = tool_input.get(key)
-            if isinstance(value, str) and value:
-                return value
+        text = _tool_input_text(tool_input)
+        if text:
+            return text
     tool_response = raw.get("tool_response")
     if isinstance(tool_response, str) and tool_response:
         return tool_response

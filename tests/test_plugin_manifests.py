@@ -18,20 +18,12 @@ def _load(path: str) -> dict[str, object]:
 
 
 class TestPluginManifest:
-    def test_plugin_json_parses(self) -> None:
-        manifest = _load(PLUGIN_JSON)
-        assert isinstance(manifest, dict)
-
     def test_plugin_json_has_required_name(self) -> None:
         manifest = _load(PLUGIN_JSON)
         assert manifest["name"] == "vaudeville"
 
 
 class TestMarketplaceManifest:
-    def test_marketplace_json_parses(self) -> None:
-        marketplace = _load(MARKETPLACE_JSON)
-        assert isinstance(marketplace, dict)
-
     def test_marketplace_json_has_required_fields(self) -> None:
         marketplace = _load(MARKETPLACE_JSON)
         assert marketplace["name"]

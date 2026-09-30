@@ -35,6 +35,11 @@ from vaudeville.server._handlers import handle_request
 from vaudeville.server.agents import decide
 from vaudeville.server.hook import pipeline as pipeline_module
 
+# Read independently of the daemon so the stamp tests do not trust the SUT.
+_MANIFEST_VERSION = json.loads(
+    (Path(__file__).resolve().parent.parent / ".claude-plugin" / "plugin.json").read_text()
+)["version"]
+
 
 def _write_rule(rules_root: Path) -> None:
     rules_dir = rules_root / ".vaudeville" / "rules"
@@ -345,7 +350,7 @@ class TestGitNotAvailable:
             daemon._write_version_stamp()
 
         content = Path(version_file).open().read().strip()
-        assert content == daemon._read_manifest_version(), (
+        assert content == _MANIFEST_VERSION, (
             f"Expected the manifest version when git is unavailable, got {content!r}"
         )
         assert "+" not in content
@@ -375,7 +380,7 @@ class TestGitNotAvailable:
             daemon._write_version_stamp()
 
         content = Path(version_file).open().read().strip()
-        assert content == daemon._read_manifest_version(), (
+        assert content == _MANIFEST_VERSION, (
             f"Expected the manifest version for non-zero git exit, got {content!r}"
         )
 
@@ -403,7 +408,7 @@ class TestGitNotAvailable:
             daemon._write_version_stamp()
 
         content = Path(version_file).open().read().strip()
-        assert content == daemon._read_manifest_version(), (
+        assert content == _MANIFEST_VERSION, (
             f"Expected the manifest version for git timeout, got {content!r}"
         )
 

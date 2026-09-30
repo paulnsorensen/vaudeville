@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -81,7 +81,7 @@ test("startup executes the real script beneath encoded installation paths", asyn
   const h = await host(t, undefined, installed);
   await h.emit("session_start");
   const { readFile } = await import("node:fs/promises");
-  assert.equal(await readFile(path.join(directory, "started"), "utf8"), directory);
+  assert.equal(await readFile(path.join(directory, "started"), "utf8"), await realpath(directory));
 });
 
 for (const channel of ["tool_call", "tool_result", "input", "agent_before_settle", "agent_end"]) {

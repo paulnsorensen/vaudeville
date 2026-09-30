@@ -115,6 +115,16 @@ eval-rule rule:
 eval-calibrate rule:
     VAUDEVILLE_SKIP=1 uv run python -m vaudeville.eval --calibrate --rule {{rule}}
 
+# Validate the Claude Code plugin manifests (skips if `claude` CLI is absent)
+plugin-validate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v claude &>/dev/null; then
+        echo "claude CLI not found — skipping plugin validation"
+        exit 0
+    fi
+    claude plugin validate --strict .
+
 # Clean build and test artifacts
 clean:
     rm -rf .pytest_cache .mypy_cache .ruff_cache

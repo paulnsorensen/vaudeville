@@ -240,3 +240,144 @@ class TestRestartRaceDaemonWarning:
         assert "daemon did not come up" in stderr, (
             f"Expected restart-race warning in stderr.\nstderr={stderr!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE_PLUGIN_DATA / UV_PROJECT_ENVIRONMENT tests
+# ---------------------------------------------------------------------------
+
+
+class TestUvProjectEnvironment:
+    """The daemon's uv-managed venv lives in CLAUDE_PLUGIN_DATA, not
+    CLAUDE_PLUGIN_ROOT (AC gap 3), with a fallback to uv's own default when
+    CLAUDE_PLUGIN_DATA is unset.
+    """
+
+    @staticmethod
+    def _fake_uv_recording_env(fake_bin: pathlib.Path, marker: pathlib.Path) -> None:
+        fake_uv = fake_bin / "uv"
+        fake_uv.write_text(
+            f'#!/usr/bin/env bash\necho "${{UV_PROJECT_ENVIRONMENT:-}}" > {marker}\nexit 0\n'
+        )
+        fake_uv.chmod(0o755)
+
+    def test_uv_project_environment_set_from_plugin_data(
+        self, session_env: SessionEnv, tmp_path: pathlib.Path
+    ) -> None:
+        _skip_if_unsupported()
+
+        marker = tmp_path / "uv_env_seen.txt"
+        self._fake_uv_recording_env(session_env["fake_bin"], marker)
+
+        plugin_data = tmp_path / "plugin-data"
+        env = dict(session_env["env"])
+        env["CLAUDE_PLUGIN_DATA"] = str(plugin_data)
+
+        result = _run_session_start(env)
+
+        assert result.returncode == 0, result.stderr.decode()
+        assert marker.read_text().strip() == str(plugin_data / "venv")
+
+    def test_uv_project_environment_unset_when_plugin_data_absent(
+        self, session_env: SessionEnv, tmp_path: pathlib.Path
+    ) -> None:
+        _skip_if_unsupported()
+
+        marker = tmp_path / "uv_env_seen.txt"
+        self._fake_uv_recording_env(session_env["fake_bin"], marker)
+
+        env = dict(session_env["env"])
+        env.pop("CLAUDE_PLUGIN_DATA", None)
+
+        result = _run_session_start(env)
+
+        assert result.returncode == 0, result.stderr.decode()
+        assert marker.read_text().strip() == ""
+
+
+# ---------------------------------------------------------------------------
+# Version stamp tests (manifest version + git rev, AC gap 4)
+# ---------------------------------------------------------------------------
+
+
+def _expected_current_version() -> str:
+    """Recompute the stamp session-start.sh should derive for this checkout."""
+    manifest = pathlib.Path(PROJECT_ROOT) / ".claude-plugin" / "plugin.json"
+    import json
+
+    manifest_version = json.loads(manifest.read_text())["version"]
+    git_rev = subprocess.run(
+        ["git", "-C", PROJECT_ROOT, "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return f"{manifest_version}+{git_rev}" if git_rev else manifest_version
+
+
+class TestVersionStamp:
+    def test_matching_version_file_skips_restart(self, session_env: SessionEnv) -> None:
+        """A running daemon whose VERSION_FILE already matches the manifest
+        version plus git rev is reported up to date, not restarted."""
+        _skip_if_unsupported()
+
+        runtime_dir = session_env["runtime_dir"]
+        pid_file = runtime_dir / "vaudeville.pid"
+        version_file = runtime_dir / "vaudeville.version"
+        sleeper = subprocess.Popen(["sleep", "60"])
+        try:
+            pid_file.write_text(str(sleeper.pid))
+            version_file.write_text(_expected_current_version())
+
+            # conftest points CLAUDE_PLUGIN_ROOT at a missing dir; the stamp
+            # needs the real manifest, so point it at this checkout.
+            env = dict(session_env["env"], CLAUDE_PLUGIN_ROOT=PROJECT_ROOT)
+            result = _run_session_start(env)
+        finally:
+            sleeper.send_signal(signal.SIGTERM)
+            sleeper.wait()
+
+        assert result.returncode == 0, result.stderr.decode()
+        stderr = result.stderr.decode()
+        assert "Daemon up to date" in stderr
+        assert "Version mismatch" not in stderr
+
+    def test_stale_version_file_triggers_restart(self, session_env: SessionEnv) -> None:
+        """A VERSION_FILE stamp that doesn't match forces a restart attempt."""
+        _skip_if_unsupported()
+
+        runtime_dir = session_env["runtime_dir"]
+        pid_file = runtime_dir / "vaudeville.pid"
+        version_file = runtime_dir / "vaudeville.version"
+        sleeper = subprocess.Popen(["sleep", "60"])
+        try:
+            pid_file.write_text(str(sleeper.pid))
+            version_file.write_text("0.0.0-stale+deadbeef")
+
+            result = _run_session_start(session_env["env"])
+        finally:
+            sleeper.send_signal(signal.SIGTERM)
+            sleeper.wait()
+
+        assert result.returncode == 0, result.stderr.decode()
+        assert "Version mismatch" in result.stderr.decode()
+
+    def test_missing_manifest_stamps_unknown_and_fails_open(self, session_env: SessionEnv) -> None:
+        """No plugin.json under the plugin root: the stamp is `unknown` and
+        the script still exits 0 (the manifest read must not trip `set -e`)."""
+        _skip_if_unsupported()
+
+        runtime_dir = session_env["runtime_dir"]
+        pid_file = runtime_dir / "vaudeville.pid"
+        version_file = runtime_dir / "vaudeville.version"
+        sleeper = subprocess.Popen(["sleep", "60"])
+        try:
+            pid_file.write_text(str(sleeper.pid))
+            version_file.write_text("unknown")
+
+            result = _run_session_start(session_env["env"])
+        finally:
+            sleeper.send_signal(signal.SIGTERM)
+            sleeper.wait()
+
+        assert result.returncode == 0, result.stderr.decode()
+        assert "Daemon up to date" in result.stderr.decode()

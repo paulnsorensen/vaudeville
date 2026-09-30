@@ -86,6 +86,7 @@ max-statements = 40
 "tests/test_analytics.py" = ["PLR0913"]
 "tests/test_harness_claude_code.py" = ["PLR0913"]
 "tests/test_harness_codex.py" = ["PLR0913"]
+"tests/test_harness_pi.py" = ["PLR0913"]
 "tests/test_stats.py" = ["PLR0913"]
 "tests/test_watch.py" = ["PLR0913"]
 

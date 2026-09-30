@@ -5,6 +5,7 @@ from __future__ import annotations
 from vaudeville.server.harness import get_adapter
 from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
 from vaudeville.server.harness.codex import CodexAdapter
+from vaudeville.server.harness.pi import PiAdapter
 
 
 class TestGetAdapter:
@@ -15,6 +16,10 @@ class TestGetAdapter:
     def test_codex_harness_returns_adapter(self) -> None:
         adapter = get_adapter("codex")
         assert isinstance(adapter, CodexAdapter)
+
+    def test_pi_harness_returns_adapter(self) -> None:
+        adapter = get_adapter("pi")
+        assert isinstance(adapter, PiAdapter)
 
     def test_unknown_harness_returns_none(self) -> None:
         assert get_adapter("nope") is None

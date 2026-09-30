@@ -33,8 +33,17 @@ export_socket_path() {
   fi
 }
 
-# Compute current version stamp
-CURRENT_VERSION=$(git -C "${PLUGIN_ROOT}" rev-parse HEAD 2>/dev/null || echo "unknown")
+# Compute current version stamp from the manifest (always present, even on
+# a marketplace/non-git install) plus the git rev when one exists (finer
+# staleness detection for a local dev checkout).
+MANIFEST_VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${PLUGIN_ROOT}/.claude-plugin/plugin.json" 2>/dev/null | head -1 || true)
+MANIFEST_VERSION="${MANIFEST_VERSION:-unknown}"
+GIT_REV=$(git -C "${PLUGIN_ROOT}" rev-parse HEAD 2>/dev/null || echo "")
+if [ -n "${GIT_REV}" ]; then
+  CURRENT_VERSION="${MANIFEST_VERSION}+${GIT_REV}"
+else
+  CURRENT_VERSION="${MANIFEST_VERSION}"
+fi
 
 # Check if daemon is already running
 if [ -f "${PID_FILE}" ]; then
@@ -87,6 +96,13 @@ if [ -f "${LOG_FILE}" ]; then
     mv "${LOG_FILE}" "${LOG_FILE}.1"
     echo "[vaudeville] Log rotated (was ${_log_size} bytes) — old log at ${LOG_FILE}.1" >&2
   fi
+fi
+
+# Keep the uv-managed venv in CLAUDE_PLUGIN_DATA (persists across plugin
+# updates) rather than PLUGIN_ROOT (churns on every update). Falls back to
+# uv's own default project-local venv when CLAUDE_PLUGIN_DATA is not set.
+if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  export UV_PROJECT_ENVIRONMENT="${CLAUDE_PLUGIN_DATA}/venv"
 fi
 
 # Spawn daemon

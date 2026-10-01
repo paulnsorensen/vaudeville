@@ -64,6 +64,11 @@ DEFAULT_REQUEST_DEADLINE_SECONDS = 6.0
 # downstream can add a second row for the same rule (F24).
 _NO_DEFER = frozenset({"run", "allow", "log"})
 
+# `stop_hook_active` marks the Stop event that follows a block. A second
+# block would loop forever, so the tier ceiling caps it to `warn`.
+_STOP_EVENTS = frozenset({"Stop", "SubagentStop"})
+_STOP_LOOP_GUARD = "stop-hook-active"
+
 # The rewrite source key for an event with no tool input.
 _EVENT_TEXT_KEY = "event.text"
 
@@ -217,6 +222,11 @@ def _run_pipeline(
     return _to_wire(rendered)
 
 
+def _is_stop_loop(event: HookEvent) -> bool:
+    """True when a Stop hook already forced this turn to continue."""
+    return event.stop_hook_active and event.event in _STOP_EVENTS
+
+
 def _matcher_matches(matcher: str | None, tool_name: str | None) -> bool:
     if matcher is None:
         return True
@@ -350,6 +360,9 @@ def _evaluate_rule(
         command = action_obj.command if action_obj is not None else None
 
     effective_name, downgrade = apply_tier_ceiling(action_name, rule.tier)
+    if effective_name == "block" and _is_stop_loop(event):
+        effective_name = "warn"
+        downgrade = _STOP_LOOP_GUARD
     extra_downgrades = [d for d in (escalate_ceiling_reason, rewrite_downgrade) if d]
     if extra_downgrades:
         downgrade = (

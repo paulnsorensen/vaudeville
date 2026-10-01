@@ -12,7 +12,10 @@ import re
 logger = logging.getLogger(__name__)
 
 
-MAX_INPUT_TOKENS = 3000
+# Jev 1.13 rejects a request above 32k tokens for state plus the longest
+# question. 20k estimated tokens (80k chars) fits that limit at 3 chars per
+# token, with room for the rule prompt and delimiters.
+MAX_INPUT_TOKENS = 20_000
 CHARS_PER_TOKEN = 4
 
 

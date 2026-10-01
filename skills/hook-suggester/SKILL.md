@@ -4,7 +4,8 @@ description: >
   Analyze Claude Code session history to suggest hooks tailored to the user's
   actual usage patterns. Mines vaudeville:session-analytics data for dangerous commands,
   tool misuse, high error rates, permission friction, missing quality gates,
-  broken hooks, and repeated automatable patterns — then generates concrete
+  broken hooks, repeated automatable patterns, and semantic behavior in final
+  assistant messages — then generates concrete
   hook implementations via vaudeville:add-hook. Use when the user asks "what hooks
   should I add", "suggest hooks", "analyze my usage for hooks", "what should
   I enforce", "improve my hooks", "hook suggestions", or wants to discover
@@ -48,7 +49,8 @@ Options:
 - `--min-occurrences N` — Minimum pattern count to surface (default: 3)
 - `--json` — Output structured JSON instead of human-readable text
 
-The analyzer checks 8 pattern categories:
+The analyzer checks 8 structural pattern categories and a set of semantic
+categories mined from final assistant messages:
 
 | Pattern | Event | What it catches |
 |---------|-------|----------------|
@@ -60,6 +62,20 @@ The analyzer checks 8 pattern categories:
 | Hook failures | Stop | Hooks that error and silently pass |
 | Code write volume | PostToolUse | Code write events counted by language |
 | Repeated commands | SessionStart | Bash commands repeated many times |
+
+Semantic candidates come from the `final_messages` table (the text a Stop rule
+sees). A lexical prefilter finds and counts them. No model runs in the
+analysis. Each candidate lists its match count, a start tier, whether a
+bundled rule covers it, and up to 5 real snippets.
+
+| Semantic candidate | Event | Bundled rule |
+|--------------------|-------|--------------|
+| Asks permission to commit, push, or open a PR | Stop | `git-gate` |
+| Defers work to a follow-up, later PR, or ticket | Stop | `deferral-detector` |
+| Claims success after edits with no test or build run in the turn | Stop | none |
+| Hedges about facts the agent could check | Stop | none |
+
+A category with fewer than `--min-occurrences` matches does not appear.
 
 ### Step 3: Filter out useless suggestions
 
@@ -79,9 +95,16 @@ cannot fix in a follow-up turn (turn-waste, time-already-spent patterns) is
 Either reframe the suggestion as a PreToolUse hard hook, recommend
 `tier: block`, or drop it.
 
+The semantic candidates pass this filter because the next turn can fix each
+one: it can commit, do the deferred work, run a check, or verify the fact.
+Their start tier is `shadow` because the match is lexical and unmeasured. The
+target tier is `block`. Drop any new semantic category that describes
+past-tense damage no later turn can fix.
+
 ### Step 4: Present findings and triage
 
-Present results as a numbered list. For each suggestion include the recommended
+Present semantic candidates first, before structural ones. They are the
+suggestions only vaudeville can enforce. Present results as a numbered list. For each suggestion include the recommended
 tier and why that tier (not a less aggressive one):
 
 ```
@@ -91,6 +114,11 @@ N. [PRIORITY] Title
    Why this tier: <why warn isn't enough, or why block isn't appropriate>
    Examples: <top 3 from data>
 ```
+
+For a semantic candidate, use `Tier: shadow (target block)` and add the
+bundled rule line. If a bundled rule covers it, suggest enabling or tuning
+that rule instead of writing a new one. Show the mined snippets as candidate
+`violation` test cases.
 
 End with: "Which suggestions would you like me to implement? (all / numbers / none)"
 
@@ -104,6 +132,11 @@ skill. It handles the SLM-vs-JS routing decision automatically:
 ```
 Skill(skill: "vaudeville:add-hook", args: "<description of what to enforce>")
 ```
+
+For a semantic candidate, pass the mined `test_cases` (each with
+`outcome: violation`) in the description. `vaudeville:add-hook` must write a
+semantic rule and seed `test_cases` with them. It adds clean cases to balance
+the set. It must not turn the candidate into a structural hook.
 
 `vaudeville:add-hook` writes semantic rules directly. It routes structural
 checks to `vaudeville:hard-hook-writer`. Use the skill so one impact filter
@@ -153,11 +186,17 @@ User: suggest some hooks for me
 - Tool misuse counts include legitimate subagent bash calls (agents using grep/find
   intentionally). High counts don't always mean the *user* should add a hook — they
   may reflect agent behavior that's already correct for the subagent's context.
-- The analyzer runs 8 independent DuckDB queries. If the database is large (>100K
+- The analyzer runs independent DuckDB queries. If the database is large (>100K
   entries), this can take 5-10 seconds. Don't run with --force unnecessarily.
 - vaudeville:add-hook is invoked per suggestion — if the user approves 5 hooks, that's
   5 sequential Skill invocations. Batch acknowledgment is fine but implementation
   is serial.
+- Semantic matches are lexical. Some snippets are false positives, such as a
+  message that quotes a phrase. The eval harness judges them later. Check each
+  snippet before you use it as a test case. Snippets are redacted for common
+  secret shapes, but read them before you commit them.
+- The `final_messages` table exists only after re-ingestion. Run ingestion
+  with `--force` once if the semantic section is missing.
 - The analyzer surfaces patterns; the impact filter (Step 3) decides if a
   pattern is hookable. A high-frequency pattern that fires only at
   `Stop + warn` for unrecoverable behavior (the turn-waste/todo-smuggler

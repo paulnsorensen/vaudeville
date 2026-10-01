@@ -120,6 +120,7 @@ class TestIngest:
             "tool_uses",
             "tool_results",
             "stop_events",
+            "final_messages",
             "agent_spawns",
             "skill_invocations",
             "mcp_calls",

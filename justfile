@@ -23,7 +23,7 @@ coverage *args:
 check: fmt-check lint type-check vulture
     @echo "All checks passed ✓"
 
-# Full validation pipeline (rtk-wrapped). Agents MUST run this before completion.
+# Full validation pipeline. Agents MUST run this before completion.
 build:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -32,15 +32,15 @@ build:
         base="main"
     fi
     echo "→ autoformat (ruff format)"
-    uv run rtk ruff format .
+    uv run ruff format .
     echo "→ lint with autofix (ruff check --fix)"
-    uv run rtk ruff check --fix .
+    uv run ruff check --fix .
     echo "→ typecheck (mypy --strict)"
-    uv run rtk mypy --strict vaudeville/ tests/
+    uv run mypy --strict vaudeville/ tests/
     echo "→ dead code (vulture)"
-    uv run rtk vulture
+    uv run vulture
     echo "→ tests + coverage (xml + term)"
-    uv run rtk pytest \
+    uv run pytest \
         --cov=vaudeville \
         --cov-config=pyproject.toml \
         --cov-report=xml:coverage.xml \

@@ -8,7 +8,7 @@ import tempfile
 import time
 
 from vaudeville.core.client import VaudevilleClient
-from vaudeville.core.truncation import back_truncate
+from vaudeville.core.truncation import CHARS_PER_TOKEN, MAX_INPUT_TOKENS, back_truncate
 
 # --- Fail-open path ---
 
@@ -58,15 +58,21 @@ class TestBackTruncate:
         assert result == "efgh"
 
     def test_exact_boundary_unchanged(self) -> None:
-        text = "x" * (1500 * 4)
+        text = "x" * (MAX_INPUT_TOKENS * CHARS_PER_TOKEN)
         assert back_truncate(text) == text
 
     def test_over_boundary_keeps_tail(self) -> None:
         tail = "violation here"
-        text = "a" * 20000 + tail
+        text = "a" * (MAX_INPUT_TOKENS * CHARS_PER_TOKEN) + tail
         result = back_truncate(text)
         assert result.endswith(tail)
-        assert len(result) == 3000 * 4
+        assert len(result) == MAX_INPUT_TOKENS * CHARS_PER_TOKEN
+
+    def test_budget_fits_jev_context_limit(self) -> None:
+        # Jev 1.13: 32k tokens for state plus the longest question.
+        # Assume a dense 3 chars per token and an 8 KB rule prompt.
+        worst_case_tokens = (MAX_INPUT_TOKENS * CHARS_PER_TOKEN + 8192) // 3
+        assert worst_case_tokens < 32_000
 
     def test_empty_string(self) -> None:
         assert back_truncate("") == ""

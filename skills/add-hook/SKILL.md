@@ -21,6 +21,11 @@ Create one hook or rule that can change behavior at the selected event.
   classification. Do not dispatch a separate SLM rule writer.
 - Ask the user to choose when both mechanisms fit.
 
+A mined semantic candidate from `vaudeville:hook-suggester` stays a semantic
+rule. Do not downgrade it to a structural hook because a regex prefilter found
+it. The prefilter only finds candidates; it does not judge intent. Seed the
+rule `test_cases` with the mined `violation` snippets and add clean cases.
+
 A structural hook is fast and deterministic. A semantic rule can recognize
 variations, but it needs model inference and measured test cases.
 

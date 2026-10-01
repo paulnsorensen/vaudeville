@@ -182,6 +182,51 @@ def main():
               IN ('end_turn', 'stop_sequence', 'max_tokens');
     """)
 
+    # Step 4b: Create final_messages table (last assistant text of each turn)
+    print("  Creating final_messages...")
+    run_sql("""
+        CREATE TABLE final_messages AS
+        WITH blocks AS (
+            SELECT
+                uuid,
+                timestamp,
+                sessionId,
+                cwd,
+                gitBranch,
+                unnest(json_extract(json_extract(message, '$.content'), '$[*]')) AS block
+            FROM raw_entries
+            WHERE type = 'assistant'
+              AND coalesce(isSidechain, false) = false
+              AND message IS NOT NULL
+              AND json_extract_string(message, '$.stop_reason')
+                  IN ('end_turn', 'stop_sequence')
+              AND json_type(json_extract(message, '$.content')) = 'ARRAY'
+        ),
+        final_text AS (
+            SELECT
+                sessionId,
+                timestamp,
+                cwd,
+                gitBranch,
+                string_agg(json_extract_string(block, '$.text'), chr(10)) AS text
+            FROM blocks
+            WHERE json_extract_string(block, '$.type') = 'text'
+            GROUP BY uuid, sessionId, timestamp, cwd, gitBranch
+        )
+        SELECT
+            sessionId,
+            timestamp,
+            cwd,
+            gitBranch,
+            text,
+            coalesce(
+                lag(timestamp) OVER (PARTITION BY sessionId ORDER BY timestamp),
+                ''
+            ) AS turn_start
+        FROM final_text
+        WHERE text IS NOT NULL AND length(trim(text)) > 0;
+    """)
+
     # Step 5: Create agent_spawns table
     print("  Creating agent_spawns...")
     run_sql("""
@@ -292,6 +337,7 @@ def main():
             (SELECT count(*) FROM tool_uses) AS tool_uses,
             (SELECT count(*) FROM tool_results) AS tool_results,
             (SELECT count(*) FROM stop_events) AS stop_events,
+            (SELECT count(*) FROM final_messages) AS final_messages,
             (SELECT count(*) FROM agent_spawns) AS agent_spawns,
             (SELECT count(*) FROM skill_invocations) AS skill_invocations,
             (SELECT count(*) FROM mcp_calls) AS mcp_calls,

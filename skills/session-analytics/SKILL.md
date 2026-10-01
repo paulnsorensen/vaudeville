@@ -106,6 +106,21 @@ Assistant messages where Claude stopped generating.
 | cwd | VARCHAR | Working directory |
 | gitBranch | VARCHAR | Git branch |
 
+### `final_messages`
+The last assistant text of each turn, as a Stop rule sees it. Excludes
+sidechain (subagent) entries and turns with no text.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| sessionId | VARCHAR | Session identifier |
+| timestamp | VARCHAR | ISO timestamp of the final message |
+| cwd | VARCHAR | Working directory |
+| gitBranch | VARCHAR | Git branch |
+| text | VARCHAR | Joined text blocks of the final message |
+| turn_start | VARCHAR | Timestamp of the previous final message in the session ('' for the first) |
+
+Tool calls of a turn have `turn_start < tool_uses.timestamp <= timestamp`.
+
 ### `agent_spawns`
 Subset of tool_uses for Agent calls.
 

@@ -27,6 +27,7 @@ def build_database(db_path: Path, jsonl_glob: str) -> None:
         _create_tool_uses(con)
         _create_tool_results(con)
         _create_stop_events(con)
+        _create_final_messages(con)
         _create_agent_spawns(con)
         _create_skill_invocations(con)
         _create_mcp_calls(con)
@@ -153,6 +154,51 @@ def _create_stop_events(con: duckdb.DuckDBPyConnection) -> None:
           AND message IS NOT NULL
           AND json_extract_string(message, '$.stop_reason')
               IN ('end_turn', 'stop_sequence', 'max_tokens');
+    """)
+
+
+def _create_final_messages(con: duckdb.DuckDBPyConnection) -> None:
+    con.execute("""
+        CREATE TABLE final_messages AS
+        WITH blocks AS (
+            SELECT
+                uuid,
+                timestamp,
+                sessionId,
+                cwd,
+                gitBranch,
+                unnest(json_extract(json_extract(message, '$.content'), '$[*]')) AS block
+            FROM raw_entries
+            WHERE type = 'assistant'
+              AND coalesce(isSidechain, false) = false
+              AND message IS NOT NULL
+              AND json_extract_string(message, '$.stop_reason')
+                  IN ('end_turn', 'stop_sequence')
+              AND json_type(json_extract(message, '$.content')) = 'ARRAY'
+        ),
+        final_text AS (
+            SELECT
+                sessionId,
+                timestamp,
+                cwd,
+                gitBranch,
+                string_agg(json_extract_string(block, '$.text'), chr(10)) AS text
+            FROM blocks
+            WHERE json_extract_string(block, '$.type') = 'text'
+            GROUP BY uuid, sessionId, timestamp, cwd, gitBranch
+        )
+        SELECT
+            sessionId,
+            timestamp,
+            cwd,
+            gitBranch,
+            text,
+            coalesce(
+                lag(timestamp) OVER (PARTITION BY sessionId ORDER BY timestamp),
+                ''
+            ) AS turn_start
+        FROM final_text
+        WHERE text IS NOT NULL AND length(trim(text)) > 0;
     """)
 
 

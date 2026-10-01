@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 - Decide rules can declare an optional `unsure:` gate (`below`, `action`, `outcomes?`) that substitutes an action when a `typesafe:*` model's confidence falls below a threshold
+- `/hook-suggester` mines final assistant messages for semantic `Stop` rule candidates and gives real examples as candidate `test_cases`; session analytics gains a `final_messages` table
 
 ### Changed
 - `events.jsonl` `confidence` is now nullable (null when the model reports none), and gains `unsure`, `unsure_below`, and `confidence_missing` fields

@@ -22,17 +22,40 @@ from pathlib import Path
 from typing import Annotated
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CONFIG_PATH: str = str(Path.home() / ".vaudeville" / "config")
 
 
 class ProviderConfig(BaseModel):
-    """One allowed model provider: the environment variable holding its key."""
+    """One allowed model provider with exactly one credential reference."""
 
     model_config = ConfigDict(extra="forbid")
 
-    key_env: str
+    key_env: str | None = None
+    key_file: str | None = None
+    key_file_env: str | None = None
+    base_url: AnyHttpUrl | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def _validate_base_url(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
+        if value is not None and (value.username is not None or value.password is not None):
+            raise ValueError("base_url must not contain userinfo")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_key_source(self) -> ProviderConfig:
+        sources = (self.key_env, self.key_file, self.key_file_env)
+        if sum(source is not None for source in sources) != 1:
+            raise ValueError("configure exactly one of key_env, key_file, or key_file_env")
+        if any(source is not None and not source.strip() for source in sources):
+            raise ValueError("credential references must not be empty")
+        if self.key_file is not None and not (
+            Path(self.key_file).is_absolute() or self.key_file.startswith("~/")
+        ):
+            raise ValueError("key_file must be an absolute path or start with ~/")
+        return self
 
 
 class UserConfig(BaseModel):

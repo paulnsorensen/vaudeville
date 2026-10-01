@@ -112,6 +112,45 @@ else
 fi
 ```
 
+Choose exactly one credential reference per provider: `key_env`, `key_file`, or `key_file_env`.
+Never put a literal API key in the config.
+
+For a key file, replace `key_env` with one of these entries:
+
+```yaml
+key_file: ~/.config/credentials/anthropic
+# Or name an environment variable that contains the file path:
+# key_file_env: ANTHROPIC_KEY_PATH
+```
+
+Use an absolute path or a `~/` path. Paths can contain spaces.
+Relative paths and shell expansion such as `$HOME` are not supported.
+The file must be a regular UTF-8 file, at most 64 KiB, with one nonempty key.
+Vaudeville removes surrounding whitespace. Protect the file with owner-only permissions.
+Missing or invalid credentials cause fail-open behavior and one warning per provider.
+Vaudeville reads the file when it resolves a model; config validation does not load secrets.
+
+For Jev through OpenRouter, use this configuration:
+
+```yaml
+default_model: typesafe:jev-1.13
+providers:
+  typesafe:
+    base_url: https://openrouter.ai/api
+    key_file_env: VAUDEVILLE_API_KEY_FILE
+commands: {}
+```
+
+Set `VAUDEVILLE_API_KEY_FILE` to the credential file path before the daemon starts.
+The optional `base_url` accepts HTTP(S) URLs without userinfo.
+A configured endpoint overrides the provider's ambient endpoint.
+Providers that reject the endpoint cause fail-open behavior; Vaudeville does not retry their default endpoint.
+Keep OpenRouter's `/api` path for the TypeSafe provider.
+
+Use Jev for decision rules, not rewrite rules or free-text output.
+Set each rewrite rule's `model` to a compatible text model.
+Also configure that model's provider and credential reference.
+
 5. **Verify the daemon starts** — restart the session or run the session-start hook manually:
 
 ```bash

@@ -90,7 +90,7 @@ def _child_env(config: UserConfig) -> dict[str, str]:
     (`*_API_KEY`, `*_AUTH_TOKEN`, `*_TOKEN`, `*SECRET*`, `ANTHROPIC_*`,
     `OPENAI_*`, `AWS_*`); it does not guarantee every secret is removed.
     """
-    key_envs = {provider.key_env for provider in config.providers.values()}
+    key_envs = {provider.key_env for provider in config.providers.values() if provider.key_env}
     return {
         k: v for k, v in os.environ.items() if k not in key_envs and not _looks_like_secret_name(k)
     }

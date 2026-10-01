@@ -301,8 +301,8 @@ name = "httpcore2"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11", marker = "python_full_version < '3.12' or sys_platform != 'emscripten'" },
-    { name = "truststore", marker = "python_full_version < '3.12' or sys_platform != 'emscripten'" },
+    { name = "h11" },
+    { name = "truststore" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/15/8c/e925b1c92018abb3a1863ce1549d76d2381e334d21d65d4ac8f65dabd78a/httpcore2-2.13.0.tar.gz", hash = "sha256:2adc8be4fb285fbcd6d894298db3b52c177e74b6674eda3a76bd36be3292a3db", size = 67740, upload-time = "2026-09-14T14:18:04.717Z" }
 wheels = [
@@ -717,6 +717,23 @@ wheels = [
 ]
 
 [[package]]
+name = "openai"
+version = "3.22.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "httpx2" },
+    { name = "jiter" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e7/db/b135830095e2ae120ea04b0a53d3a1644eb65554385a8ef4c9cb4de3f5fd/openai-3.22.1.tar.gz", hash = "sha256:2575f961e4c1df8761f8eeb4d78e967de3f9b9f91b22f7120d60e393e970094d", size = 1751626, upload-time = "2026-09-30T00:25:55.548Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/74/e3b77d1157c8b9ad815a87d5719545097e5edb06156869c1657fbb6b797b/openai-3.22.1-py3-none-any.whl", hash = "sha256:43ff3de5457a8beb4afa177d4e0ba6841cfadd5219ebc62297fde6c8a9d401a6", size = 2090965, upload-time = "2026-09-30T00:25:53.524Z" },
+]
+
+[[package]]
 name = "opentelemetry-api"
 version = "1.44.0"
 source = { registry = "https://pypi.org/simple" }
@@ -792,6 +809,9 @@ wheels = [
 [package.optional-dependencies]
 anthropic = [
     { name = "anthropic" },
+]
+openrouter = [
+    { name = "openai" },
 ]
 typesafe = [
     { name = "typesafe-sdk" },
@@ -1199,7 +1219,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "loguru" },
     { name = "pydantic" },
-    { name = "pydantic-ai-slim", extra = ["anthropic", "typesafe"] },
+    { name = "pydantic-ai-slim", extra = ["anthropic", "openrouter", "typesafe"] },
     { name = "pydantic-evals" },
     { name = "pyyaml" },
     { name = "rich" },
@@ -1222,7 +1242,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.0" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "pydantic", specifier = ">=2.13.5" },
-    { name = "pydantic-ai-slim", extras = ["typesafe", "anthropic"], specifier = ">=2.47.0" },
+    { name = "pydantic-ai-slim", extras = ["typesafe", "anthropic", "openrouter"], specifier = ">=2.47.0" },
     { name = "pydantic-evals", specifier = "==2.47.0" },
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "rich", specifier = ">=13.0" },

@@ -19,7 +19,6 @@ just eval         # run eval harness against bundled rules
 
 - **`just build` is the canonical validation command.** All agents (cook, press, age sub-agents, fromage pipeline, ad-hoc edits) MUST run `just build` and confirm a clean exit before declaring work complete. Do not substitute `just check` or partial subsets — `build` is the single source of truth.
 - `just build` autoformats, autofixes lint, runs the full pytest suite with coverage, and fails if new/changed lines vs `origin/main` fall below 90% line coverage.
-- All heavy subcommands inside `just build` are wrapped with `rtk` so token consumption stays bounded when run from a Claude Code session.
 - `just check` remains available as a fast pre-commit smoke test, but is NOT a substitute for `just build` before completion.
 
 ### Coverage Policy

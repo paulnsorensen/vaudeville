@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The old `labels`/`message`/`threshold` rule fields
 - `--cross-validate` and `just eval-cv` are no longer available.
 
+### Fixed
+- A `Stop` or `SubagentStop` event with `stop_hook_active: true` no longer blocks again; the block is capped to `warn` and logged with `downgrade: stop-hook-active`, so a misfiring `Stop` rule cannot loop
+
 ### Upgrade Note
 Old-format rules (`labels`/`message`/`threshold`, no `type:`) fail the typed
 schema and are skipped silently at load, with only a daemon-log warning. Run

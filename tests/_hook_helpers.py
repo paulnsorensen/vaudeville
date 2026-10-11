@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import functools
+import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -84,3 +86,33 @@ def patch_run_command(monkeypatch: pytest.MonkeyPatch) -> RunRecorder:
 def patch_rewrite(monkeypatch: pytest.MonkeyPatch, output: str) -> None:
     """Skip the real rewrite model call; `run_rewrite` returns `output`."""
     monkeypatch.setattr(pipeline_module, "run_rewrite", lambda rule, config, text: output)
+
+
+def async_launch(tool_use_id: str) -> dict[str, object]:
+    """The transcript row for a background subagent launch result."""
+    text = f"Async agent launched successfully.\nagentId: a-{tool_use_id}"
+    block = {
+        "type": "tool_result",
+        "tool_use_id": tool_use_id,
+        "content": [{"type": "text", "text": text}],
+    }
+    return {"type": "user", "message": {"role": "user", "content": [block]}}
+
+
+def task_notification(tool_use_id: str) -> dict[str, object]:
+    """The transcript row for a background subagent completion."""
+    text = (
+        f"<task-notification>\n<task-id>a-{tool_use_id}</task-id>\n"
+        f"<tool-use-id>{tool_use_id}</tool-use-id>\n<status>completed</status>\n"
+        "</task-notification>"
+    )
+    return {
+        "type": "user",
+        "origin": {"kind": "task-notification"},
+        "message": {"role": "user", "content": text},
+    }
+
+
+def write_transcript(path: Path, rows: Sequence[Mapping[str, object]]) -> str:
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    return str(path)

@@ -141,6 +141,9 @@ def _run_pipeline(
     payload = request.get("payload")
     raw = payload if isinstance(payload, Mapping) else {}
     event: HookEvent = adapter.normalize(raw)
+    if event.awaiting_background:
+        # Rules evaluate the stop that follows the last background completion.
+        return _to_wire(adapter.render_allow())
     text = truncate_for_event(prepare_text(event.text, event.event), event.event)
     event = event.model_copy(update={"text": text})
 

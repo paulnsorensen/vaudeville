@@ -14,6 +14,12 @@ is listed with "None" decision control, so it is a genuine degrade case.
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+
+import pytest
+from _hook_helpers import async_launch, task_notification, write_transcript
 
 from vaudeville.core.protocol import GENERIC_ALLOW
 from vaudeville.rules import Action, ActionName
@@ -472,3 +478,105 @@ class TestNewlyWiredEvents:
         payload = _stdout_json(result)
         assert payload == {"decision": "block", "reason": "expansion blocked"}
         assert result["downgrades"] == []
+
+
+def _notice_text(tool_use_id: str) -> str:
+    message = task_notification(tool_use_id)["message"]
+    assert isinstance(message, dict)
+    return str(message["content"])
+
+
+def _stop(transcript: str, event: str = "Stop") -> dict[str, object]:
+    return {"hook_event_name": event, "cwd": "/repo", "transcript_path": transcript}
+
+
+def _awaiting(tmp_path: Path, rows: Sequence[Mapping[str, object]], event: str = "Stop") -> bool:
+    transcript = write_transcript(tmp_path / "session.jsonl", rows)
+    return ClaudeCodeAdapter().normalize(_stop(transcript, event)).awaiting_background
+
+
+class TestAwaitingBackground:
+    def test_launch_without_notification_is_awaiting(self, tmp_path: Path) -> None:
+        assert _awaiting(tmp_path, [async_launch("toolu_a")]) is True
+
+    def test_notified_launch_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [async_launch("toolu_a"), task_notification("toolu_a")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_enqueued_notification_completes_the_launch(self, tmp_path: Path) -> None:
+        text = _notice_text("toolu_a")
+        enqueue = {"type": "queue-operation", "operation": "enqueue", "content": text}
+        assert _awaiting(tmp_path, [async_launch("toolu_a"), enqueue]) is False
+
+    def test_mid_turn_queued_command_completes_the_launch(self, tmp_path: Path) -> None:
+        attachment = {
+            "type": "queued_command",
+            "commandMode": "task-notification",
+            "prompt": _notice_text("toolu_a"),
+        }
+        rows: list[Mapping[str, object]] = [
+            async_launch("toolu_a"),
+            {"type": "attachment", "attachment": attachment},
+        ]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_other_queue_and_attachment_rows_do_not_complete(self, tmp_path: Path) -> None:
+        text = _notice_text("toolu_a")
+        rows: list[Mapping[str, object]] = [
+            async_launch("toolu_a"),
+            {"type": "queue-operation", "operation": "remove", "content": text},
+            {"type": "attachment", "attachment": {"type": "prompt_snapshot", "prompt": text}},
+        ]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_one_of_two_launches_notified_is_awaiting(self, tmp_path: Path) -> None:
+        rows = [async_launch("toolu_a"), async_launch("toolu_b"), task_notification("toolu_a")]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_foreground_agent_result_is_not_awaiting(self, tmp_path: Path) -> None:
+        block = {"type": "tool_result", "tool_use_id": "toolu_a", "content": "Report: done."}
+        rows = [{"type": "user", "message": {"role": "user", "content": [block]}}]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_notification_quoted_in_a_tool_result_does_not_complete(self, tmp_path: Path) -> None:
+        """A tool that reads another transcript must not mark a launch complete."""
+        quoted = json.dumps(task_notification("toolu_a"))
+        block = {"type": "tool_result", "tool_use_id": "toolu_r", "content": quoted}
+        rows: list[Mapping[str, object]] = [
+            async_launch("toolu_a"),
+            {"type": "user", "message": {"role": "user", "content": [block]}},
+        ]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_assistant_text_with_markers_is_ignored(self, tmp_path: Path) -> None:
+        text = "Async agent launched successfully. <task-notification>"
+        rows = [{"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_malformed_marker_line_is_skipped(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        launch = json.dumps(async_launch("toolu_a"))
+        transcript.write_text(f"{{not json <task-notification>\n{launch}\n")
+        event = ClaudeCodeAdapter().normalize(_stop(str(transcript)))
+        assert event.awaiting_background is True
+
+    def test_only_stop_checks_the_transcript(self, tmp_path: Path) -> None:
+        assert _awaiting(tmp_path, [async_launch("toolu_a")], event="SubagentStop") is False
+
+    def test_missing_transcript_is_not_awaiting(self, tmp_path: Path) -> None:
+        event = ClaudeCodeAdapter().normalize(_stop(str(tmp_path / "absent.jsonl")))
+        assert event.awaiting_background is False
+
+    def test_no_transcript_path_is_not_awaiting(self) -> None:
+        event = ClaudeCodeAdapter().normalize({"hook_event_name": "Stop", "cwd": "/repo"})
+        assert event.awaiting_background is False
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads files without permission")
+    def test_unreadable_transcript_is_not_awaiting(self, tmp_path: Path) -> None:
+        transcript = Path(write_transcript(tmp_path / "session.jsonl", [async_launch("toolu_a")]))
+        transcript.chmod(0)
+        try:
+            event = ClaudeCodeAdapter().normalize(_stop(str(transcript)))
+        finally:
+            transcript.chmod(0o600)
+        assert event.awaiting_background is False

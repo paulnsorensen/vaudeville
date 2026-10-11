@@ -9,7 +9,9 @@ in the render result's `downgrades` list for the pipeline to log (AC-7).
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+import re
+from collections.abc import Callable, Iterator, Mapping
+from pathlib import Path
 
 from vaudeville.core.protocol import GENERIC_ALLOW, HookResponse
 from vaudeville.server.harness import HookEvent, Outcome, RenderResult
@@ -147,6 +149,82 @@ def _derive_text(event: str, raw: Mapping[str, object]) -> str:
     return ""
 
 
+# Transcript markers for background subagents (Claude Code 2.1.296 transcripts,
+# read 2026-10-11). A launch returns a tool result with this prefix. The
+# completion names the launch tool-use id in a queue enqueue row, and then in a
+# user row (turn start) or a queued-command attachment (absorbed mid-turn).
+_ASYNC_LAUNCH_PREFIX = "Async agent launched successfully."
+_TASK_NOTIFICATION = "<task-notification>"
+_NOTIFIED_TOOL_USE_ID = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
+
+
+def _marker_rows(path: Path) -> Iterator[dict[str, object]]:
+    """Rows that can carry a launch or a notification; skip the rest unparsed."""
+    with path.open(encoding="utf-8", errors="replace") as lines:
+        for line in lines:
+            if _ASYNC_LAUNCH_PREFIX not in line and _TASK_NOTIFICATION not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                yield row
+
+
+def _launched_ids(content: object) -> Iterator[str]:
+    for block in content if isinstance(content, list) else ():
+        if not isinstance(block, dict) or block.get("type") != "tool_result":
+            continue
+        tool_use_id = block.get("tool_use_id")
+        text = _result_content_text(block.get("content"))
+        if isinstance(tool_use_id, str) and text.startswith(_ASYNC_LAUNCH_PREFIX):
+            yield tool_use_id
+
+
+def _notification_text(row: Mapping[str, object]) -> str:
+    """The text of a row that delivers a notification, else empty.
+
+    A tool result that quotes a notification is not a delivery.
+    """
+    kind, content = row.get("type"), None
+    if kind == "queue-operation" and row.get("operation") == "enqueue":
+        content = row.get("content")
+    elif kind == "attachment":
+        attachment = row.get("attachment")
+        if isinstance(attachment, dict) and attachment.get("commandMode") == "task-notification":
+            content = attachment.get("prompt")
+    elif kind == "user":
+        message = row.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+    text = _result_content_text(content)
+    return text if _TASK_NOTIFICATION in text else ""
+
+
+def _background_agents_pending(raw: Mapping[str, object]) -> bool:
+    """True when a background subagent launch has no completion notification.
+
+    An unreadable transcript counts as nothing pending, so rules still run.
+    """
+    raw_path = raw.get("transcript_path")
+    if not isinstance(raw_path, str) or not raw_path:
+        return False
+    path = Path(raw_path)
+    if not path.is_file():
+        return False
+    launched: set[str] = set()
+    notified: set[str] = set()
+    try:
+        for row in _marker_rows(path):
+            message = row.get("message")
+            if row.get("type") == "user" and isinstance(message, dict):
+                launched.update(_launched_ids(message.get("content")))
+            notified.update(_NOTIFIED_TOOL_USE_ID.findall(_notification_text(row)))
+    except OSError:
+        return False
+    return bool(launched - notified)
+
+
 def _json(payload: dict[str, object]) -> HookResponse:
     return {"stdout": json.dumps(payload), "exit_code": 0}
 
@@ -176,6 +254,7 @@ class ClaudeCodeAdapter:
             raw=dict(raw),
             text=_derive_text(event, raw),
             stop_hook_active=raw.get("stop_hook_active") is True,
+            awaiting_background=event == "Stop" and _background_agents_pending(raw),
         )
 
     def render(self, outcome: Outcome) -> RenderResult:

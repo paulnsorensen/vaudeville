@@ -109,6 +109,7 @@ class CodexAdapter:
             cwd=str(raw.get("cwd", "")),
             raw=dict(raw),
             text=_derive_text(event, raw),
+            stop_hook_active=raw.get("stop_hook_active") is True,
         )
 
     def render(self, outcome: Outcome) -> RenderResult:

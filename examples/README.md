@@ -44,7 +44,7 @@ The `tier` field is the single switch — one value, one behavior.
 | `shadow` | Verdict logged to stderr/telemetry only; invisible to Claude and you. Used for tuning. Continues evaluating subsequent rules. |
 | `log` | Prints to stderr only; no user-visible output. Like `shadow` but terminal (subsequent rules don't run). |
 | `warn` | 🪫 systemMessage shown to you and injected into next-turn context. Default for these examples. |
-| `block` | Action is rejected: PreToolUse blocks the tool call; Stop forces Claude to keep working. |
+| `block` | Action is rejected: PreToolUse blocks the tool call; Stop forces Claude to keep working. Loop guard: when a Stop or SubagentStop event carries `stop_hook_active: true`, a block becomes a warn, so a misfiring rule cannot loop forever. The event log records the downgrade `stop-hook-active`. |
 
 ## Promoting to block
 

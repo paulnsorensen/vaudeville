@@ -13,9 +13,15 @@ from pathlib import Path
 
 import pytest
 from _hook_helpers import CONFIG as _CONFIG
+from _hook_helpers import (
+    async_launch,
+    patch_rewrite,
+    patch_run_command,
+    task_notification,
+    write_transcript,
+)
 from _hook_helpers import decide_fn as _decide_fn
 from _hook_helpers import make_request as _request
-from _hook_helpers import patch_rewrite, patch_run_command
 from _hook_helpers import write_rule as _write_rule
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -329,6 +335,64 @@ class TestRenderDowngradeTelemetry:
             assert "Stop" in record["downgrade"]
         finally:
             logger.close()
+
+
+STOP_BLOCK_RULE_YAML = """
+type: decide
+name: pipeline-stop-block
+event: Stop
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+"""
+
+
+class TestAwaitingBackground:
+    def _stop_request(self, tmp_path: Path, rows: list[dict[str, object]]) -> dict[str, object]:
+        transcript = write_transcript(tmp_path / "session.jsonl", rows)
+        return {
+            "op": "hook",
+            "harness": "claude-code",
+            "event": "Stop",
+            "cwd": str(tmp_path),
+            "payload": {
+                "hook_event_name": "Stop",
+                "last_assistant_message": "Waiting on the review agents.",
+                "cwd": str(tmp_path),
+                "transcript_path": transcript,
+            },
+        }
+
+    def test_pending_background_agent_skips_stop_rules(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-stop-block", STOP_BLOCK_RULE_YAML)
+        fn, recorder = _decide_fn('{"outcome": "violation"}')
+        request = self._stop_request(tmp_path, [*async_launch("toolu_a")])
+
+        result = handle_hook_request(request, config=_CONFIG, decide_fn=fn)
+
+        assert recorder.call_count == 0
+        assert result == {"stdout": "", "exit_code": 0}
+
+    def test_final_stop_after_notification_runs_stop_rules(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FAKE_KEY", "x")
+        _write_rule(tmp_path, "pipeline-stop-block", STOP_BLOCK_RULE_YAML)
+        fn, recorder = _decide_fn('{"outcome": "violation"}')
+        rows = [*async_launch("toolu_a"), task_notification("toolu_a")]
+
+        result = handle_hook_request(
+            self._stop_request(tmp_path, rows), config=_CONFIG, decide_fn=fn
+        )
+
+        assert recorder.call_count == 1
+        assert json.loads(str(result["stdout"]))["decision"] == "block"
 
 
 REASON_RULE_YAML = """

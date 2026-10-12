@@ -25,6 +25,12 @@ class HookEvent(BaseModel):
     cwd: str
     raw: dict[str, object]
     text: str = ""
+    # True when the harness reports that a Stop hook already forced this
+    # turn to continue (`stop_hook_active`). The pipeline then never blocks.
+    stop_hook_active: bool = False
+    # The agent stopped to wait for background subagents; a later stop
+    # carries the final turn.
+    awaiting_background: bool = False
 
 
 class RenderResult(TypedDict):

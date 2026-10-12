@@ -26,6 +26,7 @@ from analyzers import (
     check_permission_tool_waste,
     check_repeated_bash_patterns,
     check_retry_loops,
+    check_semantic_candidates,
     check_tool_misuse,
     query,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "check_permission_tool_waste",
     "check_repeated_bash_patterns",
     "check_retry_loops",
+    "check_semantic_candidates",
     "check_tool_misuse",
     "query",
 ]
@@ -60,6 +62,7 @@ ANALYZERS = [
     check_correction_patterns,
     check_retry_loops,
     check_permission_tool_waste,
+    check_semantic_candidates,
 ]
 
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
@@ -80,9 +83,16 @@ def _print_suggestions(suggestions, days):
         pri = icon.get(s["priority"], "   ")
         print(f"[{pri}] {i}. {s['title']}")
         print(f"      Event: {s['event']}  |  Type: {s['hook_type']}")
+        if s.get("category") == "semantic":
+            covered = s.get("covered_by") or "none"
+            print(
+                f"      Start tier: {s['tier']} (target: {s['target_tier']})  |  "
+                f"Bundled rule: {covered}  |  Matches: {s['count']}"
+            )
         print(f"      {s['description']}")
         if s["examples"]:
-            print("      Examples:")
+            label = "Candidate violation test cases:" if s.get("test_cases") else "Examples:"
+            print(f"      {label}")
             for ex in s["examples"][:5]:
                 print(f"        - {ex}")
         print()
@@ -109,12 +119,19 @@ def main():
     for analyzer in ANALYZERS:
         try:
             result = analyzer(days, min_occ)
-            if result:
+            if isinstance(result, list):
+                suggestions.extend(result)
+            elif result:
                 suggestions.append(result)
         except Exception as e:
             print(f"WARNING: {analyzer.__name__} failed: {e}", file=sys.stderr)
 
-    suggestions.sort(key=lambda s: PRIORITY_ORDER.get(s["priority"], 3))
+    suggestions.sort(
+        key=lambda s: (
+            s.get("category") != "semantic",
+            PRIORITY_ORDER.get(s["priority"], 3),
+        )
+    )
 
     if as_json:
         print(json.dumps(suggestions, indent=2))

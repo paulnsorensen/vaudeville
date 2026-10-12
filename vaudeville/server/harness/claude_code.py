@@ -159,10 +159,13 @@ _NOTIFIED_TOOL_USE_ID = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
 
 
 def _marker_rows(path: Path) -> Iterator[dict[str, object]]:
-    """Rows that can carry a launch or a notification; skip the rest unparsed."""
+    """Rows that can carry a tool call, launch or notification; skip the rest unparsed."""
     with path.open(encoding="utf-8", errors="replace") as lines:
         for line in lines:
-            if _ASYNC_LAUNCH_PREFIX not in line and _TASK_NOTIFICATION not in line:
+            if not any(
+                marker in line
+                for marker in ('"tool_use"', _ASYNC_LAUNCH_PREFIX, _TASK_NOTIFICATION)
+            ):
                 continue
             try:
                 row = json.loads(line)
@@ -172,13 +175,31 @@ def _marker_rows(path: Path) -> Iterator[dict[str, object]]:
                 yield row
 
 
-def _launched_ids(content: object) -> Iterator[str]:
+def _background_call_ids(content: object) -> Iterator[str]:
+    for block in content if isinstance(content, list) else ():
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        tool_use_id, tool_input = block.get("id"), block.get("input")
+        if (
+            block.get("name") in ("Agent", "Task")
+            and isinstance(tool_use_id, str)
+            and isinstance(tool_input, dict)
+            and tool_input.get("run_in_background") is True
+        ):
+            yield tool_use_id
+
+
+def _launched_ids(content: object, background_calls: set[str]) -> Iterator[str]:
     for block in content if isinstance(content, list) else ():
         if not isinstance(block, dict) or block.get("type") != "tool_result":
             continue
         tool_use_id = block.get("tool_use_id")
         text = _result_content_text(block.get("content"))
-        if isinstance(tool_use_id, str) and text.startswith(_ASYNC_LAUNCH_PREFIX):
+        if (
+            isinstance(tool_use_id, str)
+            and tool_use_id in background_calls
+            and text.startswith(_ASYNC_LAUNCH_PREFIX)
+        ):
             yield tool_use_id
 
 
@@ -213,12 +234,16 @@ def _background_agents_pending(raw: Mapping[str, object]) -> bool:
     if not path.is_file():
         return False
     launched: set[str] = set()
+    background_calls: set[str] = set()
     notified: set[str] = set()
     try:
         for row in _marker_rows(path):
             message = row.get("message")
-            if row.get("type") == "user" and isinstance(message, dict):
-                launched.update(_launched_ids(message.get("content")))
+            if isinstance(message, dict):
+                if row.get("type") == "assistant":
+                    background_calls.update(_background_call_ids(message.get("content")))
+                elif row.get("type") == "user":
+                    launched.update(_launched_ids(message.get("content"), background_calls))
             notified.update(_NOTIFIED_TOOL_USE_ID.findall(_notification_text(row)))
     except OSError:
         return False

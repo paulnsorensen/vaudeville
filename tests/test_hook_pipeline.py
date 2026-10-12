@@ -372,7 +372,7 @@ class TestAwaitingBackground:
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(tmp_path, "pipeline-stop-block", STOP_BLOCK_RULE_YAML)
         fn, recorder = _decide_fn('{"outcome": "violation"}')
-        request = self._stop_request(tmp_path, [async_launch("toolu_a")])
+        request = self._stop_request(tmp_path, [*async_launch("toolu_a")])
 
         result = handle_hook_request(request, config=_CONFIG, decide_fn=fn)
 
@@ -385,7 +385,7 @@ class TestAwaitingBackground:
         monkeypatch.setenv("FAKE_KEY", "x")
         _write_rule(tmp_path, "pipeline-stop-block", STOP_BLOCK_RULE_YAML)
         fn, recorder = _decide_fn('{"outcome": "violation"}')
-        rows = [async_launch("toolu_a"), task_notification("toolu_a")]
+        rows = [*async_launch("toolu_a"), task_notification("toolu_a")]
 
         result = handle_hook_request(
             self._stop_request(tmp_path, rows), config=_CONFIG, decide_fn=fn

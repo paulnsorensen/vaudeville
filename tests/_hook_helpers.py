@@ -88,15 +88,24 @@ def patch_rewrite(monkeypatch: pytest.MonkeyPatch, output: str) -> None:
     monkeypatch.setattr(pipeline_module, "run_rewrite", lambda rule, config, text: output)
 
 
-def async_launch(tool_use_id: str) -> dict[str, object]:
-    """The transcript row for a background subagent launch result."""
+def async_launch(tool_use_id: str) -> list[dict[str, object]]:
+    """The transcript rows for a background subagent call and launch result."""
+    call = {
+        "type": "tool_use",
+        "id": tool_use_id,
+        "name": "Agent",
+        "input": {"run_in_background": True},
+    }
     text = f"Async agent launched successfully.\nagentId: a-{tool_use_id}"
     block = {
         "type": "tool_result",
         "tool_use_id": tool_use_id,
         "content": [{"type": "text", "text": text}],
     }
-    return {"type": "user", "message": {"role": "user", "content": [block]}}
+    return [
+        {"type": "assistant", "message": {"role": "assistant", "content": [call]}},
+        {"type": "user", "message": {"role": "user", "content": [block]}},
+    ]
 
 
 def task_notification(tool_use_id: str) -> dict[str, object]:

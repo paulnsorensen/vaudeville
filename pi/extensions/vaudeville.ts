@@ -15,6 +15,7 @@
  * so every handler body below is wrapped in try/catch and never rethrows.
  */
 
+import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,6 +88,45 @@ function socketPath(): string {
   return path.join(runtimeDir, "vaudeville.sock");
 }
 
+function ancestors(dir: string): string[] {
+  const found: string[] = [];
+  for (let parent = path.dirname(dir); ; parent = path.dirname(parent)) {
+    found.push(parent);
+    if (parent === path.dirname(parent)) {
+      return found;
+    }
+  }
+}
+
+// Only root or this user can change the entry, or the sticky bit guards it.
+function isTrustedAncestor(entry: string, uid: number): boolean {
+  const info = fs.lstatSync(entry);
+  if (info.uid !== 0 && info.uid !== uid) {
+    return false;
+  }
+  return info.isSymbolicLink() || (info.mode & 0o022) === 0 || (info.mode & 0o1000) !== 0;
+}
+
+// A socket dir that another uid owns, that others can access, or that sits
+// below an ancestor another user can replace can host a hostile daemon.
+// Matches is_private_dir in vaudeville/core/paths.py.
+function isPrivateDir(dir: string): boolean {
+  try {
+    if (typeof process.getuid !== "function") {
+      return false;
+    }
+    const uid = process.getuid();
+    const info = fs.lstatSync(dir);
+    if (!info.isDirectory() || info.uid !== uid || (info.mode & 0o077) !== 0) {
+      return false;
+    }
+    const chain = [...ancestors(path.resolve(dir)), ...ancestors(fs.realpathSync(dir))];
+    return chain.every(entry => isTrustedAncestor(entry, uid));
+  } catch {
+    return false;
+  }
+}
+
 function sendHook(
   nativeEvent: string,
   cwd: string,
@@ -112,7 +152,12 @@ function sendHook(
         cwd,
         payload: { ...payload, cwd },
       }) + "\n";
-      socket = net.createConnection({ path: socketPath() });
+      const target = socketPath();
+      if (!isPrivateDir(path.dirname(target))) {
+        finish(null);
+        return;
+      }
+      socket = net.createConnection({ path: target });
     } catch {
       finish(null);
       return;

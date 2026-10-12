@@ -10,7 +10,7 @@ import logging
 import pathlib
 import socket
 
-from .paths import SOCKET_PATH
+from .paths import SOCKET_PATH, is_private_dir
 from .protocol import HookResponse, is_hook_response
 
 CONNECT_TIMEOUT = 1.0  # Localhost socket connect is sub-ms; 1s is generous
@@ -39,6 +39,9 @@ class VaudevilleClient:
     def _send(self, request: dict[str, object]) -> HookResponse | None:
         if not pathlib.Path(self._socket_path).exists():
             raise FileNotFoundError(self._socket_path)
+        socket_dir = str(pathlib.Path(self._socket_path).parent)
+        if not is_private_dir(socket_dir):
+            raise PermissionError(f"socket dir is not private: {socket_dir}")
 
         payload = json.dumps(request).encode() + b"\n"
 

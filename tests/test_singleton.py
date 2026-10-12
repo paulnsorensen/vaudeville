@@ -13,6 +13,8 @@ import threading
 import time
 from typing import Any
 
+import pytest
+
 from vaudeville.server.daemon import DaemonConfig, VaudevilleDaemon
 
 # ---------------------------------------------------------------------------
@@ -43,6 +45,22 @@ class TestClientSocketPath:
 
         expected = f"/tmp/vaudeville-{os.getuid()}/vaudeville.sock"
         assert expected == SOCKET_PATH, f"SOCKET_PATH is {SOCKET_PATH!r}, expected {expected!r}"
+
+    def test_runtime_dir_without_getuid_uses_temp_dir(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Hosts without os.getuid (Windows) import paths without raising."""
+        import vaudeville.core.paths as paths_module
+
+        try:
+            with monkeypatch.context() as patched:
+                patched.delattr(os, "getuid")
+                runtime_dir = importlib.reload(paths_module).RUNTIME_DIR
+        finally:
+            importlib.reload(paths_module)
+
+        assert runtime_dir == str(pathlib.Path(tempfile.gettempdir()) / "vaudeville")
+        assert paths_module.RUNTIME_DIR == f"/tmp/vaudeville-{os.getuid()}"
 
     def test_SOCKET_PATH_is_a_string(self) -> None:
         from vaudeville.core.paths import SOCKET_PATH

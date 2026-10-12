@@ -11,7 +11,7 @@
           },
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -69,7 +69,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -80,7 +80,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -102,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -113,7 +113,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -124,7 +124,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 30
           }
         ]
@@ -135,7 +135,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\" python \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.py\" --harness codex",
+            "command": "bash \"${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/runner.sh\" --harness codex",
             "timeout": 3
           }
         ]

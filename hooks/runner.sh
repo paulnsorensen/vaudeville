@@ -12,7 +12,8 @@ if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
   export UV_PROJECT_ENVIRONMENT="${CLAUDE_PLUGIN_DATA}/venv"
 fi
 
-# Fail open: runner.py always exits 0 for claude-code, so a nonzero exit here
-# is uv's own failure. Claude Code reads exit 2 as a block; never pass it on.
+# Fail open: runner.py always exits 0 for claude-code and codex, so a nonzero
+# exit here is uv's own failure. Both harnesses read exit 2 as a block; never
+# pass it on.
 command -v uv >/dev/null 2>&1 || exit 0
 uv run --project "${PLUGIN_ROOT}" python "${PLUGIN_ROOT}/hooks/runner.py" "$@" || exit 0

@@ -10,6 +10,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN_JSON = os.path.join(PROJECT_ROOT, ".claude-plugin", "plugin.json")
 MARKETPLACE_JSON = os.path.join(PROJECT_ROOT, ".claude-plugin", "marketplace.json")
+HOOKS_JSON = os.path.join(PROJECT_ROOT, "hooks", "hooks.json")
 
 
 def _load(path: str) -> dict[str, object]:
@@ -40,3 +41,16 @@ class TestMarketplaceManifest:
         plugins = marketplace["plugins"]
         assert isinstance(plugins, list)
         assert all(isinstance(entry, dict) and entry.get("name") for entry in plugins)
+
+
+class TestHooksManifest:
+    def test_worktree_events_are_not_registered(self) -> None:
+        """A WorktreeCreate hook replaces git worktree creation and must print
+        the new path; a WorktreeRemove hook that exits 0 counts as the
+        removal. The rule runner does neither, so it must not own them (#117).
+        """
+        events = _load(HOOKS_JSON)["hooks"]
+        assert isinstance(events, dict)
+        assert "PreToolUse" in events
+        assert "WorktreeCreate" not in events
+        assert "WorktreeRemove" not in events

@@ -24,6 +24,8 @@ from typing import Annotated
 import yaml
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from vaudeville.rules import Tier
+
 CONFIG_PATH: str = str(Path.home() / ".vaudeville" / "config")
 
 
@@ -58,6 +60,22 @@ class ProviderConfig(BaseModel):
         return self
 
 
+class PrototypeVerificationConfig(BaseModel):
+    """Experimental in-memory verification gate."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    commands: list[str] = Field(min_length=1)
+    tier: Tier = "warn"
+
+    @field_validator("commands")
+    @classmethod
+    def _check_commands(cls, commands: list[str]) -> list[str]:
+        if any(not command.strip() for command in commands):
+            raise ValueError("verification commands must not be blank")
+        return commands
+
+
 class UserConfig(BaseModel):
     """Parsed ~/.vaudeville/config: default model, providers, commands."""
 
@@ -66,6 +84,7 @@ class UserConfig(BaseModel):
     default_model: str | None = None
     providers: dict[str, ProviderConfig] = Field(default_factory=dict)
     commands: dict[str, Annotated[list[str], Field(min_length=1)]] = Field(default_factory=dict)
+    prototype_verification: PrototypeVerificationConfig | None = None
 
 
 def load_user_config(path: str | Path | None = None) -> UserConfig:

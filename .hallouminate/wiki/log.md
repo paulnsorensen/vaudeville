@@ -34,3 +34,8 @@
 
 2026-10-12 · 905b5a27eac79417 · retrieval-warning · sources/typesafe-jev.md · Final disposition: written-with-retrieval-warning. Preserve both prior diagnostics. Publication validation reports 25 of 26 passing probes, source rank 6, valid local links, and 1126 passed, 1 skipped in the external build.
 
+
+2026-10-12 · a7d01d83d8dd083f · merged · ideas/stateful-rule-patterns.md · Record the opt-in verification-obligation prototype, temporary scope, evidence-qualified clearing, and limitations. Preserve unapproved permanent design and historical research boundaries.
+2026-10-12 · a7d01d83d8dd083f · merged · rules/supported-rules.md · Separate experimental prototype_verification configuration from the two existing semantic YAML rule types. Keep same-event target matching unchanged.
+2026-10-12 · a7d01d83d8dd083f · merged · rules/supported-rules.md · All eight frozen retrieval probes pass after one bounded lead revision. Exact identities rank first. No retrieval warning remains for this ingest.
+

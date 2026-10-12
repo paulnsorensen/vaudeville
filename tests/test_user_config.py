@@ -49,3 +49,20 @@ class TestCommandArgv:
     def test_empty_command_argv_is_rejected(self) -> None:
         with pytest.raises(pydantic.ValidationError):
             UserConfig.model_validate({"commands": {"empty": []}})
+
+
+@pytest.mark.parametrize("commands", [[], [""], ["  "], ["pytest -q", "\t"]])
+def test_prototype_rejects_empty_commands(commands: list[str]) -> None:
+    with pytest.raises(pydantic.ValidationError):
+        UserConfig.model_validate({"prototype_verification": {"commands": commands}})
+
+
+def test_prototype_rejects_unknown_fields_and_tier() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        UserConfig.model_validate(
+            {"prototype_verification": {"commands": ["pytest -q"], "extra": 1}}
+        )
+    with pytest.raises(pydantic.ValidationError):
+        UserConfig.model_validate(
+            {"prototype_verification": {"commands": ["pytest -q"], "tier": "other"}}
+        )

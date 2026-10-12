@@ -49,10 +49,12 @@ from vaudeville.server.harness import (
 )
 from vaudeville.server.user_config import UserConfig, load_user_config
 
+from .obligations import ObligationTracker
 from .precedence import EvaluatedAction, merge
 from .tier import apply_tier_ceiling
 
 logger = logging.getLogger(__name__)
+_obligations = ObligationTracker()
 
 # `escalate` is a one-hop, bounded operation; `run` is fire-and-forget.
 DEFAULT_ESCALATE_DEADLINE_SECONDS = 3.0
@@ -141,6 +143,7 @@ def _run_pipeline(
     payload = request.get("payload")
     raw = payload if isinstance(payload, Mapping) else {}
     event: HookEvent = adapter.normalize(raw)
+    pending = _obligations.observe(event, config.prototype_verification)
     if event.awaiting_background:
         # Rules evaluate the stop that follows the last background completion.
         return _to_wire(adapter.render_allow())
@@ -156,6 +159,24 @@ def _run_pipeline(
     ]
 
     evaluated: list[EvaluatedAction] = []
+    if pending and config.prototype_verification is not None:
+        tier = config.prototype_verification.tier
+        if tier != "disabled":
+            action_name, downgrade = apply_tier_ceiling("block", tier)
+            if action_name == "block" and _is_stop_loop(event):
+                action_name, downgrade = "warn", _STOP_LOOP_GUARD
+            obligation = EvaluatedAction(
+                rule_name="prototype-verification",
+                action_name=action_name,
+                message="Run a configured verification command after the latest edit.",
+                downgrade=downgrade,
+                verdict="pending",
+                outcome="pending",
+                tier=tier,
+            )
+            evaluated.append(obligation)
+            if action_name in _NO_DEFER:
+                _log_evaluated(event_logger, obligation, downgrade=downgrade)
     event_json = json.dumps(dict(raw))
     decide_memo: _DecideMemo = {}
 

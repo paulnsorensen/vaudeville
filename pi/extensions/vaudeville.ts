@@ -15,6 +15,7 @@
  * so every handler body below is wrapped in try/catch and never rethrows.
  */
 
+import * as fs from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,6 +88,18 @@ function socketPath(): string {
   return path.join(runtimeDir, "vaudeville.sock");
 }
 
+// A socket dir that another uid owns, or that others can access, can host a
+// hostile daemon. Matches is_private_dir in vaudeville/core/paths.py.
+function isPrivateDir(dir: string): boolean {
+  try {
+    const info = fs.lstatSync(dir);
+    const uid = typeof process.getuid === "function" ? process.getuid() : info.uid;
+    return info.isDirectory() && info.uid === uid && (info.mode & 0o077) === 0;
+  } catch {
+    return false;
+  }
+}
+
 function sendHook(
   nativeEvent: string,
   cwd: string,
@@ -112,7 +125,12 @@ function sendHook(
         cwd,
         payload: { ...payload, cwd },
       }) + "\n";
-      socket = net.createConnection({ path: socketPath() });
+      const target = socketPath();
+      if (!isPrivateDir(path.dirname(target))) {
+        finish(null);
+        return;
+      }
+      socket = net.createConnection({ path: target });
     } catch {
       finish(null);
       return;

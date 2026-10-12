@@ -257,30 +257,6 @@
         ]
       }
     ],
-    "WorktreeCreate": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.sh\" --harness claude-code",
-            "timeout": 30,
-            "statusMessage": "Evaluating WorktreeCreate rules..."
-          }
-        ]
-      }
-    ],
-    "WorktreeRemove": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/runner.sh\" --harness claude-code",
-            "timeout": 30,
-            "statusMessage": "Evaluating WorktreeRemove rules..."
-          }
-        ]
-      }
-    ],
     "PreCompact": [
       {
         "hooks": [

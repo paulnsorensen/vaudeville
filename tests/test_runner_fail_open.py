@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import pathlib
+import runpy
 import socket
 import sys
 import threading
@@ -105,3 +107,29 @@ def test_unknown_harness(capsys: pytest.CaptureFixture[str]) -> None:
     code, out = _run_and_capture(["runner.py", "--harness", "bogus-cli"], HOOK_INPUT, capsys)
     assert code == 0
     assert out == ""
+
+
+def test_import_time_error_fails_open(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An AttributeError while importing vaudeville.core (os.getuid missing on
+    Windows) must exit 0 with no stdout, not crash the hook (#75)."""
+    fake_core = tmp_path / "vaudeville" / "core"
+    fake_core.mkdir(parents=True)
+    (tmp_path / "vaudeville" / "__init__.py").write_text("")
+    (fake_core / "__init__.py").write_text("import os\nos.no_such_attribute\n")
+    for name in [m for m in sys.modules if m == "vaudeville" or m.startswith("vaudeville.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_path(os.path.join(HOOKS_DIR, "runner.py"), run_name="runner_under_test")
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 0
+    assert captured.out == ""
+    assert "AttributeError" in captured.err
+    assert "fail open" in captured.err

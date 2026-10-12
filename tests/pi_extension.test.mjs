@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -68,6 +68,13 @@ for (const kind of ["circular", "bigint"]) {
     assert.equal(h.requests[0].event, "tool_call");
   });
 }
+
+test("socket in a dir that others can access fails open without connecting", async t => {
+  const h = await host(t, { action: "block", reason: "hostile" });
+  await chmod(h.directory, 0o755);
+  assert.equal(await h.emit("tool_call", { input: { command: "ok" } }), undefined);
+  assert.equal(h.connections(), 0);
+});
 
 test("startup executes the real script beneath encoded installation paths", async t => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "vd Jane é'"));

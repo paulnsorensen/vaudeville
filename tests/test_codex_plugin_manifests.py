@@ -34,7 +34,7 @@ class TestPluginManifest:
             for entries in hooks["hooks"].values()
             for entry in entries
             for hook in entry["hooks"]
-            if "runner.py" in hook["command"]
+            if "runner." in hook["command"]
         ]
         assert commands
         assert all("--harness codex" in command for command in commands)
@@ -52,10 +52,25 @@ class TestHooksJson:
             for entry in entries:
                 for hook in entry["hooks"]:
                     command = hook["command"]
-                    if "runner.py" in command:
+                    if "runner." in command:
                         found_runner_command = True
                         assert "--harness codex" in command, command
         assert found_runner_command
+
+    def test_runner_goes_through_the_fail_open_wrapper(self) -> None:
+        """Bare `uv run` exits 2 when the venv or script is broken, which Codex
+        reads as a block. runner.sh turns any uv failure into exit 0."""
+        hooks = _load(HOOKS_JSON)
+        commands = [
+            hook["command"]
+            for entries in hooks["hooks"].values()
+            for entry in entries
+            for hook in entry["hooks"]
+            if "session-start.sh" not in hook["command"]
+        ]
+        assert commands
+        assert all("hooks/runner.sh" in command for command in commands)
+        assert not any("uv run" in command for command in commands)
 
     def test_session_start_also_runs_session_start_sh(self) -> None:
         hooks = _load(HOOKS_JSON)

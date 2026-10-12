@@ -20,6 +20,17 @@ fi
 # VAUDEVILLE_RUNTIME_DIR overrides the default (used by tests)
 RUNTIME_DIR="${VAUDEVILLE_RUNTIME_DIR:-/tmp/vaudeville-$(id -u)}"
 mkdir -m 0700 "${RUNTIME_DIR}" 2>/dev/null || true
+# A symlink or a dir that another uid owns can capture the socket. The sticky
+# bit on /tmp stops us from removing it, so fail open with a clear message.
+# Hook stderr is hidden on exit 0, so tell the user through systemMessage.
+if [ -L "${RUNTIME_DIR}" ] || [ ! -d "${RUNTIME_DIR}" ] || [ ! -O "${RUNTIME_DIR}" ]; then
+  MESSAGE="[vaudeville] ${RUNTIME_DIR} is not a directory owned by uid $(id -u) — daemon not started. Remove it, then start a new session."
+  echo "${MESSAGE}" >&2
+  printf '{"systemMessage": "%s"}\n' "${MESSAGE//\"/\\\"}"
+  exit 0
+fi
+# Clients refuse a dir that others can access, so tighten one we already own.
+chmod 0700 "${RUNTIME_DIR}"
 
 SOCKET_PATH="${RUNTIME_DIR}/vaudeville.sock"
 PID_FILE="${RUNTIME_DIR}/vaudeville.pid"

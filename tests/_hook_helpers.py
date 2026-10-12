@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import json
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -88,8 +89,11 @@ def patch_rewrite(monkeypatch: pytest.MonkeyPatch, output: str) -> None:
     monkeypatch.setattr(pipeline_module, "run_rewrite", lambda rule, config, text: output)
 
 
-def async_launch(tool_use_id: str) -> list[dict[str, object]]:
-    """The transcript rows for a background subagent call and launch result."""
+def async_launch(tool_use_id: str, age_seconds: float = 0.0) -> list[dict[str, object]]:
+    """The transcript rows for a background subagent call and launch result.
+
+    The launch result row is stamped `age_seconds` before now.
+    """
     call = {
         "type": "tool_use",
         "id": tool_use_id,
@@ -102,17 +106,33 @@ def async_launch(tool_use_id: str) -> list[dict[str, object]]:
         "tool_use_id": tool_use_id,
         "content": [{"type": "text", "text": text}],
     }
+    launched_at = (datetime.now(UTC) - timedelta(seconds=age_seconds)).isoformat()
     return [
         {"type": "assistant", "message": {"role": "assistant", "content": [call]}},
-        {"type": "user", "message": {"role": "user", "content": [block]}},
+        {
+            "type": "user",
+            "timestamp": launched_at,
+            "message": {"role": "user", "content": [block]},
+        },
     ]
 
 
-def task_notification(tool_use_id: str) -> dict[str, object]:
+def task_stop(tool_use_id: str) -> dict[str, object]:
+    """The transcript row for a TaskStop call on the agent `async_launch` starts."""
+    call = {
+        "type": "tool_use",
+        "id": f"stop-{tool_use_id}",
+        "name": "TaskStop",
+        "input": {"task_id": f"a-{tool_use_id}"},
+    }
+    return {"type": "assistant", "message": {"role": "assistant", "content": [call]}}
+
+
+def task_notification(tool_use_id: str, status: str = "completed") -> dict[str, object]:
     """The transcript row for a background subagent completion."""
     text = (
         f"<task-notification>\n<task-id>a-{tool_use_id}</task-id>\n"
-        f"<tool-use-id>{tool_use_id}</tool-use-id>\n<status>completed</status>\n"
+        f"<tool-use-id>{tool_use_id}</tool-use-id>\n<status>{status}</status>\n"
         "</task-notification>"
     )
     return {

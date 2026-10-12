@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Decide rules can declare an optional `unsure:` gate (`below`, `action`, `outcomes?`) that substitutes an action when a `typesafe:*` model's confidence falls below a threshold
 
 ### Changed
-- Claude Code `Stop` rules skip a stop while the transcript shows a background subagent that has not reported back
+- Claude Code `Stop` rules skip a stop while the transcript shows a background subagent that has not reported back; a stopped or crashed subagent, or a launch older than two hours, no longer suppresses them
 - `events.jsonl` `confidence` is now nullable (null when the model reports none), and gains `unsure`, `unsure_below`, and `confidence_missing` fields
 - Dataset-based rule evaluation now builds and scores inline test cases through pydantic-evals
 - Rules are now typed `decide`/`rewrite` YAML (`type`, `outcomes`, `on`, `reasons`, `target`) validated by pydantic, replacing the untyped `labels`/`message`/`threshold` format

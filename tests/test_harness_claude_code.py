@@ -16,15 +16,20 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from _hook_helpers import async_launch, task_notification, write_transcript
+from _hook_helpers import async_launch, task_notification, task_stop, write_transcript
 
 from vaudeville.core.protocol import GENERIC_ALLOW
 from vaudeville.rules import Action, ActionName
 from vaudeville.server.harness import Outcome, RenderResult
-from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
+from vaudeville.server.harness.claude_code import (
+    _BACKGROUND_PENDING_MAX_AGE_SECONDS,
+    ClaudeCodeAdapter,
+    _background_agents_pending,
+)
 
 
 def _stdout_json(result: RenderResult) -> dict[str, object]:
@@ -617,3 +622,88 @@ class TestAwaitingBackground:
         finally:
             transcript.chmod(0o600)
         assert event.awaiting_background is False
+
+
+_CAP = _BACKGROUND_PENDING_MAX_AGE_SECONDS
+
+
+def _task_ids_notification(*task_ids: str, status: str = "stopped") -> dict[str, object]:
+    """The `stopped` notice a session restart writes: task ids only, no tool-use id."""
+    ids = "".join(f"<task-id>{task_id}</task-id>\n" for task_id in task_ids)
+    text = f"<task-notification>\n{ids}<status>{status}</status>\n</task-notification>"
+    return {"type": "user", "message": {"role": "user", "content": text}}
+
+
+class TestBackgroundSafeguard:
+    """A stopped, crashed or silent agent must not suppress Stop rules for good."""
+
+    def test_fresh_unnotified_launch_still_awaits(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a", age_seconds=_CAP - 600)
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_stopped_agent_via_task_stop_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), task_stop("toolu_a")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_stopped_agent_via_killed_notification_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), task_notification("toolu_a", status="killed")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_stopped_agent_via_restart_notice_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), _task_ids_notification("a-toolu_a")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_task_stop_of_another_agent_keeps_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), *async_launch("toolu_b"), task_stop("toolu_b")]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_task_stop_without_a_task_id_is_ignored(self, tmp_path: Path) -> None:
+        stop = task_stop("toolu_a")
+        message = stop["message"]
+        assert isinstance(message, dict)
+        message["content"][0]["input"] = {}
+        assert _awaiting(tmp_path, [*async_launch("toolu_a"), stop]) is True
+
+    def test_crashed_agent_failed_notification_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), task_notification("toolu_a", status="failed")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_crashed_agent_error_result_with_restart_notice_is_not_awaiting(
+        self, tmp_path: Path
+    ) -> None:
+        error = {"type": "tool_result", "tool_use_id": "toolu_a", "is_error": True, "content": "x"}
+        rows: list[Mapping[str, object]] = [
+            *async_launch("toolu_a"),
+            {"type": "user", "message": {"role": "user", "content": [error]}},
+            _task_ids_notification("a-toolu_a", status="failed"),
+        ]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_stale_launch_without_any_marker_is_not_awaiting(self, tmp_path: Path) -> None:
+        assert _awaiting(tmp_path, async_launch("toolu_a", age_seconds=_CAP + 60)) is False
+
+    def test_stale_launch_does_not_hide_a_fresh_one(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a", age_seconds=_CAP + 60), *async_launch("toolu_b")]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_age_is_measured_against_the_injected_clock(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        transcript = write_transcript(tmp_path / "session.jsonl", rows)
+        later = datetime.now(UTC) + timedelta(seconds=_CAP + 60)
+        assert _background_agents_pending(_stop(transcript), now=later) is False
+        assert _background_agents_pending(_stop(transcript)) is True
+
+    def test_launch_without_timestamp_fails_open(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        del rows[1]["timestamp"]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_launch_with_unparseable_timestamp_fails_open(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        rows[1]["timestamp"] = "yesterday-ish"
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_naive_timestamp_is_read_as_utc(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        rows[1]["timestamp"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        assert _awaiting(tmp_path, rows) is True

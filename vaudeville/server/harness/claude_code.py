@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Iterator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vaudeville.core.protocol import GENERIC_ALLOW, HookResponse
@@ -150,12 +151,29 @@ def _derive_text(event: str, raw: Mapping[str, object]) -> str:
 
 
 # Transcript markers for background subagents (Claude Code 2.1.296 transcripts,
-# read 2026-10-11). A launch returns a tool result with this prefix. The
-# completion names the launch tool-use id in a queue enqueue row, and then in a
-# user row (turn start) or a queued-command attachment (absorbed mid-turn).
+# read 2026-10-12). A launch returns a tool result with this prefix and the
+# `agentId` of the task. The completion names the launch tool-use id in a queue
+# enqueue row, and then in a user row (turn start) or a queued-command
+# attachment (absorbed mid-turn). Failure and stop markers observed:
+# - `failed` and `killed` notifications use the same rows and name the launch
+#   tool-use id, so they count as completion like `completed` does.
+# - TaskStop on an agent writes a TaskStop tool_use (`input.task_id` is the
+#   agentId) and a `killed` notification for the launch tool-use id.
+# - A session restart writes a `stopped` notification that lists only
+#   `<task-id>` values (the agentId), with no tool-use id. Its note says some
+#   stops leave no transcript marker at all, so the age cap below is the
+#   backstop for a stopped or crashed agent that never wrote a marker.
+# No separate error tool result was observed for a crashed agent: it ends with
+# a `failed` notification.
 _ASYNC_LAUNCH_PREFIX = "Async agent launched successfully."
 _TASK_NOTIFICATION = "<task-notification>"
 _NOTIFIED_TOOL_USE_ID = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
+_NOTIFIED_TASK_ID = re.compile(r"<task-id>([^<]+)</task-id>")
+_LAUNCHED_AGENT_ID = re.compile(r"agentId: (\S+)")
+_TASK_STOP_TOOL = "TaskStop"
+# A launch older than this counts as resolved, so a stopped or crashed agent
+# that left no marker cannot suppress Stop rules for the rest of the session.
+_BACKGROUND_PENDING_MAX_AGE_SECONDS = 2 * 60 * 60
 
 
 def _marker_rows(path: Path) -> Iterator[dict[str, object]]:
@@ -189,7 +207,19 @@ def _background_call_ids(content: object) -> Iterator[str]:
             yield tool_use_id
 
 
-def _launched_ids(content: object, background_calls: set[str]) -> Iterator[str]:
+def _stopped_task_ids(content: object) -> Iterator[str]:
+    """The task ids that TaskStop calls in an assistant message name."""
+    for block in content if isinstance(content, list) else ():
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        tool_input = block.get("input")
+        task_id = tool_input.get("task_id") if isinstance(tool_input, dict) else None
+        if block.get("name") == _TASK_STOP_TOOL and isinstance(task_id, str):
+            yield task_id
+
+
+def _launches(content: object, background_calls: set[str]) -> Iterator[tuple[str, str | None]]:
+    """(tool-use id, agent id) for each launch result of a background call."""
     for block in content if isinstance(content, list) else ():
         if not isinstance(block, dict) or block.get("type") != "tool_result":
             continue
@@ -200,7 +230,8 @@ def _launched_ids(content: object, background_calls: set[str]) -> Iterator[str]:
             and tool_use_id in background_calls
             and text.startswith(_ASYNC_LAUNCH_PREFIX)
         ):
-            yield tool_use_id
+            agent = _LAUNCHED_AGENT_ID.search(text)
+            yield tool_use_id, agent.group(1) if agent else None
 
 
 def _notification_text(row: Mapping[str, object]) -> str:
@@ -222,10 +253,24 @@ def _notification_text(row: Mapping[str, object]) -> str:
     return text if _TASK_NOTIFICATION in text else ""
 
 
-def _background_agents_pending(raw: Mapping[str, object]) -> bool:
-    """True when a background subagent launch has no completion notification.
+def _launch_expired(timestamp: object, now: datetime) -> bool:
+    """True when a launch is older than the cap. A bad timestamp fails open."""
+    if not isinstance(timestamp, str):
+        return True
+    try:
+        launched_at = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return True
+    if launched_at.tzinfo is None:
+        launched_at = launched_at.replace(tzinfo=UTC)
+    return (now - launched_at).total_seconds() > _BACKGROUND_PENDING_MAX_AGE_SECONDS
 
-    An unreadable transcript counts as nothing pending, so rules still run.
+
+def _background_agents_pending(raw: Mapping[str, object], now: datetime | None = None) -> bool:
+    """True when a recent background subagent launch has no completion marker.
+
+    An unreadable transcript counts as nothing pending, so rules still run. So
+    does a launch older than the age cap, or one with no usable timestamp.
     """
     raw_path = raw.get("transcript_path")
     if not isinstance(raw_path, str) or not raw_path:
@@ -233,21 +278,34 @@ def _background_agents_pending(raw: Mapping[str, object]) -> bool:
     path = Path(raw_path)
     if not path.is_file():
         return False
-    launched: set[str] = set()
+    launched: dict[str, tuple[str | None, object]] = {}
     background_calls: set[str] = set()
     notified: set[str] = set()
+    finished_tasks: set[str] = set()
     try:
         for row in _marker_rows(path):
             message = row.get("message")
             if isinstance(message, dict):
                 if row.get("type") == "assistant":
                     background_calls.update(_background_call_ids(message.get("content")))
+                    finished_tasks.update(_stopped_task_ids(message.get("content")))
                 elif row.get("type") == "user":
-                    launched.update(_launched_ids(message.get("content"), background_calls))
-            notified.update(_NOTIFIED_TOOL_USE_ID.findall(_notification_text(row)))
+                    for tool_use_id, agent_id in _launches(
+                        message.get("content"), background_calls
+                    ):
+                        launched[tool_use_id] = (agent_id, row.get("timestamp"))
+            text = _notification_text(row)
+            notified.update(_NOTIFIED_TOOL_USE_ID.findall(text))
+            finished_tasks.update(_NOTIFIED_TASK_ID.findall(text))
     except OSError:
         return False
-    return bool(launched - notified)
+    current = now or datetime.now(UTC)
+    return any(
+        tool_use_id not in notified
+        and (agent_id is None or agent_id not in finished_tasks)
+        and not _launch_expired(timestamp, current)
+        for tool_use_id, (agent_id, timestamp) in launched.items()
+    )
 
 
 def _json(payload: dict[str, object]) -> HookResponse:

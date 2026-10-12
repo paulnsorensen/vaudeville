@@ -31,19 +31,36 @@ PID_FILE = str(pathlib.Path(RUNTIME_DIR) / "vaudeville.pid")
 VERSION_FILE = str(pathlib.Path(RUNTIME_DIR) / "vaudeville.version")
 
 
+def _is_trusted_ancestor(info: os.stat_result, uid: int) -> bool:
+    """Only root or this user can change the entry, or the sticky bit guards it."""
+    if info.st_uid not in (0, uid):
+        return False
+    if stat.S_ISLNK(info.st_mode):
+        return True  # link mode bits are meaningless; its parent is checked too
+    shared_write = info.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+    return not shared_write or bool(info.st_mode & stat.S_ISVTX)
+
+
 def is_private_dir(path: str) -> bool:
     """True when path is a real directory that only the current user can use.
 
     A symlink, a dir that another uid owns, or a group/world-accessible dir
-    can host a hostile socket. Clients and the daemon refuse such a dir.
+    can host a hostile socket. So can a dir below an ancestor that another
+    user can rename or replace. Clients and the daemon refuse such a dir.
     """
+    getuid = getattr(os, "getuid", None)
+    if getuid is None:
+        return False  # no uid model to verify ownership against
+    uid = getuid()
     try:
         info = os.lstat(path)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or info.st_mode & 0o077:
+            return False
+        lexical = pathlib.Path(path).absolute().parents
+        resolved = pathlib.Path(path).resolve().parents
+        return all(_is_trusted_ancestor(os.lstat(a), uid) for a in {*lexical, *resolved})
     except OSError:
         return False
-    getuid = getattr(os, "getuid", None)
-    owned = getuid is None or info.st_uid == getuid()
-    return stat.S_ISDIR(info.st_mode) and owned and info.st_mode & 0o077 == 0
 
 
 def ensure_runtime_dir() -> None:

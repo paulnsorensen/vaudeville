@@ -88,13 +88,40 @@ function socketPath(): string {
   return path.join(runtimeDir, "vaudeville.sock");
 }
 
-// A socket dir that another uid owns, or that others can access, can host a
-// hostile daemon. Matches is_private_dir in vaudeville/core/paths.py.
+function ancestors(dir: string): string[] {
+  const found: string[] = [];
+  for (let parent = path.dirname(dir); ; parent = path.dirname(parent)) {
+    found.push(parent);
+    if (parent === path.dirname(parent)) {
+      return found;
+    }
+  }
+}
+
+// Only root or this user can change the entry, or the sticky bit guards it.
+function isTrustedAncestor(entry: string, uid: number): boolean {
+  const info = fs.lstatSync(entry);
+  if (info.uid !== 0 && info.uid !== uid) {
+    return false;
+  }
+  return info.isSymbolicLink() || (info.mode & 0o022) === 0 || (info.mode & 0o1000) !== 0;
+}
+
+// A socket dir that another uid owns, that others can access, or that sits
+// below an ancestor another user can replace can host a hostile daemon.
+// Matches is_private_dir in vaudeville/core/paths.py.
 function isPrivateDir(dir: string): boolean {
   try {
+    if (typeof process.getuid !== "function") {
+      return false;
+    }
+    const uid = process.getuid();
     const info = fs.lstatSync(dir);
-    const uid = typeof process.getuid === "function" ? process.getuid() : info.uid;
-    return info.isDirectory() && info.uid === uid && (info.mode & 0o077) === 0;
+    if (!info.isDirectory() || info.uid !== uid || (info.mode & 0o077) !== 0) {
+      return false;
+    }
+    const chain = [...ancestors(path.resolve(dir)), ...ancestors(fs.realpathSync(dir))];
+    return chain.every(entry => isTrustedAncestor(entry, uid));
   } catch {
     return false;
   }

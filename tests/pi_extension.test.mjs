@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { chmod, copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, realpath, rename, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -74,6 +74,21 @@ test("socket in a dir that others can access fails open without connecting", asy
   await chmod(h.directory, 0o755);
   assert.equal(await h.emit("tool_call", { input: { command: "ok" } }), undefined);
   assert.equal(h.connections(), 0);
+});
+
+test("socket below an ancestor that others can rename fails open", async t => {
+  const h = await host(t, { action: "block", reason: "hostile" });
+  const shared = await mkdtemp(path.join(os.tmpdir(), "vd-pi-shared-"));
+  t.after(() => rm(shared, { recursive: true, force: true }));
+  const moved = path.join(shared, "inner");
+  await rename(h.directory, moved);
+  process.env.VAUDEVILLE_SOCKET = path.join(moved, "daemon.sock");
+  await chmod(shared, 0o777);
+  assert.equal(await h.emit("tool_call", { input: { command: "ok" } }), undefined);
+  assert.equal(h.connections(), 0);
+  await chmod(shared, 0o755);
+  assert.deepEqual(await h.emit("tool_call", { input: { command: "ok" } }), { block: true, reason: "hostile" });
+  assert.equal(h.connections(), 1);
 });
 
 test("startup executes the real script beneath encoded installation paths", async t => {

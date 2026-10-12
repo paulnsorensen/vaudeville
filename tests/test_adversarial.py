@@ -783,7 +783,7 @@ class TestRequestLockContention:
         ) -> dict[str, object]:
             del request, event_logger
             t0 = time.monotonic()
-            time.sleep(0.03)
+            time.sleep(0.2)
             t1 = time.monotonic()
             with ci_lock:
                 call_intervals.append((t0, t1))
@@ -835,15 +835,15 @@ class TestRequestLockContention:
             w.start()
         for w in workers:
             w.join(timeout=10)
-        elapsed = time.monotonic() - started
 
         daemon._stop_event.set()
         thread.join(timeout=5)
 
         assert len(call_intervals) == 5, f"Expected 5 calls, got {len(call_intervals)}"
-        assert elapsed < 0.03 * 5, (
-            f"5 requests took {elapsed:.3f}s; expected overlap, not serialization"
-        )
+        # A serialized daemon never produces overlapping intervals, however slow the host.
+        ordered = sorted(call_intervals)
+        overlapping = [(a, b) for a, b in zip(ordered, ordered[1:], strict=False) if b[0] < a[1]]
+        assert overlapping, f"No overlapping handler calls; requests were serialized: {ordered}"
         assert daemon._last_request >= started, "_last_request not updated"
 
     def test_two_concurrent_slow_decides_complete_faster_than_serial(

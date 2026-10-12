@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - Add five CLI and live-hook behavior scenarios with real rule persistence, daemon enforcement, and an installed-wheel smoke check.
 - Decide rules can declare an optional `unsure:` gate (`below`, `action`, `outcomes?`) that substitutes an action when a `typesafe:*` model's confidence falls below a threshold
+- `/hook-suggester` mines final assistant messages for semantic `Stop` rule candidates and gives real examples as candidate `test_cases`; session analytics gains a `final_messages` table
 
 ### Changed
 - Claude Code `Stop` rules skip a stop while the transcript shows a background subagent that has not reported back; a stopped or crashed subagent, or a launch older than two hours, no longer suppresses them

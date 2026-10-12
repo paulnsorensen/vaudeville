@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -482,3 +483,227 @@ def check_permission_tool_waste(days, min_occ):
         "hook_type": "workflow",
         "suggested_action": "warn",
     }
+
+
+# --- Semantic candidates mined from final assistant messages -----------------
+#
+# Each category uses a lexical prefilter only. A model judges the candidates
+# later, through the eval harness. Every category here targets a Stop rule that
+# the next turn can correct at tier "block". Past-tense behavior that no later
+# turn can fix (wasted time, tone) is out of scope on purpose.
+
+MAX_EXAMPLES = 5
+SNIPPET_CHARS = 240
+TAIL_CHARS = 400
+
+EDIT_TOOLS = "'Edit', 'Write', 'MultiEdit', 'NotebookEdit'"
+
+# Bash commands that count as verification evidence for a completion claim.
+VERIFY_CMD_PATTERN = (
+    r"\b(pytest|unittest|jest|vitest|mocha|rspec|tsc|mypy|ruff|eslint|"
+    r"cargo (test|build|check|clippy)|go (test|build|vet)|"
+    r"(npm|pnpm|yarn|bun) (run )?(test|build|lint|check)|"
+    r"dotnet (test|build)|make|just|gradle|mvn|rake)\b"
+)
+
+_SECRET_PATTERNS = [
+    re.compile(r"\b(?:sk|ghp|gho|ghs|xox[abp]|AKIA|AIza)[-_A-Za-z0-9]{12,}"),
+    re.compile(r"(?i)\bbearer\s+\S+"),
+    re.compile(r"(?i)\b(api[_-]?key|token|secret|password|passwd)\b(\s*[:=]\s*)\S+"),
+    re.compile(r"\b[A-Za-z0-9+/_-]{32,}\b"),
+]
+
+
+def _redact(text):
+    """Remove likely secrets from an example snippet."""
+    text = _SECRET_PATTERNS[0].sub("[REDACTED]", text)
+    text = _SECRET_PATTERNS[1].sub("Bearer [REDACTED]", text)
+    text = _SECRET_PATTERNS[2].sub(r"\1\2[REDACTED]", text)
+    return _SECRET_PATTERNS[3].sub("[REDACTED]", text)
+
+
+def _snippet(text, match, tail_only):
+    """Cut a short, redacted excerpt that shows the matched behavior."""
+    text = text.strip()
+    if tail_only:
+        start = max(0, len(text) - SNIPPET_CHARS)
+    else:
+        start = max(0, match.start() - SNIPPET_CHARS // 2)
+    words = text[start : start + SNIPPET_CHARS].split()
+    if start > 0 and len(words) > 1:
+        words = words[1:]
+    return _redact(" ".join(words))
+
+
+_SEMANTIC_CATEGORIES = [
+    {
+        "id": "permission-to-git",
+        "title": "Asks permission to commit, push, or open a PR",
+        "priority": "high",
+        "covered_by": "git-gate",
+        "tail_only": True,
+        "unverified_only": False,
+        "pattern": re.compile(
+            r"(?i)\b(should i|shall i|want me to|would you like me to|"
+            r"do you want me to|ready to|let me know (if|when)|"
+            r"say the word)\b[^.?!]{0,60}\b(commit|push|"
+            r"(open|create|make|raise)\s+(a|the)\s+(pr|pull request)|merge)\b"
+        ),
+        "why": (
+            "The work is done and the final message asks before the git step. "
+            "A block at Stop makes the next turn do the git step."
+        ),
+    },
+    {
+        "id": "deferred-work",
+        "title": "Defers work to a follow-up, later PR, or ticket",
+        "priority": "high",
+        "covered_by": "deferral-detector",
+        "tail_only": False,
+        "unverified_only": False,
+        "pattern": re.compile(
+            r"(?i)\b(follow[- ]?up (pr|ticket|issue|commit)|"
+            r"in a (later|future|separate|follow[- ]?up) (pr|commit|change|"
+            r"session|pass)|(left|leave|leaving) (it |this |that )?"
+            r"(for|as) (a )?(later|follow[- ]?up)|"
+            r"(can|could|should) be (done|addressed|handled|tackled) "
+            r"(later|separately|afterwards)|"
+            r"(file|create|open) (a |an )?(ticket|issue|follow[- ]?up)|"
+            r"out of scope for (this|now))\b"
+        ),
+        "why": (
+            "The final message pushes known work to later. A block at Stop "
+            "makes the next turn do the work now."
+        ),
+    },
+    {
+        "id": "unverified-completion",
+        "title": "Claims success after edits without running a test or build",
+        "priority": "high",
+        "covered_by": None,
+        "tail_only": False,
+        "unverified_only": True,
+        "pattern": re.compile(
+            r"(?i)\b(should (now |then )?(work|fix|be (fixed|working|good))|"
+            r"(this|that|it) (now )?(fixes|fixed|works|resolves|resolved)|"
+            r"(is|are) now (fixed|working|resolved|complete|done)|"
+            r"all (set|done|good))\b"
+        ),
+        "why": (
+            "The turn edited files, claimed success, and ran no test or build. "
+            "A block at Stop makes the next turn run a check."
+        ),
+    },
+    {
+        "id": "hedged-claims",
+        "title": "Hedges about facts the agent could check",
+        "priority": "medium",
+        "covered_by": None,
+        "tail_only": False,
+        "unverified_only": False,
+        "pattern": re.compile(
+            r"(?i)\b(i believe|probably|presumably|i assume|i think|likely)\b"
+            r"[^.?!]{0,80}\b(exists?|passes|fails|installed|defined|imported|"
+            r"returns?|supports?|version|deprecated|available)\b"
+        ),
+        "why": (
+            "The agent guesses about a fact that a tool call can check. "
+            "A block at Stop makes the next turn check it."
+        ),
+    },
+]
+
+
+def _final_message_rows(days):
+    """Return final messages with edit and verification flags per turn."""
+    return query(f"""
+        SELECT
+            fm.timestamp,
+            fm.sessionId,
+            left(fm.text, 3000) AS text,
+            EXISTS (
+                SELECT 1 FROM tool_uses tu
+                WHERE tu.sessionId = fm.sessionId
+                  AND tu.timestamp > fm.turn_start
+                  AND tu.timestamp <= fm.timestamp
+                  AND tu.tool_name IN ({EDIT_TOOLS})
+            ) AS edited,
+            EXISTS (
+                SELECT 1 FROM tool_uses tu
+                WHERE tu.sessionId = fm.sessionId
+                  AND tu.timestamp > fm.turn_start
+                  AND tu.timestamp <= fm.timestamp
+                  AND tu.tool_name = 'Bash'
+                  AND regexp_matches(tu.bash_cmd, '{VERIFY_CMD_PATTERN}')
+            ) AS verified
+        FROM final_messages fm
+        WHERE fm.timestamp::DATE >= CURRENT_DATE - INTERVAL '{days}' DAY
+        ORDER BY fm.timestamp DESC
+        LIMIT 20000;
+    """)
+
+
+def _mine_category(category, rows):
+    """Count prefilter hits and collect distinct example snippets."""
+    count = 0
+    examples = []
+    seen = set()
+    for row in rows:
+        text = row.get("text") or ""
+        if category["unverified_only"] and not (row["edited"] and not row["verified"]):
+            continue
+        scope = text.strip()[-TAIL_CHARS:] if category["tail_only"] else text
+        match = category["pattern"].search(scope)
+        if not match:
+            continue
+        count += 1
+        snippet = _snippet(scope, match, category["tail_only"])
+        key = snippet.lower()
+        if key not in seen and len(examples) < MAX_EXAMPLES:
+            seen.add(key)
+            examples.append(snippet)
+    return count, examples
+
+
+def check_semantic_candidates(days, min_occ):
+    """Mine final assistant messages for semantic Stop-rule candidates.
+
+    Returns a list with one suggestion per category that has enough signal.
+    """
+    rows = _final_message_rows(days)
+    if not rows:
+        return []
+    suggestions = []
+    for category in _SEMANTIC_CATEGORIES:
+        count, examples = _mine_category(category, rows)
+        if count < min_occ:
+            continue
+        covered = category["covered_by"]
+        coverage = (
+            f"Bundled rule `{covered}` already covers this."
+            if covered
+            else "No bundled rule covers this."
+        )
+        suggestions.append(
+            {
+                "id": f"semantic-{category['id']}",
+                "event": "Stop",
+                "priority": category["priority"],
+                "title": category["title"],
+                "description": (
+                    f"Found {count} final messages in the last {days} days "
+                    f"with this pattern (lexical match, not model-judged). "
+                    f"{category['why']} {coverage}"
+                ),
+                "examples": examples,
+                "hook_type": "slm-rule",
+                "category": "semantic",
+                "suggested_action": "shadow",
+                "tier": "shadow",
+                "target_tier": "block",
+                "count": count,
+                "covered_by": covered,
+                "test_cases": [{"text": e, "outcome": "violation"} for e in examples],
+            }
+        )
+    return suggestions

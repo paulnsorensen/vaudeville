@@ -136,7 +136,7 @@ Each rule is a YAML file of `type: decide` or `type: rewrite`. A decide rule set
 
 **Which event should my rule use?**
 
-- **Reviewing what the assistant said** → `Stop`. Quality rules like `git-gate` use this because they evaluate the assistant's final output. A `block` on `Stop` forces one more turn. If the next event carries `stop_hook_active: true`, vaudeville downgrades the block to `warn` and logs `stop-hook-active`. This stops loops.
+- **Reviewing what the assistant said** → `Stop`. Quality rules like `git-gate` use this because they evaluate the assistant's final output. A `block` on `Stop` forces one more turn. If the next event carries `stop_hook_active: true`, vaudeville downgrades the block to `warn` and logs `stop-hook-active`. This stops loops. On Claude Code, `Stop` rules do not run while background subagents are still running. They run on the stop after the last subagent reports back. A subagent that was stopped or crashed counts as done, and a launch older than two hours counts as done even without a marker, so a lost subagent cannot silence `Stop` rules for the rest of the session.
 - **Blocking a bad action before it happens** → `PreToolUse`. The `deferral-detector` uses this to catch low-quality PR replies before they're posted.
 - **Checking what a tool returned** → `PostToolUse`. Use this when the rule needs to see both the tool input and its result.
 

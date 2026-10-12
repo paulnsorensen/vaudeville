@@ -14,11 +14,22 @@ is listed with "None" decision control, so it is a genuine degrade case.
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+from _hook_helpers import async_launch, task_notification, task_stop, write_transcript
 
 from vaudeville.core.protocol import GENERIC_ALLOW
 from vaudeville.rules import Action, ActionName
 from vaudeville.server.harness import Outcome, RenderResult
-from vaudeville.server.harness.claude_code import ClaudeCodeAdapter
+from vaudeville.server.harness.claude_code import (
+    _BACKGROUND_PENDING_MAX_AGE_SECONDS,
+    ClaudeCodeAdapter,
+    _background_agents_pending,
+)
 
 
 def _stdout_json(result: RenderResult) -> dict[str, object]:
@@ -472,3 +483,227 @@ class TestNewlyWiredEvents:
         payload = _stdout_json(result)
         assert payload == {"decision": "block", "reason": "expansion blocked"}
         assert result["downgrades"] == []
+
+
+def _notice_text(tool_use_id: str) -> str:
+    message = task_notification(tool_use_id)["message"]
+    assert isinstance(message, dict)
+    return str(message["content"])
+
+
+def _stop(transcript: str, event: str = "Stop") -> dict[str, object]:
+    return {"hook_event_name": event, "cwd": "/repo", "transcript_path": transcript}
+
+
+def _awaiting(tmp_path: Path, rows: Sequence[Mapping[str, object]], event: str = "Stop") -> bool:
+    transcript = write_transcript(tmp_path / "session.jsonl", rows)
+    return ClaudeCodeAdapter().normalize(_stop(transcript, event)).awaiting_background
+
+
+class TestAwaitingBackground:
+    def test_launch_without_notification_is_awaiting(self, tmp_path: Path) -> None:
+        assert _awaiting(tmp_path, [*async_launch("toolu_a")]) is True
+
+    @pytest.mark.parametrize(
+        ("tool_name", "tool_input", "expected"),
+        [
+            ("Task", {"run_in_background": True}, True),
+            ("Read", {"run_in_background": True}, False),
+            ("Bash", {"run_in_background": True}, False),
+            ("Agent", {"run_in_background": False}, False),
+            ("Agent", {"run_in_background": "true"}, False),
+            ("Agent", {}, False),
+            ("Agent", None, False),
+        ],
+    )
+    def test_launch_requires_background_subagent_call(
+        self, tmp_path: Path, tool_name: str, tool_input: object, expected: bool
+    ) -> None:
+        rows = async_launch("toolu_a")
+        message = rows[0]["message"]
+        assert isinstance(message, dict)
+        call = message["content"][0]
+        call.update(name=tool_name, input=tool_input)
+        assert _awaiting(tmp_path, rows) is expected
+
+    def test_launch_requires_matching_tool_use_id(self, tmp_path: Path) -> None:
+        rows = [async_launch("toolu_a")[0], async_launch("toolu_b")[1]]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_launch_without_assistant_call_is_ignored(self, tmp_path: Path) -> None:
+        assert _awaiting(tmp_path, async_launch("toolu_a")[1:]) is False
+
+    def test_call_in_user_message_is_ignored(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        rows[0]["type"] = "user"
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_background_call_without_launch_result_is_not_awaiting(self, tmp_path: Path) -> None:
+        assert _awaiting(tmp_path, async_launch("toolu_a")[:1]) is False
+
+    def test_notified_launch_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), task_notification("toolu_a")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_enqueued_notification_completes_the_launch(self, tmp_path: Path) -> None:
+        text = _notice_text("toolu_a")
+        enqueue = {"type": "queue-operation", "operation": "enqueue", "content": text}
+        assert _awaiting(tmp_path, [*async_launch("toolu_a"), enqueue]) is False
+
+    def test_mid_turn_queued_command_completes_the_launch(self, tmp_path: Path) -> None:
+        attachment = {
+            "type": "queued_command",
+            "commandMode": "task-notification",
+            "prompt": _notice_text("toolu_a"),
+        }
+        rows: list[Mapping[str, object]] = [
+            *async_launch("toolu_a"),
+            {"type": "attachment", "attachment": attachment},
+        ]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_other_queue_and_attachment_rows_do_not_complete(self, tmp_path: Path) -> None:
+        text = _notice_text("toolu_a")
+        rows: list[Mapping[str, object]] = [
+            *async_launch("toolu_a"),
+            {"type": "queue-operation", "operation": "remove", "content": text},
+            {"type": "attachment", "attachment": {"type": "prompt_snapshot", "prompt": text}},
+        ]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_one_of_two_launches_notified_is_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), *async_launch("toolu_b"), task_notification("toolu_a")]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_foreground_agent_result_is_not_awaiting(self, tmp_path: Path) -> None:
+        block = {"type": "tool_result", "tool_use_id": "toolu_a", "content": "Report: done."}
+        rows = [{"type": "user", "message": {"role": "user", "content": [block]}}]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_notification_quoted_in_a_tool_result_does_not_complete(self, tmp_path: Path) -> None:
+        """A tool that reads another transcript must not mark a launch complete."""
+        quoted = json.dumps(task_notification("toolu_a"))
+        block = {"type": "tool_result", "tool_use_id": "toolu_r", "content": quoted}
+        rows: list[Mapping[str, object]] = [
+            *async_launch("toolu_a"),
+            {"type": "user", "message": {"role": "user", "content": [block]}},
+        ]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_assistant_text_with_markers_is_ignored(self, tmp_path: Path) -> None:
+        text = "Async agent launched successfully. <task-notification>"
+        rows = [{"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_malformed_marker_line_is_skipped(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        launch = "\n".join(json.dumps(row) for row in async_launch("toolu_a"))
+        transcript.write_text(f"{{not json <task-notification>\n{launch}\n")
+        event = ClaudeCodeAdapter().normalize(_stop(str(transcript)))
+        assert event.awaiting_background is True
+
+    def test_only_stop_checks_the_transcript(self, tmp_path: Path) -> None:
+        assert _awaiting(tmp_path, [*async_launch("toolu_a")], event="SubagentStop") is False
+
+    def test_missing_transcript_is_not_awaiting(self, tmp_path: Path) -> None:
+        event = ClaudeCodeAdapter().normalize(_stop(str(tmp_path / "absent.jsonl")))
+        assert event.awaiting_background is False
+
+    def test_no_transcript_path_is_not_awaiting(self) -> None:
+        event = ClaudeCodeAdapter().normalize({"hook_event_name": "Stop", "cwd": "/repo"})
+        assert event.awaiting_background is False
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads files without permission")
+    def test_unreadable_transcript_is_not_awaiting(self, tmp_path: Path) -> None:
+        transcript = Path(write_transcript(tmp_path / "session.jsonl", [*async_launch("toolu_a")]))
+        transcript.chmod(0)
+        try:
+            event = ClaudeCodeAdapter().normalize(_stop(str(transcript)))
+        finally:
+            transcript.chmod(0o600)
+        assert event.awaiting_background is False
+
+
+_CAP = _BACKGROUND_PENDING_MAX_AGE_SECONDS
+
+
+def _task_ids_notification(*task_ids: str, status: str = "stopped") -> dict[str, object]:
+    """The `stopped` notice a session restart writes: task ids only, no tool-use id."""
+    ids = "".join(f"<task-id>{task_id}</task-id>\n" for task_id in task_ids)
+    text = f"<task-notification>\n{ids}<status>{status}</status>\n</task-notification>"
+    return {"type": "user", "message": {"role": "user", "content": text}}
+
+
+class TestBackgroundSafeguard:
+    """A stopped, crashed or silent agent must not suppress Stop rules for good."""
+
+    def test_fresh_unnotified_launch_still_awaits(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a", age_seconds=_CAP - 600)
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_stopped_agent_via_task_stop_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), task_stop("toolu_a")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_stopped_agent_via_killed_notification_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), task_notification("toolu_a", status="killed")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_stopped_agent_via_restart_notice_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), _task_ids_notification("a-toolu_a")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_task_stop_of_another_agent_keeps_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), *async_launch("toolu_b"), task_stop("toolu_b")]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_task_stop_without_a_task_id_is_ignored(self, tmp_path: Path) -> None:
+        stop = task_stop("toolu_a")
+        message = stop["message"]
+        assert isinstance(message, dict)
+        message["content"][0]["input"] = {}
+        assert _awaiting(tmp_path, [*async_launch("toolu_a"), stop]) is True
+
+    def test_crashed_agent_failed_notification_is_not_awaiting(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a"), task_notification("toolu_a", status="failed")]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_crashed_agent_error_result_with_restart_notice_is_not_awaiting(
+        self, tmp_path: Path
+    ) -> None:
+        error = {"type": "tool_result", "tool_use_id": "toolu_a", "is_error": True, "content": "x"}
+        rows: list[Mapping[str, object]] = [
+            *async_launch("toolu_a"),
+            {"type": "user", "message": {"role": "user", "content": [error]}},
+            _task_ids_notification("a-toolu_a", status="failed"),
+        ]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_stale_launch_without_any_marker_is_not_awaiting(self, tmp_path: Path) -> None:
+        assert _awaiting(tmp_path, async_launch("toolu_a", age_seconds=_CAP + 60)) is False
+
+    def test_stale_launch_does_not_hide_a_fresh_one(self, tmp_path: Path) -> None:
+        rows = [*async_launch("toolu_a", age_seconds=_CAP + 60), *async_launch("toolu_b")]
+        assert _awaiting(tmp_path, rows) is True
+
+    def test_age_is_measured_against_the_injected_clock(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        transcript = write_transcript(tmp_path / "session.jsonl", rows)
+        later = datetime.now(UTC) + timedelta(seconds=_CAP + 60)
+        assert _background_agents_pending(_stop(transcript), now=later) is False
+        assert _background_agents_pending(_stop(transcript)) is True
+
+    def test_launch_without_timestamp_fails_open(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        del rows[1]["timestamp"]
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_launch_with_unparseable_timestamp_fails_open(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        rows[1]["timestamp"] = "yesterday-ish"
+        assert _awaiting(tmp_path, rows) is False
+
+    def test_naive_timestamp_is_read_as_utc(self, tmp_path: Path) -> None:
+        rows = async_launch("toolu_a")
+        rows[1]["timestamp"] = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        assert _awaiting(tmp_path, rows) is True

@@ -7,6 +7,7 @@ directory or model weights.
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import signal
@@ -102,6 +103,94 @@ def _run_session_start(
         capture_output=True,
         timeout=timeout,
     )
+
+
+# ---------------------------------------------------------------------------
+# Runtime-dir ownership tests
+# ---------------------------------------------------------------------------
+
+
+class TestRuntimeDirOwnership:
+    """session-start.sh refuses a runtime dir it does not own, and says so."""
+
+    @staticmethod
+    def _fake_uv_recording_call(fake_bin: pathlib.Path, marker: pathlib.Path) -> None:
+        fake_uv = fake_bin / "uv"
+        fake_uv.write_text(f"#!/usr/bin/env bash\ntouch {marker}\nexit 0\n")
+        fake_uv.chmod(0o755)
+
+    def _assert_refused(self, env: dict[str, str], marker: pathlib.Path) -> None:
+        result = _run_session_start(env)
+
+        assert result.returncode == 0, result.stderr.decode()
+        assert "daemon not started" in result.stderr.decode()
+        # stderr is hidden on exit 0; the user sees the systemMessage.
+        assert "daemon not started" in json.loads(result.stdout)["systemMessage"]
+        assert not marker.exists(), "daemon must not spawn into a foreign runtime dir"
+
+    def test_symlinked_runtime_dir_is_refused(
+        self, session_env: SessionEnv, tmp_path: pathlib.Path
+    ) -> None:
+        _skip_if_unsupported()
+
+        marker = tmp_path / "uv_called"
+        self._fake_uv_recording_call(session_env["fake_bin"], marker)
+        link = tmp_path / "runtime-link"
+        link.symlink_to(session_env["runtime_dir"])
+        env = dict(session_env["env"], VAUDEVILLE_RUNTIME_DIR=str(link))
+
+        self._assert_refused(env, marker)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root owns every candidate dir")
+    def test_runtime_dir_owned_by_another_uid_is_refused(
+        self, session_env: SessionEnv, tmp_path: pathlib.Path
+    ) -> None:
+        _skip_if_unsupported()
+
+        marker = tmp_path / "uv_called"
+        self._fake_uv_recording_call(session_env["fake_bin"], marker)
+        env = dict(session_env["env"], VAUDEVILLE_RUNTIME_DIR="/")
+
+        self._assert_refused(env, marker)
+
+    def test_runtime_dir_that_is_a_file_is_refused(
+        self, session_env: SessionEnv, tmp_path: pathlib.Path
+    ) -> None:
+        _skip_if_unsupported()
+
+        marker = tmp_path / "uv_called"
+        self._fake_uv_recording_call(session_env["fake_bin"], marker)
+        not_a_dir = tmp_path / "runtime-file"
+        not_a_dir.write_text("")
+        env = dict(session_env["env"], VAUDEVILLE_RUNTIME_DIR=str(not_a_dir))
+
+        self._assert_refused(env, marker)
+
+    def test_missing_runtime_dir_is_created_0700(
+        self, session_env: SessionEnv, tmp_path: pathlib.Path
+    ) -> None:
+        _skip_if_unsupported()
+
+        fresh = tmp_path / "fresh-runtime"
+        env = dict(session_env["env"], VAUDEVILLE_RUNTIME_DIR=str(fresh))
+
+        result = _run_session_start(env)
+
+        assert result.returncode == 0, result.stderr.decode()
+        assert "daemon not started" not in result.stderr.decode()
+        assert fresh.stat().st_mode & 0o777 == 0o700
+
+    def test_owned_loose_runtime_dir_is_tightened_to_0700(self, session_env: SessionEnv) -> None:
+        """Clients refuse a group/world-accessible dir, so tighten ours."""
+        _skip_if_unsupported()
+
+        runtime_dir = session_env["runtime_dir"]
+        runtime_dir.chmod(0o755)
+
+        result = _run_session_start(session_env["env"])
+
+        assert result.returncode == 0, result.stderr.decode()
+        assert runtime_dir.stat().st_mode & 0o777 == 0o700
 
 
 # ---------------------------------------------------------------------------

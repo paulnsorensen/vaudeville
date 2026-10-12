@@ -28,8 +28,12 @@ PLUGIN_ROOT = os.environ.get(
 if PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, PLUGIN_ROOT)
 
-from vaudeville.core import VaudevilleClient  # noqa: E402
-from vaudeville.core.protocol import GENERIC_ALLOW, HookResponse  # noqa: E402
+try:
+    from vaudeville.core import VaudevilleClient
+    from vaudeville.core.protocol import GENERIC_ALLOW, HookResponse
+except Exception as exc:  # broken install or unsupported host: allow the hook
+    print(f"[vaudeville] import failed ({exc!r}) — fail open", file=sys.stderr)
+    sys.exit(0)
 
 _ALLOW_OUTPUT: dict[str, HookResponse] = {"claude-code": GENERIC_ALLOW, "codex": GENERIC_ALLOW}
 

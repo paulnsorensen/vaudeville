@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- Add five CLI and live-hook behavior scenarios with real rule persistence, daemon enforcement, and an installed-wheel smoke check.
 - Decide rules can declare an optional `unsure:` gate (`below`, `action`, `outcomes?`) that substitutes an action when a `typesafe:*` model's confidence falls below a threshold
 
 ### Changed

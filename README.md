@@ -198,6 +198,8 @@ just test       # run tests
 just eval       # evaluate rules against test cases
 ```
 
+The [CLI behavior suite](docs/testing/bdd.md) covers persistent rule administration and the installed wheel.
+
 ## Troubleshooting
 
 **Daemon not starting?**

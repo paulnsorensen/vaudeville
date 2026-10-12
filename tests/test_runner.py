@@ -14,7 +14,6 @@ import pathlib
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -125,12 +124,11 @@ def test_no_yaml_no_pydantic() -> None:
 
 
 def test_daemon_allow_passthrough_over_socket(
+    short_sock_path: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Daemon-allow passthrough over a real socket; not an AC-13 proof."""
-    with tempfile.NamedTemporaryFile(suffix=".sock", dir="/tmp", delete=False) as f:
-        sock_path = f.name
-    pathlib.Path(sock_path).unlink()
+    sock_path = os.path.join(short_sock_path, "daemon.sock")
 
     server_done = threading.Event()
 

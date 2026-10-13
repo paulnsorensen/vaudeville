@@ -160,7 +160,9 @@ def _run_pipeline(
     matching = [
         rule
         for rule in ruleset.for_event(event.event)
-        if isinstance(rule, DecideRule) and _matcher_matches(rule.matcher, event.tool_name)
+        if isinstance(rule, DecideRule)
+        and _matcher_matches(rule.matcher, event.tool_name)
+        and (rule.when is None or pending)
     ]
 
     evaluated: list[EvaluatedAction] = []

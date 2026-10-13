@@ -103,7 +103,9 @@ Opt in with a `prototype_verification` block in user configuration.
 Its `commands` list contains exact whole-project Bash verification commands; its default `tier` is `warn`.
 Successful observed Edit/Write events arm session/project obligations.
 Correlated verification after the latest edit can clear them; Stop checks pending state.
-The prototype reuses existing tiers and guards, calls no model, and adds no YAML rule type.
+The prototype reuses existing tiers and guards and adds no YAML rule type.
+A decide rule can declare `when: verification-pending` with `event: Stop`; it then evaluates only while an obligation is pending.
+Such a rule can ask Jev whether the final message claims verification; it never clears an obligation.
 It does not support general sequences, windows, counters, or persistent state.
 See [stateful rule patterns](../ideas/stateful-rule-patterns.md) for prototype limitations and unresolved design questions.
 

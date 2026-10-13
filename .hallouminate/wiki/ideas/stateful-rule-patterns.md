@@ -51,6 +51,7 @@ Do not replace observed test results with a model's interpretation of completion
 
 General stateful rule patterns remain absent from the generic decide/rewrite YAML schema.
 The prototype branch adds one specialized cross-event verification gate outside that schema.[^3]
+Its only schema hook is the experimental `when: verification-pending` condition on Stop decide rules.
 Current rule matching and target resolution use one event.[^1]
 Confidence substitution and escalation are existing per-event behaviors.
 Merged background-agent and repeated-Stop guards are special cases, not a declarative arming system.[^2]
@@ -71,7 +72,9 @@ The prototype evaluates emitted Stop events; it does not create them.
 The prototype limitations include unobserved Bash, MCP, external, and subagent edits.
 Restart and bounded scope eviction lose obligations; bounded history eviction loses replay protection.
 Configured commands must verify the whole project; successful tool completion does not establish test quality.
-This prototype calls no model and adds no generic rule syntax, persistence, windows, or counters.[^3]
+The gate itself calls no model and adds no persistence, windows, or counters.[^3]
+A decide rule with `when: verification-pending` and `event: Stop` evaluates only while an obligation is pending.
+This lets Jev answer a semantic question, such as a false verification claim, while code keeps the event state.
 
 ## Unresolved design questions
 
@@ -90,7 +93,8 @@ Stateful rule patterns have established conceptual precedent in the linked sourc
 Their application to agent hooks remains speculative.
 Use mold to define and validate the permanent contract before stabilization.
 The original research runs no live Jev API call or stateful prototype.
-The later prototype replays synthetic events; no live Claude Code session is verified.[^3]
+A headless Claude Code 2.1.296 capture confirms the PostToolUse and PostToolUseFailure Bash shapes the prototype uses.[^3]
+No live Jev call through a pending-gated rule is verified yet.
 
 [^1]: vaudeville/rules/models.py:67-85,172-185; vaudeville/server/hook/pipeline.py:142-152,530-560.
 [^2]: https://github.com/paulnsorensen/vaudeville/pull/115; https://github.com/paulnsorensen/vaudeville/pull/116.

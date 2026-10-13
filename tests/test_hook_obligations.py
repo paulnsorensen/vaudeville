@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from _hook_helpers import CONFIG, decide_fn, make_request, write_rule
 
+from vaudeville.rules import parse_rule
 from vaudeville.server.harness import HookEvent
 from vaudeville.server.hook import pipeline
 from vaudeville.server.hook.obligations import ObligationTracker
@@ -375,3 +376,96 @@ tier: block
     result = pipeline.handle_hook_request(make_request(tmp_path), config=config, decide_fn=fn)
     assert recorder.call_count == 1
     assert "deny" in str(result["stdout"])
+
+
+CLAIM_RULE = """
+type: decide
+name: unverified-claim
+event: Stop
+when: verification-pending
+model: fake:model
+prompt: Does the message claim that tests or checks passed?
+outcomes: [claims-verified, no-claim]
+reasons:
+  unverified: You claim verification, but no configured command passed after the latest edit.
+"on":
+  claims-verified: block
+tier: block
+"""
+
+
+def test_pending_gated_rule_runs_only_while_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_KEY", "x")
+    (tmp_path / ".git").mkdir()
+    write_rule(tmp_path, "unverified-claim", CLAIM_RULE)
+    fn, recorder = decide_fn('{"outcome": "claims-verified", "reason": "unverified"}')
+    # A disabled gate still tracks state; only the gated rule can act.
+    config = CONFIG.model_copy(
+        update={
+            "prototype_verification": PrototypeVerificationConfig(
+                commands=["pytest -q"], tier="disabled"
+            )
+        }
+    )
+
+    def send(request: dict[str, object]) -> dict[str, object]:
+        return pipeline.handle_hook_request(request, config=config, decide_fn=fn)
+
+    stop = hook(tmp_path, "Stop", last_assistant_message="All tests pass.")
+    command = {"command": "pytest -q"}
+    response = {"stdout": "ok", "stderr": "", "interrupted": False}
+    edit = {"file_path": str(tmp_path / "a.py")}
+    assert send(stop)["stdout"] == ""
+    assert recorder.call_count == 0
+    send(hook(tmp_path, "PostToolUse", "Edit", "e1", tool_input=edit))
+    assert json.loads(str(send(stop)["stdout"])) == {
+        "decision": "block",
+        "reason": (
+            "You claim verification, but no configured command passed after the latest edit."
+        ),
+    }
+    assert recorder.call_count == 1
+    send(hook(tmp_path, "PreToolUse", "Bash", "b1", tool_input=command))
+    send(hook(tmp_path, "PostToolUse", "Bash", "b1", tool_input=command, tool_response=response))
+    assert send(stop)["stdout"] == ""
+    assert recorder.call_count == 1
+
+
+def test_pending_gated_rule_is_inert_without_prototype_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_KEY", "x")
+    (tmp_path / ".git").mkdir()
+    write_rule(tmp_path, "unverified-claim", CLAIM_RULE)
+    fn, recorder = decide_fn('{"outcome": "claims-verified"}')
+    edit = {"file_path": str(tmp_path / "a.py")}
+    for request in (
+        hook(tmp_path, "PostToolUse", "Edit", "e1", tool_input=edit),
+        hook(tmp_path, "Stop", last_assistant_message="All tests pass."),
+    ):
+        result = pipeline.handle_hook_request(request, config=CONFIG, decide_fn=fn)
+        assert result["stdout"] == ""
+    assert recorder.call_count == 0
+
+
+@pytest.mark.parametrize(
+    ("overrides", "error"),
+    [
+        ({"event": "PreToolUse"}, "requires event: Stop"),
+        ({"when": "always"}, "verification-pending"),
+    ],
+)
+def test_when_rejects_invalid_rules(overrides: dict[str, object], error: str) -> None:
+    data: dict[str, object] = {
+        "type": "decide",
+        "name": "gated",
+        "event": "Stop",
+        "when": "verification-pending",
+        "prompt": "Classify.",
+        "outcomes": ["yes", "no"],
+        **overrides,
+    }
+    with pytest.raises(ValueError, match=error):
+        parse_rule(data)

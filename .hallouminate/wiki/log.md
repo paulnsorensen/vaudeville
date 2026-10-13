@@ -39,3 +39,5 @@
 2026-10-12 · a7d01d83d8dd083f · merged · rules/supported-rules.md · Separate experimental prototype_verification configuration from the two existing semantic YAML rule types. Keep same-event target matching unchanged.
 2026-10-12 · a7d01d83d8dd083f · merged · rules/supported-rules.md · All eight frozen retrieval probes pass after one bounded lead revision. Exact identities rank first. No retrieval warning remains for this ingest.
 
+2026-10-13 · prototype-jev-gate · merged · ideas/stateful-rule-patterns.md · Record any-directory verification, named Stop commands, the when: verification-pending Stop rule condition, and the live Claude Code 2.1.296 Bash payload capture. No live Jev call is verified.
+2026-10-13 · prototype-jev-gate · merged · rules/supported-rules.md · Record the experimental when: verification-pending condition on Stop decide rules. It never clears an obligation.

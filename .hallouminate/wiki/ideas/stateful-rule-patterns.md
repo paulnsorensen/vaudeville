@@ -60,8 +60,10 @@ See [supported rules](../rules/supported-rules.md).
 
 The verification obligation prototype on `prototype/stateful-verification` uses temporary session/project scope and in-memory state.[^3]
 A successful main-agent Claude Code Edit or Write inside the project arms a verification obligation.
-A configured foreground Bash command must start from the project root.
-Its start records the edit generation and tool-use identity.
+A configured foreground Bash command can start from any project directory.
+Its start records the edit generation, tool-use identity, and directory.
+Its completion must report the same directory.
+The Stop message names each configured command, because matching is exact.
 Observed successful completion clears only that generation; verification started before another edit cannot clear the newer work.
 Failed, unknown, mismatched, and retained duplicate evidence do not clear later obligations.
 Stop checks pending obligations through existing tiers, action precedence, and continuation guards.

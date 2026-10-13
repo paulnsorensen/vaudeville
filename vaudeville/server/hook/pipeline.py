@@ -143,7 +143,12 @@ def _run_pipeline(
     payload = request.get("payload")
     raw = payload if isinstance(payload, Mapping) else {}
     event: HookEvent = adapter.normalize(raw)
-    pending = _obligations.observe(event, config.prototype_verification)
+    try:
+        pending = _obligations.observe(event, config.prototype_verification)
+    except Exception:
+        # The experimental gate fails open and does not skip the rules below.
+        logger.exception("verification obligation tracking raised; ignoring")
+        pending = False
     if event.awaiting_background:
         # Rules evaluate the stop that follows the last background completion.
         return _to_wire(adapter.render_allow())
@@ -168,7 +173,7 @@ def _run_pipeline(
             obligation = EvaluatedAction(
                 rule_name="prototype-verification",
                 action_name=action_name,
-                message="Run a configured verification command after the latest edit.",
+                message=_obligation_message(config.prototype_verification.commands),
                 downgrade=downgrade,
                 verdict="pending",
                 outcome="pending",
@@ -244,6 +249,15 @@ def _run_pipeline(
             downgrade=_merge_downgrade(item.downgrade, context_drops),
         )
     return _to_wire(rendered)
+
+
+def _obligation_message(commands: list[str]) -> str:
+    """Name each command, because the tracker matches the command string exactly."""
+    listed = ", ".join(f"`{command}`" for command in commands)
+    return (
+        "Run a verification command after the latest edit. "
+        f"Use one of these exact commands: {listed}"
+    )
 
 
 def _is_stop_loop(event: HookEvent) -> bool:

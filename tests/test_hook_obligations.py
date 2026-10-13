@@ -6,10 +6,17 @@ import json
 from pathlib import Path
 
 import pytest
+from _hook_helpers import CONFIG, decide_fn, make_request, write_rule
 
+from vaudeville.server.harness import HookEvent
 from vaudeville.server.hook import pipeline
 from vaudeville.server.hook.obligations import ObligationTracker
-from vaudeville.server.user_config import UserConfig
+from vaudeville.server.user_config import PrototypeVerificationConfig, UserConfig
+
+MESSAGE = (
+    "Run a verification command after the latest edit. "
+    "Use one of these exact commands: `pytest -q`"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -51,12 +58,9 @@ def decision(result: dict[str, object]) -> str:
     if not stdout:
         return "allow"
     body = json.loads(stdout)
-    if body == {
-        "decision": "block",
-        "reason": "Run a configured verification command after the latest edit.",
-    }:
+    if body == {"decision": "block", "reason": MESSAGE}:
         return "block"
-    if body == {"systemMessage": "Run a configured verification command after the latest edit."}:
+    if body == {"systemMessage": MESSAGE}:
         return "warn"
     pytest.fail(f"unexpected hook reply: {body!r}")
 
@@ -319,3 +323,55 @@ def test_subdirectory_completion_and_removed_command_do_not_clear(tmp_path: Path
         config=changed,
     )
     assert decision(run(tmp_path, hook(tmp_path, "Stop"))) == "block"
+
+
+def test_session_in_subdirectory_clears_from_same_directory(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    child = tmp_path / "child"
+    child.mkdir()
+    command = {"command": "pytest -q"}
+    response = {"stdout": "ok", "stderr": "", "interrupted": False}
+    edit = {"file_path": str(child / "a.py")}
+    run(child, hook(child, "PostToolUse", "Edit", "e1", tool_input=edit))
+    assert decision(run(child, hook(child, "Stop"))) == "block"
+    run(child, hook(child, "PreToolUse", "Bash", "b1", tool_input=command))
+    run(
+        child,
+        hook(child, "PostToolUse", "Bash", "b1", tool_input=command, tool_response=response),
+    )
+    assert decision(run(child, hook(child, "Stop"))) == "allow"
+
+
+class _BrokenTracker(ObligationTracker):
+    def observe(self, event: HookEvent, config: PrototypeVerificationConfig | None) -> bool:
+        raise RuntimeError("tracker failure")
+
+
+def test_tracker_failure_still_evaluates_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_KEY", "x")
+    monkeypatch.setattr(pipeline, "_obligations", _BrokenTracker())
+    write_rule(
+        tmp_path,
+        "block-writes",
+        """
+type: decide
+name: block-writes
+event: PreToolUse
+matcher: Write
+model: fake:model
+prompt: Classify.
+outcomes: [violation, clean]
+"on":
+  violation: block
+tier: block
+""",
+    )
+    fn, recorder = decide_fn('{"outcome": "violation"}')
+    config = CONFIG.model_copy(
+        update={"prototype_verification": PrototypeVerificationConfig(commands=["pytest -q"])}
+    )
+    result = pipeline.handle_hook_request(make_request(tmp_path), config=config, decide_fn=fn)
+    assert recorder.call_count == 1
+    assert "deny" in str(result["stdout"])

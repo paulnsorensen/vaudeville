@@ -20,7 +20,7 @@ _MAX_HISTORY = 512
 class _Scope:
     generation: int = 0
     cleared: int = 0
-    attempts: OrderedDict[str, tuple[int, str]] = field(default_factory=OrderedDict)
+    attempts: OrderedDict[str, tuple[int, str, Path]] = field(default_factory=OrderedDict)
     completed: OrderedDict[str, None] = field(default_factory=OrderedDict)
 
     def remember(self, identity: str) -> bool:
@@ -81,31 +81,31 @@ class ObligationTracker:
                     state.generation += 1
             elif event.tool_name == "Bash" and isinstance(identity, str) and identity:
                 command = tool_input.get("command") if tool_input else None
+                cwd = Path(event.cwd).resolve()
                 if event.event == "PreToolUse":
                     if (
                         isinstance(command, str)
                         and command in config.commands
-                        and Path(event.cwd).resolve() == root
                         and identity not in state.attempts
                         and identity not in state.completed
                         and event.raw.get("run_in_background") is not True
                         and (tool_input is None or tool_input.get("run_in_background") is not True)
                     ):
-                        state.attempts[identity] = (state.generation, command)
+                        state.attempts[identity] = (state.generation, command, cwd)
                         if len(state.attempts) > _MAX_HISTORY:
                             state.attempts.popitem(last=False)
                 elif (
                     event.event in {"PostToolUse", "PostToolUseFailure"}
                     and identity in state.attempts
                 ):
-                    generation, started_command = state.attempts.pop(identity)
+                    generation, started_command, started_cwd = state.attempts.pop(identity)
                     fresh = state.remember(identity)
                     if (
                         fresh
                         and event.event == "PostToolUse"
                         and command == started_command
                         and command in config.commands
-                        and Path(event.cwd).resolve() == root
+                        and cwd == started_cwd
                         and event.raw.get("run_in_background") is not True
                         and (tool_input is None or tool_input.get("run_in_background") is not True)
                         and self._bash_succeeded(event)

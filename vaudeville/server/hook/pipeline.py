@@ -49,10 +49,12 @@ from vaudeville.server.harness import (
 )
 from vaudeville.server.user_config import UserConfig, load_user_config
 
+from .obligations import ObligationTracker
 from .precedence import EvaluatedAction, merge
 from .tier import apply_tier_ceiling
 
 logger = logging.getLogger(__name__)
+_obligations = ObligationTracker()
 
 # `escalate` is a one-hop, bounded operation; `run` is fire-and-forget.
 DEFAULT_ESCALATE_DEADLINE_SECONDS = 3.0
@@ -141,6 +143,12 @@ def _run_pipeline(
     payload = request.get("payload")
     raw = payload if isinstance(payload, Mapping) else {}
     event: HookEvent = adapter.normalize(raw)
+    try:
+        pending = _obligations.observe(event, config.prototype_verification)
+    except Exception:
+        # The experimental gate fails open and does not skip the rules below.
+        logger.exception("verification obligation tracking raised; ignoring")
+        pending = False
     if event.awaiting_background:
         # Rules evaluate the stop that follows the last background completion.
         return _to_wire(adapter.render_allow())
@@ -152,10 +160,30 @@ def _run_pipeline(
     matching = [
         rule
         for rule in ruleset.for_event(event.event)
-        if isinstance(rule, DecideRule) and _matcher_matches(rule.matcher, event.tool_name)
+        if isinstance(rule, DecideRule)
+        and _matcher_matches(rule.matcher, event.tool_name)
+        and (rule.when is None or pending)
     ]
 
     evaluated: list[EvaluatedAction] = []
+    if pending and config.prototype_verification is not None:
+        tier = config.prototype_verification.tier
+        if tier != "disabled":
+            action_name, downgrade = apply_tier_ceiling("block", tier)
+            if action_name == "block" and _is_stop_loop(event):
+                action_name, downgrade = "warn", _STOP_LOOP_GUARD
+            obligation = EvaluatedAction(
+                rule_name="prototype-verification",
+                action_name=action_name,
+                message=_obligation_message(config.prototype_verification.commands),
+                downgrade=downgrade,
+                verdict="pending",
+                outcome="pending",
+                tier=tier,
+            )
+            evaluated.append(obligation)
+            if action_name in _NO_DEFER:
+                _log_evaluated(event_logger, obligation, downgrade=downgrade)
     event_json = json.dumps(dict(raw))
     decide_memo: _DecideMemo = {}
 
@@ -223,6 +251,15 @@ def _run_pipeline(
             downgrade=_merge_downgrade(item.downgrade, context_drops),
         )
     return _to_wire(rendered)
+
+
+def _obligation_message(commands: list[str]) -> str:
+    """Name each command, because the tracker matches the command string exactly."""
+    listed = ", ".join(f"`{command}`" for command in commands)
+    return (
+        "Run a verification command after the latest edit. "
+        f"Use one of these exact commands: {listed}"
+    )
 
 
 def _is_stop_loop(event: HookEvent) -> bool:

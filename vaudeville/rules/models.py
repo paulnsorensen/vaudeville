@@ -83,11 +83,22 @@ class DecideRule(BaseModel):
     draft: bool = False
     test_cases: list[DecideTestCase] = Field(default_factory=list)
     unsure: UnsureGate | None = None
+    # Experimental: evaluate only while a verification obligation is pending.
+    when: Literal["verification-pending"] | None = None
 
     @field_validator("tier", mode="before")
     @classmethod
     def _validate_tier(cls, value: object, info: ValidationInfo) -> object:
         return _check_tier(value, info.data.get("name", "?"))
+
+    @model_validator(mode="after")
+    def _validate_when(self) -> DecideRule:
+        if self.when is not None and self.event != "Stop":
+            raise ValueError(
+                f"rule {self.name!r}: when: {self.when} requires event: Stop "
+                f"(got event={self.event!r})"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_typesafe_reason(self) -> DecideRule:

@@ -7,7 +7,9 @@ confidence: high
 
 Vaudeville supports two semantic rule types: decide and rewrite.
 Confidence gates, judgement, and escalation are behaviors within those types, not additional schema types.[^1]
-This page describes checkout revision 127ee2f, inspected on 2026-10-12.
+The semantic rule catalog describes revision 127ee2f, inspected on 2026-10-12.
+On the prototype branch based on 3da9451, opt in to cross-event verification obligations with `prototype_verification` user configuration.[^12]
+This experimental configuration is not a third YAML rule type.
 
 ## Semantic rule types
 
@@ -90,8 +92,22 @@ This page follows the current implementation.
 
 Supported rule matching uses the current event.
 Escalation and rewrite targets must match that same event.[^11]
-General cross-event arming is not present in the checked schema and pipeline.
+General cross-event arming is not part of the decide/rewrite YAML schema.
+A separate experimental configuration explores one cross-event verification obligation.[^12]
 See [stateful rule patterns](../ideas/stateful-rule-patterns.md) for unapproved proposals.
+
+## Experimental verification obligation
+
+Supported semantic rules remain separate from the experimental verification obligation on `prototype/stateful-verification`.[^12]
+Opt in with a `prototype_verification` block in user configuration.
+Its `commands` list contains exact whole-project Bash verification commands; its default `tier` is `warn`.
+Successful observed Edit/Write events arm session/project obligations.
+Correlated verification after the latest edit can clear them; Stop checks pending state.
+The prototype reuses existing tiers and guards and adds no YAML rule type.
+A decide rule can declare `when: verification-pending` with `event: Stop`; it then evaluates only while an obligation is pending.
+Such a rule can ask Jev whether the final message claims verification; it never clears an obligation.
+It does not support general sequences, windows, counters, or persistent state.
+See [stateful rule patterns](../ideas/stateful-rule-patterns.md) for prototype limitations and unresolved design questions.
 
 [^1]: vaudeville/rules/models.py:67-85,172-214,234-244.
 [^2]: vaudeville/server/agents/output_types.py:20-43; vaudeville/rules/models.py:92-99.
@@ -103,6 +119,7 @@ See [stateful rule patterns](../ideas/stateful-rule-patterns.md) for unapproved 
 [^8]: vaudeville/rules/models.py:193-230; vaudeville/rules/loader.py:172-180.
 [^9]: skills/add-hook/SKILL.md:16-25.
 [^10]: examples/rules/git-gate.yaml:70-73; examples/rules/deferral-detector.yaml:50-53; examples/README.md:3,41-47.
-[^11]: vaudeville/server/hook/pipeline.py:142-152,530-560.
+[^11]: vaudeville/server/hook/pipeline.py:142-152,530-560 at catalog revision 127ee2f.
+[^12]: Prototype branch based on 3da9451; vaudeville/server/user_config.py:63-87; vaudeville/server/hook/obligations.py:35-133; vaudeville/server/hook/pipeline.py:140-183.
 
-_Source: Repository revision 127ee2f and cited primary documentation · Updated: 2026-10-12 · Supersedes: conflicting examples prose on tiers and global-rule ownership_
+_Source: Semantic catalog at 127ee2f, prototype branch based on 3da9451, and cited primary documentation · Updated: 2026-10-12 · Supersedes: unqualified pipeline absence; conflicting examples prose on tiers and global-rule ownership_
